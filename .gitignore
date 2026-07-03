@@ -1,36 +1,24 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Python
+.venv/
+__pycache__/
+*.py[cod]
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
+# Node / Next.js
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/next-env.d.ts
 
-# testing
-/coverage
+# Downloaded models & HF cache (project-local)
+models/
 
-# next.js
-/.next/
-/out/
+# Local runtime data & secrets (HF token lives here)
+data/
 
-# production
-/build
+# Generated images + metadata (project-local gallery)
+outputs/
 
-# misc
+# OS / editor
+Thumbs.db
 .DS_Store
-*.pem
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# local env files
-.env*.local
-.env
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+features/

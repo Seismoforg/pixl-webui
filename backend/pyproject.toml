@@ -1,0 +1,27 @@
+[project]
+name = "pixl-webui-backend"
+version = "0.1.0"
+description = "FastAPI + diffusers inference backend for Pixl WebUI"
+requires-python = ">=3.10,<3.14"
+
+# NOTE: torch is intentionally NOT listed here. It is installed by install.ps1
+# with the GPU-specific index (CUDA for NVIDIA, ROCm for AMD) before this package.
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "diffusers>=0.27",
+    "transformers>=4.40",
+    "accelerate>=0.29",
+    "safetensors>=0.4",
+    "huggingface_hub>=0.23",
+    "pillow>=10.0",
+    "pydantic>=2.6",
+    "psutil>=5.9",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app", "app.routers", "app.services"]
