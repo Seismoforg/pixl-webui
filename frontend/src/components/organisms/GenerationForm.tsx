@@ -17,7 +17,7 @@ import { InfoTip } from "@/components/molecules/InfoTip";
 import { LabeledSlider } from "@/components/molecules/LabeledSlider";
 import { PromptSnippets } from "@/components/organisms/PromptSnippets";
 import { ReferenceImage } from "@/components/organisms/ReferenceImage";
-import { useGeneration } from "@/generation/GenerationProvider";
+import { useGeneration } from "@/providers/GenerationProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import type { ModelEntry, PromptSnippet } from "@/types";

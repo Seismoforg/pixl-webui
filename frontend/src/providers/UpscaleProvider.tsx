@@ -9,11 +9,11 @@ import {
   type ReactNode,
 } from "react";
 
-import { useActivity } from "@/activity/ActivityProvider";
+import { useActivity } from "@/providers/ActivityProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { live } from "@/lib/ws";
-import { upscaleStatsView } from "@/upscale/stats";
+import { upscaleStatsView } from "@/lib/stats";
 import type { ReframeStrategy, UpscaleProgress, UpscaleRequest } from "@/types";
 
 /** Chosen source image: an existing gallery image, or an uploaded data URL. */

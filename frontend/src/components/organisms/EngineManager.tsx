@@ -19,7 +19,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { useDownloads } from "@/activity/DownloadProvider";
+import { useDownloads } from "@/providers/DownloadProvider";
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { ConfirmDialog } from "@/components/molecules/ConfirmDialog";
 import { AddEngineDialog } from "@/components/organisms/AddEngineDialog";

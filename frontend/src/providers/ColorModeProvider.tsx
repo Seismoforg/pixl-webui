@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { createAppTheme, type ColorMode } from "./theme";
+import { createAppTheme, type ColorMode } from "@/theme/theme";
 
 interface ColorModeContextValue {
   mode: ColorMode;

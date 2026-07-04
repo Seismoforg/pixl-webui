@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from .. import messages
 from ..catalog import CATALOG, ModelInfo, get_model
 from ..config import load_settings
-from ..services import custom_models, downloader, fit, pipeline
+from ..services import custom_models, downloader, fit, hf_browse, pipeline
 from ..services.custom_models import resolve_model
 
 router = APIRouter(prefix="/api/models", tags=["models"])
@@ -48,30 +48,30 @@ def list_models() -> list[CatalogEntry]:
     return entries
 
 
-@router.get("/search", response_model=list[downloader.SearchResult])
+@router.get("/search", response_model=list[hf_browse.SearchResult])
 def search_models(
     query: str = "",
     sort: str = "downloads",
     family: str = "",
     pipelines: list[str] = Query(default=["text-to-image"]),
     limit: int = 30,
-) -> list[downloader.SearchResult]:
+) -> list[hf_browse.SearchResult]:
     token = load_settings().hf_token
     try:
-        return downloader.search_repos(
+        return hf_browse.search_repos(
             query, sort, limit, token, family or None, pipelines or None
         )
     except Exception as exc:  # noqa: BLE001 - surfaced to the user
         raise HTTPException(502, messages.SEARCH_FAILED.format(detail=exc)) from exc
 
 
-@router.get("/resolve", response_model=downloader.ResolvedModel)
-def resolve_repo(repo_id: str) -> downloader.ResolvedModel:
-    if get_model(downloader.slug_for(repo_id)) is not None:
+@router.get("/resolve", response_model=hf_browse.ResolvedModel)
+def resolve_repo(repo_id: str) -> hf_browse.ResolvedModel:
+    if get_model(hf_browse.slug_for(repo_id)) is not None:
         raise HTTPException(409, messages.MODEL_ALREADY_IN_CATALOG.format(repo_id=repo_id))
     token = load_settings().hf_token
     try:
-        return downloader.resolve_repo(repo_id, token)
+        return hf_browse.resolve_repo(repo_id, token)
     except Exception as exc:  # noqa: BLE001 - surfaced to the user
         raise HTTPException(
             400, messages.RESOLVE_FAILED.format(repo_id=repo_id, detail=exc)
@@ -81,12 +81,12 @@ def resolve_repo(repo_id: str) -> downloader.ResolvedModel:
 @router.post("", response_model=DownloadStarted)
 def add_model(body: AddModelRequest) -> DownloadStarted:
     token = load_settings().hf_token
-    if get_model(downloader.slug_for(body.repo_id)) is not None:
+    if get_model(hf_browse.slug_for(body.repo_id)) is not None:
         raise HTTPException(
             409, messages.MODEL_ALREADY_IN_CATALOG.format(repo_id=body.repo_id)
         )
     try:
-        resolved = downloader.resolve_repo(body.repo_id, token)
+        resolved = hf_browse.resolve_repo(body.repo_id, token)
     except Exception as exc:  # noqa: BLE001 - surfaced to the user
         raise HTTPException(
             400, messages.RESOLVE_FAILED.format(repo_id=body.repo_id, detail=exc)

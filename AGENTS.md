@@ -27,4 +27,7 @@ Python 3.10–3.13, Node.js 18+, PyTorch (CUDA or ROCm), diffusers, Next.js, MUI
 # Related Modules
 - Child: ./backend  (inference API)
 - Child: ./frontend (web UI)
-- Decisions: ./docs/adr
+
+# Decisions
+Architecture Decision Records live in ./docs/adr (an ADR log, not a module).
+Technical debt is tracked in ./docs/technical-debt.md.

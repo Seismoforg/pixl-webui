@@ -2,7 +2,7 @@
 
 import Stack from "@mui/material/Stack";
 
-import { useAppData } from "@/app-shell/AppChrome";
+import { useAppData } from "@/providers/AppDataProvider";
 import { PromptSnippetManager } from "@/components/organisms/PromptSnippetManager";
 import { SettingsPanel } from "@/components/organisms/SettingsPanel";
 

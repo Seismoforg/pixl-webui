@@ -33,6 +33,29 @@
   for on-light text, or restyle those chips to use `text.primary` with a colored
   border only.
 
+## WebSocket push is tick-based, not event-driven  (added 2026-07-04)
+- Problem: `backend/app/routers/ws.py` pushes live progress on a 250ms tick
+  (send-on-change) rather than truly event-driven queue-based push. Latency is
+  bounded by the tick, as noted in ADR 0005.
+- Impact: Progress updates can lag up to ~250ms. Negligible for a local,
+  single-user app.
+- Proposed Resolution: Tracked as a separate feature
+  (`features/draft/20260704-2003-websocket-queue-based-push.md`): a per-job
+  asyncio.Queue/pub-sub with a thread→async bridge, superseding ADR 0005. Deferred
+  because the user-visible gain is small and it reintroduces the thread bridge the
+  ADR deliberately avoided.
+
+## Frontend rebuilds on every launch  (added 2026-07-04)
+- Problem: `start.bat` runs `npm run build && npm run start` so it always serves a
+  production build (dev mode caused 1-2s on-demand route compiles). The build is
+  incremental (reuses `.next/cache`) but still runs each launch rather than being
+  produced once at install time.
+- Impact: First launch after a change has a short build delay before the frontend
+  is reachable; the browser auto-open (6s) may briefly precede readiness on the
+  first/cold build.
+- Proposed Resolution: Optionally move `npm run build` into `install.ps1` and have
+  `start.bat` run only `next start`, rebuilding on demand.
+
 ## AMD gfx-arch mapping is static  (added 2026-07-03)
 - Problem: The AMD GPU → gfx architecture mapping in `install.ps1` is hardcoded
   from the current rocm-torch-windows support list.

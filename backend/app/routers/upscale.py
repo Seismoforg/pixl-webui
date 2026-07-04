@@ -21,6 +21,7 @@ from ..services import (
     custom_upscalers,
     downloader,
     gallery,
+    hf_browse,
     outpaint as outpaint_svc,
     reframe as reframe_svc,
     upscale as upscale_svc,
@@ -230,13 +231,13 @@ def list_engines() -> list[UpscalerEntry]:
     return entries
 
 
-@router.get("/engines/resolve", response_model=downloader.EngineResolve)
-def resolve_engine(repo_id: str, kind: str) -> downloader.EngineResolve:
+@router.get("/engines/resolve", response_model=hf_browse.EngineResolve)
+def resolve_engine(repo_id: str, kind: str) -> hf_browse.EngineResolve:
     if kind not in _ENGINE_KINDS:
         raise HTTPException(400, messages.ENGINE_KIND_INVALID.format(kind=kind))
     token = load_settings().hf_token
     try:
-        return downloader.resolve_engine(repo_id, kind, token)
+        return hf_browse.resolve_engine(repo_id, kind, token)
     except Exception as exc:  # noqa: BLE001 - surfaced to the user
         raise HTTPException(
             400, messages.RESOLVE_FAILED.format(repo_id=repo_id, detail=exc)
@@ -252,7 +253,7 @@ def add_engine(body: AddEngineRequest) -> DownloadStarted:
 
     token = load_settings().hf_token
     try:
-        resolved = downloader.resolve_engine(body.repo_id, body.kind, token)
+        resolved = hf_browse.resolve_engine(body.repo_id, body.kind, token)
     except Exception as exc:  # noqa: BLE001 - surfaced to the user
         raise HTTPException(
             400, messages.RESOLVE_FAILED.format(repo_id=body.repo_id, detail=exc)
@@ -263,7 +264,7 @@ def add_engine(body: AddEngineRequest) -> DownloadStarted:
         )
 
     role = "outpaint" if body.kind == "inpaint" else "upscaler"
-    slug = f"{role}--{downloader.slug_for(body.repo_id)}"
+    slug = f"{role}--{hf_browse.slug_for(body.repo_id)}"
     if upscalers.get(slug) is not None:
         raise HTTPException(409, messages.ENGINE_ALREADY_ADDED.format(repo_id=body.repo_id))
 

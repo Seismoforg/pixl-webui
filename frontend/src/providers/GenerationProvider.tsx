@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { useActivity } from "@/activity/ActivityProvider";
+import { useActivity } from "@/providers/ActivityProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { live } from "@/lib/ws";

@@ -6,7 +6,7 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
-import type { Activity } from "@/activity/ActivityProvider";
+import type { Activity } from "@/providers/ActivityProvider";
 import { useTranslations } from "@/i18n";
 
 interface ActivityBubbleProps {

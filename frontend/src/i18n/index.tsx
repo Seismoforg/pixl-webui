@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 
-import en from "@/locales/en.json";
+import en from "./locales/en.json";
 
 /**
  * Minimal i18n layer. Static UI text lives in `src/locales/<locale>.json` and is

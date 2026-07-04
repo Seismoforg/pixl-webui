@@ -8,9 +8,10 @@ node_modules/
 frontend/.next/
 frontend/out/
 frontend/next-env.d.ts
+frontend/tsconfig.tsbuildinfo
 
 # Downloaded models & HF cache (project-local)
-models/
+/models/
 
 # Local runtime data & secrets (HF token lives here)
 data/

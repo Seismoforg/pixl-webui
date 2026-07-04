@@ -14,7 +14,7 @@ import { useEffect } from "react";
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { InfoTip } from "@/components/molecules/InfoTip";
 import { LabeledSlider } from "@/components/molecules/LabeledSlider";
-import { useGeneration } from "@/generation/GenerationProvider";
+import { useGeneration } from "@/providers/GenerationProvider";
 import { useTranslations } from "@/i18n";
 
 interface ReferenceImageProps {

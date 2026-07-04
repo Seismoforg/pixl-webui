@@ -8,7 +8,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { useEffect, useState } from "react";
 
-import { useGeneration } from "@/generation/GenerationProvider";
+import { useGeneration } from "@/providers/GenerationProvider";
 import { useTranslations } from "@/i18n";
 
 /** The result column of the generation view: live per-step preview + progress

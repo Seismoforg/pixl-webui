@@ -13,38 +13,30 @@ and download models, configure settings, and generate images.
 - app/page.tsx              — redirects `/` → `/generate`
 - app/generate|models|upscale|gallery|settings/page.tsx — one route per screen
                              (thin clients reading AppData/Generation context)
-- src/app-shell/AppChrome.tsx — shared chrome above all routes: AppBar, link-based
-                             tabs (active from usePathname), status bar; holds the
-                             AppData context (models/system) and the GenerationProvider
-- src/theme/                — theme tokens: Inter font (loaded by next/font in
+- src/app-shell/AppChrome.tsx — shared VISUAL chrome above all routes: AppBar,
+                             link-based tabs (active from usePathname), status bar,
+                             activity overlay. Shared data + feature providers now
+                             live in providers/AppDataProvider (which wraps it)
+- src/providers/            — all app-level context providers (see providers/AGENTS.md):
+                             AppDataProvider (shared models/system + `useAppData`;
+                             hosts the feature providers), ColorModeProvider,
+                             GenerationProvider, UpscaleProvider, ActivityProvider,
+                             DownloadProvider. Grouped here so navigation-surviving
+                             state has one home
+- src/theme/theme.ts        — theme tokens only: Inter font (loaded by next/font in
                              app/layout.tsx, read via the `--font-inter` CSS var),
                              a cohesive light/dark palette (background/paper/divider/
                              text, AA contrast), the type scale, `fontWeightMedium`
                              emphasis token and `layout` size tokens (incl.
-                             `contentMaxWidth`) + ColorModeProvider
-- src/i18n/                 — minimal i18n provider + `useTranslations`
-- src/locales/en.json       — all static UI text (default locale)
-- src/lib/api.ts            — typed backend client (REST)
-- src/lib/ws.ts             — reconnecting multiplexed WebSocket client (`live`) +
-                             `useLive` hook: subscribes a channel and falls back to
-                             REST polling while the socket is down. Used for
-                             generation/upscale progress, system stats and downloads
+                             `contentMaxWidth`). ColorModeProvider now lives in providers/
+- src/i18n/                 — self-contained i18n module: minimal provider +
+                             `useTranslations` + locales/en.json (all static UI text)
+- src/lib/                  — backend-communication infra + pure helpers
+                             (see lib/AGENTS.md): api.ts (typed REST client),
+                             ws.ts (reconnecting multiplexed WebSocket `live` +
+                             `useLive`), fit.ts (GPU-fit → chip color + locale keys),
+                             stats.ts (upscale status line + percent)
 - src/types/                — API response types
-- src/generation/          — GenerationProvider: always-mounted context holding the
-                             form + running job so generation survives navigation
-- src/activity/           — ActivityProvider: generic off-route status store any
-                             task publishes into (id/title/route/status/detail/
-                             percent); DownloadProvider: app-level download tracking
-                             (survives navigation) that feeds both the inline bars
-                             and the activity store. One ActivityOverlay renders all.
-- src/upscale/             — UpscaleProvider: always-mounted context holding the
-                             upscale job + polling AND the form (engine/source/
-                             upscaler+outpaint prompts/outpaint engine/tiling) so a
-                             run and its settings survive
-                             navigation (progress/result/selection restored when
-                             returning to /upscale); stats.ts derives the status
-                             line + percent shared by the frame and overlay
-- src/lib/fit.ts            — maps a GPU-fit verdict to chip color + locale keys
 - src/components/atoms/     — SectionHeading (semantic h2/h3 with a visual variant),
                              Logo (the app mark, mirrors app/icon.svg)
 - src/components/molecules/ — LabeledSlider, ModelListItem, GalleryCard, InfoTip,
@@ -58,13 +50,17 @@ and download models, configure settings, and generate images.
                              UpscalePanel
 
 # Key Components
-- AppChrome       — mounted in the root layout, wraps every route. Loads models +
-                    system into an AppData context, hosts GenerationProvider, renders
-                    the nav (Next Link tabs), the status bar and the overlay gate.
-                    The main content Container is width-capped by the theme's
-                    `layout.contentMaxWidth` token (~1700px) and centered.
-                    Because it lives above the routes, client-side navigation keeps
-                    the running generation alive; a full reload restores the route.
+- AppDataProvider — mounted in the root layout, wraps AppChrome. Loads models +
+                    system into an AppData context (`useAppData`) and hosts the
+                    always-mounted feature providers (activity, downloads,
+                    generation, upscale), so client-side navigation keeps a running
+                    generation/upscale alive. Loads once on mount; model changes are
+                    pushed via `reloadModels()` from the relevant handlers (no
+                    per-navigation refetch).
+- AppChrome       — the VISUAL chrome inside AppDataProvider: renders the nav (Next
+                    Link tabs), the status bar and the overlay gate. The main content
+                    Container is width-capped by the theme's `layout.contentMaxWidth`
+                    token (~1700px) and centered.
                     Responsive: the tab bar shows at md+; below md a burger button
                     opens the NavDrawer instead (all via MUI sx breakpoints).
 - GenerationProvider — holds all generation state + the polling loop in a context
@@ -145,3 +141,5 @@ next, react, @mui/material, @mui/icons-material, @mui/material-nextjs,
 # Related Modules
 - Parent: ../  (project root)
 - Peer: ../backend (provides the API)
+- Child: ./src/providers (app-level context providers)
+- Child: ./src/lib (typed REST + WebSocket clients, pure helpers)

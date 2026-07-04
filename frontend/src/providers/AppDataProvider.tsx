@@ -1,0 +1,81 @@
+"use client";
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
+
+import { api } from "@/lib/api";
+import type { ModelEntry, SystemInfo } from "@/types";
+
+import { ActivityProvider } from "@/providers/ActivityProvider";
+import { DownloadProvider } from "@/providers/DownloadProvider";
+import { GenerationProvider } from "@/providers/GenerationProvider";
+import { UpscaleProvider } from "@/providers/UpscaleProvider";
+
+/** App-wide data (models + system info) shared across every route. */
+interface AppData {
+  models: ModelEntry[];
+  system: SystemInfo | null;
+  reloadModels: () => void;
+  // Bumped whenever the gallery should refetch (e.g. a finished generation).
+  // GalleryPanel reads it so it stays fresh without a page reload.
+  galleryToken: number;
+}
+
+const AppDataContext = createContext<AppData | null>(null);
+
+export const useAppData = () => {
+  const ctx = useContext(AppDataContext);
+  if (!ctx) throw new Error("useAppData must be used within AppDataProvider");
+  return ctx;
+};
+
+/**
+ * Owns the shared models/system state and hosts the always-mounted feature
+ * providers (activity, downloads, generation, upscale). Lives above the routes
+ * so long-running jobs and this data survive client-side navigation.
+ */
+export const AppDataProvider = ({ children }: { children: ReactNode }) => {
+  const [models, setModels] = useState<ModelEntry[]>([]);
+  const [system, setSystem] = useState<SystemInfo | null>(null);
+  const [galleryToken, setGalleryToken] = useState(0);
+
+  const reloadModels = useCallback(() => {
+    api.getModels().then(setModels).catch(() => setModels([]));
+  }, []);
+
+  const refreshGallery = useCallback(() => setGalleryToken((v) => v + 1), []);
+
+  // A finished generation may add a gallery image and can change model state;
+  // refresh both so the generate dropdown and gallery reflect it immediately.
+  const handleGenerated = useCallback(() => {
+    reloadModels();
+    refreshGallery();
+  }, [reloadModels, refreshGallery]);
+
+  // Load shared data once on mount. Model changes are pushed via reloadModels()
+  // from the download/generation/delete handlers, so there is no need to refetch
+  // on every navigation — that previously added a backend round-trip (and a
+  // re-render flash) to every page switch.
+  useEffect(() => {
+    reloadModels();
+    api.getSystem().then(setSystem).catch(() => setSystem(null));
+  }, [reloadModels]);
+
+  return (
+    <AppDataContext.Provider value={{ models, system, reloadModels, galleryToken }}>
+      <ActivityProvider>
+        <DownloadProvider onFinished={reloadModels}>
+          <GenerationProvider models={models} onGenerated={handleGenerated}>
+            <UpscaleProvider onUpscaled={refreshGallery}>{children}</UpscaleProvider>
+          </GenerationProvider>
+        </DownloadProvider>
+      </ActivityProvider>
+    </AppDataContext.Provider>
+  );
+};

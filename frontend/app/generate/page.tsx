@@ -1,6 +1,6 @@
 "use client";
 
-import { useAppData } from "@/app-shell/AppChrome";
+import { useAppData } from "@/providers/AppDataProvider";
 import { GenerationPanel } from "@/components/organisms/GenerationPanel";
 
 const GeneratePage = () => {

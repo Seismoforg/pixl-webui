@@ -3,9 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
 
-import { useAppData } from "@/app-shell/AppChrome";
+import { useAppData } from "@/providers/AppDataProvider";
 import { GalleryPanel } from "@/components/organisms/GalleryPanel";
-import { useGeneration } from "@/generation/GenerationProvider";
+import { useGeneration } from "@/providers/GenerationProvider";
 import type { GalleryImage } from "@/types";
 
 const GalleryPage = () => {

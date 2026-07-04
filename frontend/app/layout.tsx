@@ -5,7 +5,8 @@ import type { ReactNode } from "react";
 
 import { AppChrome } from "@/app-shell/AppChrome";
 import { I18nProvider } from "@/i18n";
-import { ColorModeProvider } from "@/theme/ColorModeProvider";
+import { AppDataProvider } from "@/providers/AppDataProvider";
+import { ColorModeProvider } from "@/providers/ColorModeProvider";
 
 // Self-hosted at build time by next/font (no runtime request to Google), exposed
 // as a CSS variable the theme reads for its fontFamily.
@@ -27,7 +28,9 @@ const RootLayout = ({ children }: { children: ReactNode }) => {
         <AppRouterCacheProvider>
           <ColorModeProvider>
             <I18nProvider>
-              <AppChrome>{children}</AppChrome>
+              <AppDataProvider>
+                <AppChrome>{children}</AppChrome>
+              </AppDataProvider>
             </I18nProvider>
           </ColorModeProvider>
         </AppRouterCacheProvider>

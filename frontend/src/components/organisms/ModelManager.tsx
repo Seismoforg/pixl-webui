@@ -9,7 +9,7 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import { useMemo, useState } from "react";
 
-import { useDownloads } from "@/activity/DownloadProvider";
+import { useDownloads } from "@/providers/DownloadProvider";
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { ConfirmDialog } from "@/components/molecules/ConfirmDialog";
 import { ModelListItem } from "@/components/molecules/ModelListItem";

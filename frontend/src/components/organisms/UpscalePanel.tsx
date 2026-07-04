@@ -4,39 +4,32 @@ import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ClearIcon from "@mui/icons-material/Clear";
 import DownloadIcon from "@mui/icons-material/Download";
-import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import UploadIcon from "@mui/icons-material/Upload";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
-import Dialog from "@mui/material/Dialog";
-import DialogContent from "@mui/material/DialogContent";
-import DialogTitle from "@mui/material/DialogTitle";
 import LinearProgress from "@mui/material/LinearProgress";
-import Link from "@mui/material/Link";
 import MenuItem from "@mui/material/MenuItem";
-import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { InfoTip } from "@/components/molecules/InfoTip";
+import { GalleryPicker } from "@/components/organisms/GalleryPicker";
 import { PromptSnippets } from "@/components/organisms/PromptSnippets";
+import { UpscaleResult } from "@/components/organisms/UpscaleResult";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
-import { upscaleStatsView } from "@/upscale/stats";
-import { useUpscale } from "@/upscale/UpscaleProvider";
-import { useDownloads } from "@/activity/DownloadProvider";
+import { useUpscale } from "@/providers/UpscaleProvider";
+import { useDownloads } from "@/providers/DownloadProvider";
 import type {
-  GalleryImage,
   PromptSnippet,
   ReframeStrategy,
-  UpscaleProgress,
   UpscalerEngine,
 } from "@/types";
 
@@ -56,7 +49,6 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
   const upscale = useUpscale();
   const {
     running,
-    progress,
     resultId,
     error: jobError,
     engineSlug,
@@ -480,40 +472,7 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
         </Stack>
 
         {/* Result */}
-        <Paper variant="outlined" sx={{ p: 2, minHeight: 240 }}>
-          <SectionHeading level={3} sx={{ mb: 1.5 }}>
-            {t("upscale.result.title")}
-          </SectionHeading>
-          {running && <UpscaleStats progress={progress} />}
-          {resultId ? (
-            <Stack spacing={1.5}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <Box
-                component="img"
-                src={api.imageFileUrl(resultId)}
-                alt={t("upscale.result.title")}
-                sx={{ maxWidth: "100%", borderRadius: 1, display: "block" }}
-              />
-              <Button
-                component={Link}
-                href={api.imageFileUrl(resultId)}
-                target="_blank"
-                rel="noopener"
-                startIcon={<OpenInNewIcon />}
-                variant="outlined"
-                sx={{ alignSelf: "flex-start" }}
-              >
-                {t("upscale.result.open")}
-              </Button>
-            </Stack>
-          ) : (
-            !running && (
-              <Typography variant="body2" color="text.secondary">
-                {t("upscale.result.empty")}
-              </Typography>
-            )
-          )}
-        </Paper>
+        <UpscaleResult />
       </Box>
 
       <GalleryPicker
@@ -526,95 +485,5 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
         }}
       />
     </Box>
-  );
-}
-
-/** Live inference stats shown in the result frame while an upscale runs. */
-const UpscaleStats = ({ progress }: { progress: UpscaleProgress | null }) => {
-  const t = useTranslations();
-  const view = upscaleStatsView(progress, t);
-
-  return (
-    <Box sx={{ mb: 2 }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="baseline" sx={{ mb: 0.5 }}>
-        <Typography variant="body2" color="text.secondary">{view.label}</Typography>
-        {progress && (
-          <Typography variant="caption" color="text.secondary">
-            {view.speed ? `${view.speed} · ` : ""}
-            {t("upscale.stats.elapsed", { value: progress.elapsed.toFixed(1) })}
-          </Typography>
-        )}
-      </Stack>
-      {view.percent === null ? (
-        <LinearProgress />
-      ) : (
-        <LinearProgress variant="determinate" value={view.percent} />
-      )}
-      {progress && (
-        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
-          {progress.engine_name}
-        </Typography>
-      )}
-    </Box>
-  );
-}
-
-interface GalleryPickerProps {
-  open: boolean;
-  reloadToken: number;
-  onClose: () => void;
-  onPick: (image: GalleryImage) => void;
-}
-
-const GalleryPicker = ({ open, reloadToken, onClose, onPick }: GalleryPickerProps) => {
-  const t = useTranslations();
-  const [images, setImages] = useState<GalleryImage[]>([]);
-  const loaded = useRef(false);
-
-  useEffect(() => {
-    if (!open || loaded.current) return;
-    loaded.current = true;
-    api.getImages().then(setImages).catch(() => setImages([]));
-  }, [open, reloadToken]);
-
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>{t("upscale.picker.title")}</DialogTitle>
-      <DialogContent dividers>
-        {images.length === 0 ? (
-          <Typography variant="body2" color="text.secondary">
-            {t("upscale.picker.empty")}
-          </Typography>
-        ) : (
-          <Box
-            sx={{
-              display: "grid",
-              gap: 1.5,
-              gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
-            }}
-          >
-            {images.map((img) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <Box
-                key={img.id}
-                component="img"
-                src={api.imageFileUrl(img.id)}
-                alt={img.prompt}
-                loading="lazy"
-                onClick={() => onPick(img)}
-                sx={{
-                  width: "100%",
-                  aspectRatio: "1 / 1",
-                  objectFit: "cover",
-                  borderRadius: 1,
-                  cursor: "pointer",
-                  "&:hover": { outline: 2, outlineColor: "primary.main", outlineOffset: -2 },
-                }}
-              />
-            ))}
-          </Box>
-        )}
-      </DialogContent>
-    </Dialog>
   );
 }

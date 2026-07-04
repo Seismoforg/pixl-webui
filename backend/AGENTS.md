@@ -36,18 +36,25 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 - app/messages.py       — centralised English user-facing strings (i18n-ready)
 - app/routers/          — HTTP controllers: system, settings, models, generate,
                           images, upscale
-- app/services/         — business logic: downloader, pipeline, gallery, resources,
-                          fit (GPU fit check), custom_models (user-added registry),
-                          upscalers (engine registry) + upscale (engine service)
+- app/services/         — business logic: downloader (download orchestration +
+                          progress), hf_browse (HF search + repo/engine resolve),
+                          pipeline, gallery, resources, fit (GPU fit check),
+                          custom_models (user-added registry), upscalers (engine
+                          registry) + upscale (engine service)
 
 # Key Components
-- services/downloader.py — background snapshot_download + size-based progress; also
-                           HF search (list_models) and repo resolve (size/variant/
-                           diffusers-compatibility/VRAM estimate/pipeline_tag) for the
-                           browser; search takes a list of pipeline_tags (default
-                           text-to-image), one query per tag, merged + deduped;
+- services/downloader.py — background snapshot_download + size-based progress state
+                           machine; `resolve_download_files` picks one weight per
+                           diffusers component (handles mixed-variant repos);
                            `start_file_download` fetches a single weight (upscaler
-                           .pth) reusing the same progress state
+                           .pth) reusing the same progress state; delete/is_downloaded
+- services/hf_browse.py  — HuggingFace browsing (split out of downloader): HF search
+                           (list_models) and repo resolve (size/variant/diffusers-
+                           compatibility/VRAM estimate/pipeline_tag) for the browser;
+                           search takes a list of pipeline_tags (default text-to-image),
+                           one query per tag, merged + deduped; `resolve_engine`
+                           inspects a custom upscale/outpaint engine repo. Imports
+                           `resolve_download_files` from downloader (one-way)
 - services/vram.py       — release(): gc + torch.cuda.empty_cache (best-effort). The
                            generation and upscale services free each other's models
                            (and the non-active upscaler engine) + call release before

@@ -3,7 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
-import { useAppData } from "@/app-shell/AppChrome";
+import { useAppData } from "@/providers/AppDataProvider";
 import { UpscalePanel } from "@/components/organisms/UpscalePanel";
 
 const UpscalePageInner = () => {

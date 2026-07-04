@@ -3,7 +3,7 @@
 import Box from "@mui/material/Box";
 import { usePathname, useRouter } from "next/navigation";
 
-import { useActivity } from "@/activity/ActivityProvider";
+import { useActivity } from "@/providers/ActivityProvider";
 import { ActivityBubble } from "@/components/molecules/ActivityBubble";
 
 /**
