@@ -1,5 +1,6 @@
 "use client";
 
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
@@ -63,16 +64,21 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
   const [perf, setPerf] = useState({ vae_tiling: true, vae_slicing: true, xformers: true });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
-    api.getSettings().then((s) => {
-      setToken(s.hf_token ?? "");
-      setPerf({ vae_tiling: s.vae_tiling, vae_slicing: s.vae_slicing, xformers: s.xformers });
-    });
+    api
+      .getSettings()
+      .then((s) => {
+        setToken(s.hf_token ?? "");
+        setPerf({ vae_tiling: s.vae_tiling, vae_slicing: s.vae_slicing, xformers: s.xformers });
+      })
+      .catch(() => setError(true));
   }, []);
 
   const handleSave = async () => {
     setSaving(true);
+    setError(false);
     try {
       const payload: AppSettings = {
         hf_token: token.trim() === "" ? null : token.trim(),
@@ -80,6 +86,8 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
       };
       await api.saveSettings(payload);
       setSaved(true);
+    } catch {
+      setError(true);
     } finally {
       setSaving(false);
     }
@@ -139,6 +147,11 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
         </Box>
 
         <Box>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {t("common.error")}
+            </Alert>
+          )}
           <Button variant="contained" onClick={handleSave} disabled={saving}>
             {saved ? t("settings.saved") : t("settings.save")}
           </Button>

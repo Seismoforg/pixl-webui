@@ -8,6 +8,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { useEffect, useState } from "react";
 
+import { Thumbnail } from "@/components/molecules/Thumbnail";
 import { useGeneration } from "@/providers/GenerationProvider";
 import { useTranslations } from "@/i18n";
 
@@ -149,17 +150,13 @@ export const GenerationResult = () => {
               }}
             >
               {images.map((src, i) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <Box
+                <Thumbnail
                   key={src}
-                  component="img"
                   src={src}
                   alt={t("generate.thumbAlt", { index: i + 1 })}
+                  sizes="80px"
                   onClick={() => setSelectedIndex(i)}
                   sx={{
-                    width: "100%",
-                    aspectRatio: "1 / 1",
-                    objectFit: "cover",
                     borderRadius: 1,
                     cursor: "pointer",
                     border: 2,

@@ -19,7 +19,9 @@ navigation-surviving state or wraps the tree in a context lives here.
 - GenerationProvider.tsx — generation form + running job + polling; `useGeneration`
 - UpscaleProvider.tsx    — upscale form + job + polling; `useUpscale`
 - ActivityProvider.tsx   — generic off-route status store; `useActivity`
-- DownloadProvider.tsx   — app-level download tracking; `useDownloads`
+- DownloadProvider.tsx   — app-level download tracking; `useDownloads` +
+                           `trackUpscalerDownload` helper (start + track an engine
+                           download; shared by EngineManager + UpscalePanel)
 
 # Key Components
 - AppDataProvider — wraps AppChrome in the root layout; the top of the provider

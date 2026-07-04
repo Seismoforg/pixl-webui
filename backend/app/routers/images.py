@@ -15,6 +15,14 @@ def list_images() -> list[gallery.ImageMeta]:
     return gallery.list_all()
 
 
+@router.get("/{image_id}", response_model=gallery.ImageMeta)
+def image_meta(image_id: str) -> gallery.ImageMeta:
+    meta = gallery.get(image_id)
+    if meta is None:
+        raise HTTPException(404, messages.IMAGE_NOT_FOUND.format(image_id=image_id))
+    return meta
+
+
 @router.get("/{image_id}/file")
 def image_file(image_id: str) -> FileResponse:
     path = gallery.file_path(image_id)

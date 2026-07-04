@@ -42,13 +42,20 @@ and download models, configure settings, and generate images.
 - src/components/molecules/ — LabeledSlider, ModelListItem, GalleryCard, InfoTip,
                              ConfirmDialog, ConnectionStatus, NavDrawer (mobile nav),
                              ActivityBubble (one off-route status card), UpscaleStats
-                             (upscale status line shared by the frame/overlay)
+                             (upscale status line shared by the frame/overlay),
+                             Thumbnail (square next/image thumbnail — loads a
+                             downscaled variant; shared by the gallery/picker/batch
+                             grids), SourceInfo (compact source-image facts —
+                             full-res size + gallery seed/prompt/model; used by the
+                             upscale source preview + picker tiles)
 - src/components/organisms/ — GenerationPanel (thin two-column host) + GenerationForm
                              + GenerationResult, ModelManager, EngineManager,
                              AddEngineDialog, GalleryPanel, GalleryPicker, SettingsPanel,
                              SystemStatusBar, ActivityOverlay, AddModelDialog,
                              ReferenceImage, PromptSnippets, PromptSnippetManager,
-                             UpscalePanel, UpscaleResult
+                             SnippetPromptField (snippet control + prompt field),
+                             UpscalePanel (host) + EnginePicker + SourcePicker +
+                             UpscaleResult
 
 # Key Components
 - AppDataProvider — mounted in the root layout, wraps AppChrome. Loads models +
@@ -80,7 +87,10 @@ and download models, configure settings, and generate images.
                     element (h2 page/section titles, h3 sub-sections) so the page
                     keeps a real screen-reader heading outline
 - ReferenceImage  — optional reference-image conditioning in the generation form:
-                    upload + img2img (strength) or IP-Adapter style (scale, SD1.5/SDXL)
+                    source from an upload OR a gallery image (picker; fetched to a
+                    data URL so the request is unchanged), with a SourceInfo readout
+                    (full-res size + gallery seed/prompt/model); img2img (strength)
+                    or IP-Adapter style (scale, SD1.5/SDXL)
 - PromptSnippets  — reusable per-field control (positive/negative/upscale) to append
                     a saved snippet and to save/delete snippets (/api/prompt-templates)
 - PromptSnippetManager — Settings-page section listing positive/negative/upscale
@@ -129,6 +139,11 @@ and download models, configure settings, and generate images.
 # Conventions
 - MUI standard components with minimal component-level overrides
 - Styling via Emotion `sx`; design values come from the theme, not magic values
+- Thumbnail/small image views use `next/image` (via the `Thumbnail` molecule or
+  directly) so the Next optimizer serves downscaled variants instead of full-res
+  gallery PNGs; the backend origin is allowlisted in `next.config.mjs`
+  (`images.remotePatterns`, derived from `NEXT_PUBLIC_API_BASE`). Full-res is kept
+  only for detail/large views; `data:` URLs bypass the optimizer
 - No hard-coded UI text — everything goes through `useTranslations` + locale files
 - Accessibility first: labels/aria, focus visibility, keyboard, WCAG AA contrast
 - Heading hierarchy is semantic: one `h1` (app title in AppChrome), page/section

@@ -56,6 +56,7 @@
     "reference": {
       "title": "Reference image (optional)",
       "upload": "Upload image",
+      "fromGallery": "From gallery",
       "remove": "Remove",
       "modeImg2img": "Variations",
       "modeStyle": "Style",

@@ -12,8 +12,9 @@ import {
 
 import { useActivity } from "@/providers/ActivityProvider";
 import { useTranslations } from "@/i18n";
+import { api } from "@/lib/api";
 import { live } from "@/lib/ws";
-import type { DownloadProgress } from "@/types";
+import type { DownloadProgress, UpscalerEngine } from "@/types";
 
 /**
  * App-level download tracking so a download's status survives leaving its page
@@ -41,6 +42,26 @@ export const useDownloads = () => {
   if (!ctx) throw new Error("useDownloads must be used within DownloadProvider");
   return ctx;
 }
+
+/**
+ * Start an upscale/outpaint engine download and register it with the download
+ * tracker so its progress survives navigation. Shared by the Models-page engine
+ * manager and the upscale panel (they differ only in the `route` the bubble
+ * links back to). Rejects if the initial request fails (the caller surfaces it).
+ */
+export const trackUpscalerDownload = (
+  track: DownloadContextValue["track"],
+  engine: Pick<UpscalerEngine, "slug" | "name">,
+  route: string,
+): Promise<void> =>
+  api.downloadUpscaler(engine.slug).then(() => {
+    track(engine.slug, {
+      title: engine.name,
+      route,
+      fetch: () => api.getUpscalerProgress(engine.slug),
+      retry: () => api.downloadUpscaler(engine.slug),
+    });
+  });
 
 interface DownloadProviderProps {
   onFinished: () => void; // e.g. reload the models list when a download completes

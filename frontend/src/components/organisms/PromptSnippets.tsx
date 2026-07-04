@@ -2,6 +2,7 @@
 
 import BookmarkAddIcon from "@mui/icons-material/BookmarkAdd";
 import DeleteIcon from "@mui/icons-material/Delete";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
@@ -51,6 +52,7 @@ export const PromptSnippets = ({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
 
   const loadLabel = {
     positive: t("generate.snippets.loadPositive"),
@@ -71,10 +73,13 @@ export const PromptSnippets = ({
   const save = async () => {
     if (name.trim() === "" || currentText.trim() === "") return;
     setBusy(true);
+    setError(false);
     try {
       await api.createPromptSnippet(kind, name.trim(), currentText.trim());
       setName("");
       onChanged();
+    } catch {
+      setError(true);
     } finally {
       setBusy(false);
     }
@@ -82,9 +87,12 @@ export const PromptSnippets = ({
 
   const remove = async (id: string) => {
     setBusy(true);
+    setError(false);
     try {
       await api.deletePromptSnippet(id);
       onChanged();
+    } catch {
+      setError(true);
     } finally {
       setBusy(false);
     }
@@ -126,6 +134,7 @@ export const PromptSnippets = ({
         <DialogTitle>{manageTitle}</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2}>
+            {error && <Alert severity="error">{t("common.error")}</Alert>}
             <Box>
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 {t("generate.snippets.saveHint")}

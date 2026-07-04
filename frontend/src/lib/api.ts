@@ -158,6 +158,8 @@ export const api = {
 
   getImages: () => request<GalleryImage[]>("/api/images"),
 
+  getImage: (id: string) => request<GalleryImage>(`/api/images/${id}`),
+
   deleteImage: (id: string) =>
     request<{ id: string; status: string }>(`/api/images/${id}`, {
       method: "DELETE",

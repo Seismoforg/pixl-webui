@@ -3,6 +3,7 @@
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
@@ -45,6 +46,7 @@ export const PromptSnippetManager = () => {
   const [name, setName] = useState("");
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PromptSnippet | null>(null);
 
   const openAdd = (kind: PromptKind) => {
@@ -61,6 +63,7 @@ export const PromptSnippetManager = () => {
   const submit = async () => {
     if (editing === null || name.trim() === "" || text.trim() === "") return;
     setBusy(true);
+    setError(false);
     try {
       if (editing.mode === "add") {
         await api.createPromptSnippet(editing.kind, name.trim(), text.trim());
@@ -69,6 +72,8 @@ export const PromptSnippetManager = () => {
       }
       reload();
       setEditing(null);
+    } catch {
+      setError(true);
     } finally {
       setBusy(false);
     }
@@ -77,9 +82,12 @@ export const PromptSnippetManager = () => {
   const confirmDelete = async () => {
     if (pendingDelete === null) return;
     setBusy(true);
+    setError(false);
     try {
       await api.deletePromptSnippet(pendingDelete.id);
       reload();
+    } catch {
+      setError(true);
     } finally {
       setBusy(false);
       setPendingDelete(null);
@@ -148,6 +156,11 @@ export const PromptSnippetManager = () => {
       <SectionHeading level={2} sx={{ mb: 2 }}>
         {t("settings.snippets.title")}
       </SectionHeading>
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {t("common.error")}
+        </Alert>
+      )}
       <Stack spacing={3}>
         {renderList("positive", snippets.filter((s) => s.kind === "positive"))}
         <Divider />

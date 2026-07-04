@@ -1,14 +1,11 @@
 "use client";
 
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ClearIcon from "@mui/icons-material/Clear";
 import DownloadIcon from "@mui/icons-material/Download";
-import UploadIcon from "@mui/icons-material/Upload";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import Chip from "@mui/material/Chip";
 import LinearProgress from "@mui/material/LinearProgress";
 import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
@@ -20,14 +17,17 @@ import { useCallback, useEffect, useState } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { InfoTip } from "@/components/molecules/InfoTip";
+import { EnginePicker } from "@/components/organisms/EnginePicker";
 import { GalleryPicker } from "@/components/organisms/GalleryPicker";
-import { PromptSnippets } from "@/components/organisms/PromptSnippets";
+import { SnippetPromptField } from "@/components/organisms/SnippetPromptField";
+import { SourcePicker } from "@/components/organisms/SourcePicker";
 import { UpscaleResult } from "@/components/organisms/UpscaleResult";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { useUpscale } from "@/providers/UpscaleProvider";
-import { useDownloads } from "@/providers/DownloadProvider";
+import { trackUpscalerDownload, useDownloads } from "@/providers/DownloadProvider";
 import type {
+  GalleryImage,
   PromptSnippet,
   ReframeStrategy,
   UpscalerEngine,
@@ -74,6 +74,10 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
   const [snippets, setSnippets] = useState<PromptSnippet[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Metadata for a gallery source (full-res size + seed/prompt/model); upload size
+  // read from the loaded <img> since uploads carry no metadata.
+  const [sourceMeta, setSourceMeta] = useState<GalleryImage | null>(null);
+  const [uploadDims, setUploadDims] = useState<{ w: number; h: number } | null>(null);
 
   const reloadEngines = useCallback(() => {
     api.getUpscalers().then(setEngines).catch(() => setEngines([]));
@@ -109,6 +113,24 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
     }
   }, [initialImageId]);
 
+  // Load the gallery source's metadata (full-res size + seed/prompt/model). Covers
+  // both the picker and the deep-link path. Reset the upload size on every change.
+  useEffect(() => {
+    setUploadDims(null);
+    if (source?.kind === "gallery") {
+      let active = true;
+      api
+        .getImage(source.imageId)
+        .then((m) => active && setSourceMeta(m))
+        .catch(() => active && setSourceMeta(null));
+      return () => {
+        active = false;
+      };
+    }
+    setSourceMeta(null);
+    return undefined;
+  }, [source]);
+
   // Inpaint engines aren't selectable upscalers — they populate the outpaint-model
   // dropdown instead of the upscaler card list.
   const selectableEngines = engines.filter((e) => e.kind !== "inpaint");
@@ -130,13 +152,7 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
   const startEngineDownload = async (eng: UpscalerEngine) => {
     setError(null);
     try {
-      await api.downloadUpscaler(eng.slug);
-      downloads.track(eng.slug, {
-        title: eng.name,
-        route: "/upscale",
-        fetch: () => api.getUpscalerProgress(eng.slug),
-        retry: () => api.downloadUpscaler(eng.slug),
-      });
+      await trackUpscalerDownload(downloads.track, eng, "/upscale");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -179,6 +195,15 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
   const sourcePreview =
     source?.kind === "gallery" ? source.preview : source?.kind === "upload" ? source.dataUrl : null;
 
+  // Full-res size: from metadata for a gallery image (the preview is a downscaled
+  // next/image), from the loaded <img> for an upload.
+  const sourceDims =
+    source?.kind === "gallery"
+      ? sourceMeta
+        ? { w: sourceMeta.width, h: sourceMeta.height }
+        : null
+      : uploadDims;
+
   const handleClear = () => {
     setSource(null);
     setPrompt("");
@@ -199,102 +224,22 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
 
       <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, alignItems: "start" }}>
         <Stack spacing={3}>
-          {/* Engine picker */}
-          <Box>
-            <SectionHeading level={3} sx={{ mb: 1.5 }}>
-              {t("upscale.engine.title")}
-            </SectionHeading>
-            <TextField
-              select
-              fullWidth
-              label={t("upscale.engine.title")}
-              value={engine?.slug ?? ""}
-              onChange={(e) => setEngineSlug(e.target.value)}
-            >
-              {selectableEngines.map((e) => (
-                <MenuItem key={e.slug} value={e.slug}>
-                  {e.name}
-                  {!e.downloaded ? ` — ${t("upscale.outpaint.notInstalled")}` : ""}
-                </MenuItem>
-              ))}
-            </TextField>
+          <EnginePicker
+            engine={engine}
+            engines={selectableEngines}
+            downloadPercent={downloadPercent}
+            onSelect={setEngineSlug}
+            onDownload={handleDownload}
+          />
 
-            {engine && (
-              <>
-                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mt: 1.5 }}>
-                  <Chip label={`${engine.scale}×`} size="small" variant="outlined" />
-                  <Chip label={`≈ ${engine.approx_size_gb} GB`} size="small" variant="outlined" />
-                  {engine.downloaded && (
-                    <Chip
-                      icon={<CheckCircleIcon />}
-                      label={t("upscale.engine.downloaded")}
-                      color="success"
-                      variant="outlined"
-                      size="small"
-                    />
-                  )}
-                </Stack>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                  {engine.description}
-                </Typography>
-              </>
-            )}
-
-            {engine && !engine.downloaded && (
-              <Box sx={{ mt: 1.5 }}>
-                {downloadPercent === null ? (
-                  <Button
-                    variant="contained"
-                    startIcon={<DownloadIcon />}
-                    onClick={handleDownload}
-                  >
-                    {t("upscale.engine.download")}
-                  </Button>
-                ) : (
-                  <Box>
-                    <LinearProgress variant="determinate" value={downloadPercent} />
-                    <Typography variant="caption" color="text.secondary">
-                      {t("upscale.engine.downloading")} {downloadPercent}%
-                    </Typography>
-                  </Box>
-                )}
-              </Box>
-            )}
-          </Box>
-
-          {/* Source picker */}
-          <Box>
-            <SectionHeading level={3} sx={{ mb: 1.5 }}>
-              {t("upscale.source.title")}
-            </SectionHeading>
-            <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
-              <Button variant="outlined" onClick={() => setPickerOpen(true)}>
-                {t("upscale.source.fromGallery")}
-              </Button>
-              <Button component="label" variant="outlined" startIcon={<UploadIcon />}>
-                {t("upscale.source.upload")}
-                <input
-                  type="file"
-                  accept="image/*"
-                  hidden
-                  onChange={(e) => onUpload(e.target.files?.[0])}
-                />
-              </Button>
-            </Stack>
-            {sourcePreview ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <Box
-                component="img"
-                src={sourcePreview}
-                alt={t("upscale.source.title")}
-                sx={{ maxWidth: "100%", maxHeight: 220, borderRadius: 1, display: "block" }}
-              />
-            ) : (
-              <Typography variant="body2" color="text.secondary">
-                {t("upscale.source.none")}
-              </Typography>
-            )}
-          </Box>
+          <SourcePicker
+            preview={sourcePreview}
+            dims={sourceDims}
+            meta={source?.kind === "gallery" ? sourceMeta : null}
+            onPickFromGallery={() => setPickerOpen(true)}
+            onUpload={onUpload}
+            onUploadDims={setUploadDims}
+          />
 
           {/* Target format / reframe */}
           <Box>
@@ -383,52 +328,32 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
 
           {/* Upscaler prompt — guides the diffusion upscaler (SD x4) toward detail. */}
           {engine?.prompt_capable && (
-            <Box>
-              <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 0.5 }}>
-                <PromptSnippets
-                  kind="upscale"
-                  snippets={snippets}
-                  currentText={prompt}
-                  onApply={(text) => setPrompt(prompt ? `${prompt}, ${text}` : text)}
-                  onChanged={reloadSnippets}
-                />
-              </Box>
-              <TextField
-                label={t("upscale.prompt.label")}
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                helperText={t("upscale.prompt.help")}
-                multiline
-                minRows={2}
-                fullWidth
-              />
-            </Box>
+            <SnippetPromptField
+              kind="upscale"
+              snippets={snippets}
+              value={prompt}
+              onChange={setPrompt}
+              onAppend={(text) => setPrompt(prompt ? `${prompt}, ${text}` : text)}
+              onSnippetsChanged={reloadSnippets}
+              label={t("upscale.prompt.label")}
+              helperText={t("upscale.prompt.help")}
+            />
           )}
 
           {/* Outpaint prompt — describes the scene generated in the new area. */}
           {outpaint && (
-            <Box>
-              <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 0.5 }}>
-                <PromptSnippets
-                  kind="upscale"
-                  snippets={snippets}
-                  currentText={outpaintPrompt}
-                  onApply={(text) =>
-                    setOutpaintPrompt(outpaintPrompt ? `${outpaintPrompt}, ${text}` : text)
-                  }
-                  onChanged={reloadSnippets}
-                />
-              </Box>
-              <TextField
-                label={t("upscale.outpaint.promptLabel")}
-                value={outpaintPrompt}
-                onChange={(e) => setOutpaintPrompt(e.target.value)}
-                helperText={t("upscale.outpaint.promptHelp")}
-                multiline
-                minRows={2}
-                fullWidth
-              />
-            </Box>
+            <SnippetPromptField
+              kind="upscale"
+              snippets={snippets}
+              value={outpaintPrompt}
+              onChange={setOutpaintPrompt}
+              onAppend={(text) =>
+                setOutpaintPrompt(outpaintPrompt ? `${outpaintPrompt}, ${text}` : text)
+              }
+              onSnippetsChanged={reloadSnippets}
+              label={t("upscale.outpaint.promptLabel")}
+              helperText={t("upscale.outpaint.promptHelp")}
+            />
           )}
 
           {/* Tiling option */}

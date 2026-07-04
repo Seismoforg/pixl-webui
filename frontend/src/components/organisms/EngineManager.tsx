@@ -19,7 +19,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { useDownloads } from "@/providers/DownloadProvider";
+import { trackUpscalerDownload, useDownloads } from "@/providers/DownloadProvider";
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { ConfirmDialog } from "@/components/molecules/ConfirmDialog";
 import { AddEngineDialog } from "@/components/organisms/AddEngineDialog";
@@ -69,13 +69,7 @@ export const EngineManager = () => {
   const handleDownload = async (engine: UpscalerEngine) => {
     setError(null);
     try {
-      await api.downloadUpscaler(engine.slug);
-      downloads.track(engine.slug, {
-        title: engine.name,
-        route: "/models",
-        fetch: () => api.getUpscalerProgress(engine.slug),
-        retry: () => api.downloadUpscaler(engine.slug),
-      });
+      await trackUpscalerDownload(downloads.track, engine, "/models");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }

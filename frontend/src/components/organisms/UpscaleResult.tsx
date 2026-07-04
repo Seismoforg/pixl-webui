@@ -20,7 +20,7 @@ export const UpscaleResult = () => {
   const { running, progress, resultId } = useUpscale();
 
   return (
-    <Paper variant="outlined" sx={{ p: 2, minHeight: 240 }}>
+    <Paper variant="outlined" sx={{ p: 2, minHeight: (theme) => theme.layout.resultMinHeight }}>
       <SectionHeading level={3} sx={{ mb: 1.5 }}>
         {t("upscale.result.title")}
       </SectionHeading>

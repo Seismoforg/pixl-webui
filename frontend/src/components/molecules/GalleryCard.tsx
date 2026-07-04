@@ -11,6 +11,7 @@ import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
+import { Thumbnail } from "@/components/molecules/Thumbnail";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import type { GalleryImage } from "@/types";
@@ -28,16 +29,14 @@ export const GalleryCard = ({ image, onOpen, onRegenerate, onUpscale, onDelete }
 
   return (
     <Paper variant="outlined" sx={{ overflow: "hidden", display: "flex", flexDirection: "column" }}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <Box
-        component="img"
+      <Thumbnail
         src={api.imageFileUrl(image.id)}
         alt={image.prompt}
-        loading="lazy"
+        sizes="(max-width: 600px) 50vw, 260px"
         onClick={() => onOpen(image)}
         role="button"
         tabIndex={0}
-        aria-label={t("gallery.details")}
+        ariaLabel={t("gallery.details")}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
@@ -45,10 +44,6 @@ export const GalleryCard = ({ image, onOpen, onRegenerate, onUpscale, onDelete }
           }
         }}
         sx={{
-          width: "100%",
-          aspectRatio: "1 / 1",
-          objectFit: "cover",
-          display: "block",
           cursor: "pointer",
           "&:focus-visible": { outline: 2, outlineColor: "primary.main", outlineOffset: -2 },
         }}

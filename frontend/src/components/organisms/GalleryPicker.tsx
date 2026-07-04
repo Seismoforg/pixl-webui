@@ -5,8 +5,10 @@ import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Typography from "@mui/material/Typography";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
+import { SourceInfo } from "@/components/molecules/SourceInfo";
+import { Thumbnail } from "@/components/molecules/Thumbnail";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import type { GalleryImage } from "@/types";
@@ -22,11 +24,11 @@ interface GalleryPickerProps {
 export const GalleryPicker = ({ open, reloadToken, onClose, onPick }: GalleryPickerProps) => {
   const t = useTranslations();
   const [images, setImages] = useState<GalleryImage[]>([]);
-  const loaded = useRef(false);
 
+  // Refetch whenever the picker opens or the gallery changes (reloadToken bump),
+  // so newly generated images show up instead of a stale first-open snapshot.
   useEffect(() => {
-    if (!open || loaded.current) return;
-    loaded.current = true;
+    if (!open) return;
     api.getImages().then(setImages).catch(() => setImages([]));
   }, [open, reloadToken]);
 
@@ -47,23 +49,20 @@ export const GalleryPicker = ({ open, reloadToken, onClose, onPick }: GalleryPic
             }}
           >
             {images.map((img) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <Box
-                key={img.id}
-                component="img"
-                src={api.imageFileUrl(img.id)}
-                alt={img.prompt}
-                loading="lazy"
-                onClick={() => onPick(img)}
-                sx={{
-                  width: "100%",
-                  aspectRatio: "1 / 1",
-                  objectFit: "cover",
-                  borderRadius: 1,
-                  cursor: "pointer",
-                  "&:hover": { outline: 2, outlineColor: "primary.main", outlineOffset: -2 },
-                }}
-              />
+              <Box key={img.id}>
+                <Thumbnail
+                  src={api.imageFileUrl(img.id)}
+                  alt={img.prompt}
+                  sizes="150px"
+                  onClick={() => onPick(img)}
+                  sx={{
+                    borderRadius: 1,
+                    cursor: "pointer",
+                    "&:hover": { outline: 2, outlineColor: "primary.main", outlineOffset: -2 },
+                  }}
+                />
+                <SourceInfo dense dimensions={{ w: img.width, h: img.height }} meta={img} />
+              </Box>
             ))}
           </Box>
         )}
