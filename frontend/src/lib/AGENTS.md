@@ -11,7 +11,9 @@ Backend-communication infrastructure and small pure helpers shared across the UI
               methods. Base URL from `NEXT_PUBLIC_API_BASE` (default :8000)
 - ws.ts     — module-level singleton `live` (reconnecting, multiplexed) + `useLive`:
               subscribes a channel and falls back to REST polling while the socket
-              is down. Used for generation/upscale progress, system stats, downloads
+              is down. Used for generation/upscale progress, system stats, downloads.
+              `useJobTracker` wraps subscribe + poll-fallback for a single running
+              job (shared by the generation & upscale providers)
 - fit.ts    — maps a GPU-fit verdict to a chip color + locale keys
 - stats.ts  — derives the upscale status line + percent shared by the frame/overlay
 

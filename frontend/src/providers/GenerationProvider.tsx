@@ -13,7 +13,7 @@ import {
 import { useActivity } from "@/providers/ActivityProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
-import { live } from "@/lib/ws";
+import { useJobTracker } from "@/lib/ws";
 import type {
   GalleryImage,
   GenerationProgress,
@@ -43,6 +43,9 @@ interface GenerationContextValue {
   preview: boolean;
   batch: number;
   referenceImage: string | null;
+  // Gallery metadata when the reference came from the gallery (else null); kept in
+  // context so it survives navigation alongside referenceImage.
+  referenceMeta: GalleryImage | null;
   referenceMode: ReferenceMode;
   strength: number;
   ipAdapterScale: number;
@@ -57,6 +60,7 @@ interface GenerationContextValue {
   setPreview: (v: boolean) => void;
   setBatch: (v: number) => void;
   setReferenceImage: (v: string | null) => void;
+  setReferenceMeta: (v: GalleryImage | null) => void;
   setReferenceMode: (v: ReferenceMode) => void;
   setStrength: (v: number) => void;
   setIpAdapterScale: (v: number) => void;
@@ -103,6 +107,7 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
   const [preview, setPreview] = useState(false);
   const [batch, setBatch] = useState(1);
   const [referenceImage, setReferenceImage] = useState<string | null>(null);
+  const [referenceMeta, setReferenceMeta] = useState<GalleryImage | null>(null);
   const [referenceMode, setReferenceMode] = useState<ReferenceMode>("img2img");
   const [strength, setStrength] = useState(0.6);
   const [ipAdapterScale, setIpAdapterScale] = useState(0.6);
@@ -138,12 +143,14 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
   }, [downloaded, slug]);
 
   // Track the running job over the WebSocket, with a REST poll fallback while the
-  // socket is down. Both feed the same handler so completion logic is identical.
-  useEffect(() => {
-    if (!jobId) return undefined;
-    const handle = (p: GenerationProgress) => {
+  // socket is down (see useJobTracker). The handler fills the grid live as batch
+  // images complete and clears the job on done/error.
+  useJobTracker<GenerationProgress>(
+    jobId,
+    "generation",
+    (id) => api.getGenerationProgress(id),
+    (p) => {
       setProgress(p);
-      // Fill the grid live as batch images complete.
       setImages(p.image_ids.map((id) => api.imageFileUrl(id)));
       if (p.status === "done") {
         setJobId(null);
@@ -152,27 +159,13 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
         setError(p.error ?? t("common.error"));
         setJobId(null);
       }
-    };
-    const unsub = live.subscribe(
-      `generation:${jobId}`,
-      { channel: "generation", job_id: jobId },
-      (d) => handle(d as GenerationProgress),
-    );
-    const id = setInterval(() => {
-      if (live.isConnected()) return;
-      api
-        .getGenerationProgress(jobId)
-        .then(handle)
-        .catch((err) => {
-          setError(err instanceof Error ? err.message : String(err));
-          setJobId(null);
-        });
-    }, POLL_MS);
-    return () => {
-      unsub();
-      clearInterval(id);
-    };
-  }, [jobId, onGenerated, t]);
+    },
+    (message) => {
+      setError(message);
+      setJobId(null);
+    },
+    POLL_MS,
+  );
 
   // Publish the running job to the shared activity store for the off-route bubble.
   const { set: setActivity } = useActivity();
@@ -294,6 +287,7 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
     preview,
     batch,
     referenceImage,
+    referenceMeta,
     referenceMode,
     strength,
     ipAdapterScale,
@@ -308,6 +302,7 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
     setPreview,
     setBatch,
     setReferenceImage,
+    setReferenceMeta,
     setReferenceMode,
     setStrength,
     setIpAdapterScale,

@@ -8,9 +8,6 @@ and its ``image_id`` is reported back.
 """
 from __future__ import annotations
 
-import base64
-import binascii
-import io
 import random
 import threading
 import time
@@ -18,7 +15,7 @@ import time
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import messages, samplers
+from .. import live, messages, samplers
 from ..services import gallery, pipeline
 from ..services.custom_models import resolve_model
 
@@ -120,19 +117,11 @@ def _new_job_id() -> str:
     return f"gen-{_counter}"
 
 
-def _decode_reference(data_url: str):
-    """Decode a base64 image data URL to a PIL image, or raise ValueError."""
-    from PIL import Image
-
-    payload = data_url.split(",", 1)[1] if "," in data_url else data_url
-    try:
-        raw = base64.b64decode(payload)
-        return Image.open(io.BytesIO(raw))
-    except (binascii.Error, ValueError, OSError) as exc:
-        raise ValueError(messages.REFERENCE_DECODE_FAILED) from exc
-
-
 def _run(job: _Job, req: GenerateRequest, model) -> None:
+    # Wakes the WebSocket pusher after each state change so progress is pushed with
+    # no tick latency (a no-op when nobody is subscribed).
+    key = f"generation:{job.job_id}"
+
     def on_step(completed: int) -> None:
         # Some pipelines invoke the callback one extra time; clamp so the UI never
         # shows "step n+1 / n".
@@ -144,14 +133,18 @@ def _run(job: _Job, req: GenerateRequest, model) -> None:
             # After the last denoising step the pipeline runs the VAE decode; flag
             # that tail so the UI can show a distinct "finalizing" phase.
             job.phase = "finalizing" if completed >= job.total_steps else "generating"
+        live.publish(key)
 
     def on_preview(data_url: str) -> None:
         with _lock:
             job.preview = data_url
+        live.publish(key)
 
     try:
         init_image = (
-            _decode_reference(req.reference_image) if req.reference_image else None
+            gallery.decode_data_url(req.reference_image, messages.REFERENCE_DECODE_FAILED)
+            if req.reference_image
+            else None
         )
         # Generate the batch sequentially, reusing the cached pipeline. Each image
         # uses an incrementing seed (base + index) so results vary yet stay
@@ -163,6 +156,7 @@ def _run(job: _Job, req: GenerateRequest, model) -> None:
                 job.first_step_at = None
                 job.phase = "loading"
                 job.preview = None
+            live.publish(key)
 
             seed_i = (job.seed + i) % (_SEED_MAX + 1)
             image, effective_sampler = pipeline.generate(
@@ -201,13 +195,16 @@ def _run(job: _Job, req: GenerateRequest, model) -> None:
             with _lock:
                 job.current_step = job.total_steps
                 job.image_ids.append(meta.id)
+            live.publish(key)
 
         with _lock:
             job.status = "done"
+        live.publish(key)
     except Exception as exc:  # noqa: BLE001 - surfaced to the UI via job state
         with _lock:
             job.status = "error"
             job.error = messages.GENERATION_FAILED.format(detail=str(exc))
+        live.publish(key)
 
 
 @router.get("/samplers", response_model=SamplerList)

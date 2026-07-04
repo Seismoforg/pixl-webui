@@ -12,7 +12,7 @@ import {
 import { useActivity } from "@/providers/ActivityProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
-import { live } from "@/lib/ws";
+import { useJobTracker } from "@/lib/ws";
 import { upscaleStatsView } from "@/lib/stats";
 import type { ReframeStrategy, UpscaleProgress, UpscaleRequest } from "@/types";
 
@@ -90,9 +90,13 @@ export const UpscaleProvider = ({ onUpscaled, children }: UpscaleProviderProps) 
 
   const running = jobId !== null;
 
-  useEffect(() => {
-    if (!jobId) return undefined;
-    const handle = (p: UpscaleProgress) => {
+  // Track the running upscale job over the WebSocket, with a REST poll fallback
+  // while the socket is down (see useJobTracker).
+  useJobTracker<UpscaleProgress>(
+    jobId,
+    "upscale",
+    (id) => api.getUpscaleProgress(id),
+    (p) => {
       setProgress(p);
       if (p.status === "done") {
         setResultId(p.image_id);
@@ -102,27 +106,13 @@ export const UpscaleProvider = ({ onUpscaled, children }: UpscaleProviderProps) 
         setError(p.error ?? t("common.error"));
         setJobId(null);
       }
-    };
-    const unsub = live.subscribe(
-      `upscale:${jobId}`,
-      { channel: "upscale", job_id: jobId },
-      (d) => handle(d as UpscaleProgress),
-    );
-    const id = setInterval(() => {
-      if (live.isConnected()) return;
-      api
-        .getUpscaleProgress(jobId)
-        .then(handle)
-        .catch((err) => {
-          setError(err instanceof Error ? err.message : String(err));
-          setJobId(null);
-        });
-    }, POLL_MS);
-    return () => {
-      unsub();
-      clearInterval(id);
-    };
-  }, [jobId, onUpscaled, t]);
+    },
+    (message) => {
+      setError(message);
+      setJobId(null);
+    },
+    POLL_MS,
+  );
 
   // Publish the running job to the shared activity store for the off-route bubble.
   const { set: setActivity } = useActivity();

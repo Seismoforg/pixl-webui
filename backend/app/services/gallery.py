@@ -100,6 +100,24 @@ def file_path(image_id: str):
     return path if path.exists() else None
 
 
+def decode_data_url(data_url: str, error: str):
+    """Decode a base64 image data URL to a PIL image, raising ``ValueError(error)``
+    on malformed input. Shared by the generate/upscale routers so image decoding
+    lives in the service layer rather than the controllers."""
+    import base64
+    import binascii
+    import io
+
+    from PIL import Image
+
+    payload = data_url.split(",", 1)[1] if "," in data_url else data_url
+    try:
+        raw = base64.b64decode(payload)
+        return Image.open(io.BytesIO(raw))
+    except (binascii.Error, ValueError, OSError) as exc:
+        raise ValueError(error) from exc
+
+
 def delete(image_id: str) -> bool:
     """Delete the PNG and sidecar for ``image_id``. Returns False if unknown."""
     png, meta = _png_path(image_id), _meta_path(image_id)

@@ -13,7 +13,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from .. import config, messages
+from .. import config, live, messages
 from ..catalog import ModelInfo
 
 _COMPLETE_MARKER = ".pixl_complete"
@@ -169,10 +169,12 @@ def _run_download(model: ModelInfo, token: str | None, allow: list[str]) -> None
         (target / _COMPLETE_MARKER).touch()
         with _lock:
             _states[model.slug].status = "done"
+        live.publish(f"download:{model.slug}")
     except Exception as exc:  # noqa: BLE001 - surfaced to the user via state
         with _lock:
             _states[model.slug].status = "error"
             _states[model.slug].error = str(exc)
+        live.publish(f"download:{model.slug}")
 
 
 def _mark_downloading(slug: str) -> None:
@@ -188,6 +190,7 @@ def _mark_downloading(slug: str) -> None:
         if current and current.status == "downloading":
             raise ValueError(messages.DOWNLOAD_ALREADY_RUNNING.format(slug=slug))
         _states[slug] = DownloadState(status="downloading", total_bytes=0)
+    live.publish(f"download:{slug}")
 
 
 def _run_file_download(slug: str, repo_id: str, filename: str, token: str | None) -> None:
@@ -202,6 +205,7 @@ def _run_file_download(slug: str, repo_id: str, filename: str, token: str | None
             )
             with _lock:
                 _states[slug].total_bytes = total
+            live.publish(f"download:{slug}")
         except Exception:  # noqa: BLE001
             pass
         _download_with_retries(
@@ -216,10 +220,12 @@ def _run_file_download(slug: str, repo_id: str, filename: str, token: str | None
         (target / _COMPLETE_MARKER).touch()
         with _lock:
             _states[slug].status = "done"
+        live.publish(f"download:{slug}")
     except Exception as exc:  # noqa: BLE001 - surfaced to the user via state
         with _lock:
             _states[slug].status = "error"
             _states[slug].error = str(exc)
+        live.publish(f"download:{slug}")
 
 
 def start_file_download(slug: str, repo_id: str, filename: str, token: str | None) -> None:
@@ -250,10 +256,12 @@ def _prepare_and_download(model: ModelInfo, token: str | None) -> None:
         total = sum(s.size or 0 for s in siblings if s.rfilename in allow_set)
         with _lock:
             _states[model.slug].total_bytes = total
+        live.publish(f"download:{model.slug}")
     except Exception as exc:  # noqa: BLE001 - surfaced to the user via state
         with _lock:
             _states[model.slug].status = "error"
             _states[model.slug].error = str(exc)
+        live.publish(f"download:{model.slug}")
         return
 
     _run_download(model, token, allow)

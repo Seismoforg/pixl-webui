@@ -5,7 +5,7 @@
 // the useLive hook adds a REST polling fallback for when the socket is down, so
 // the app degrades gracefully to the previous behaviour.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const WS_URL =
   (process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000").replace(/^http/, "ws") + "/ws";
@@ -146,6 +146,43 @@ export const useLive = <T>(
     // Only re-run when the channel key changes; msg/onData/fallback are captured.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
+}
+
+/**
+ * Track a single running job over its live channel, with a REST poll fallback
+ * while the socket is down. `onUpdate` receives every progress payload (push or
+ * poll); `onError` fires when a fallback poll request throws. Callbacks are held
+ * in a ref so the subscription only resets when `jobId` changes (pass null to
+ * disable). Shared by the generation and upscale providers.
+ */
+export const useJobTracker = <T>(
+  jobId: string | null,
+  channel: string,
+  fetchProgress: (id: string) => Promise<T>,
+  onUpdate: (data: T) => void,
+  onError: (message: string) => void,
+  pollMs: number,
+): void => {
+  const cb = useRef({ fetchProgress, onUpdate, onError });
+  cb.current = { fetchProgress, onUpdate, onError };
+  useEffect(() => {
+    if (!jobId) return undefined;
+    const handle = (d: T) => cb.current.onUpdate(d);
+    const unsub = live.subscribe(`${channel}:${jobId}`, { channel, job_id: jobId }, (d) =>
+      handle(d as T),
+    );
+    const id = setInterval(() => {
+      if (live.isConnected()) return;
+      cb.current
+        .fetchProgress(jobId)
+        .then(handle)
+        .catch((err) => cb.current.onError(err instanceof Error ? err.message : String(err)));
+    }, pollMs);
+    return () => {
+      unsub();
+      clearInterval(id);
+    };
+  }, [jobId, channel]);
 }
 
 /** Reactive WebSocket connection state for a status indicator. */

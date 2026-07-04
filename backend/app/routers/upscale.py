@@ -7,16 +7,13 @@ saves the result to the gallery, polled via ``GET /api/upscale/{job_id}``.
 """
 from __future__ import annotations
 
-import base64
-import binascii
-import io
 import threading
 import time
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from .. import messages
+from .. import live, messages
 from ..services import (
     custom_upscalers,
     downloader,
@@ -133,23 +130,12 @@ def _new_job_id() -> str:
     return f"ups-{_counter}"
 
 
-def _decode_data_url(data_url: str):
-    from PIL import Image
-
-    payload = data_url.split(",", 1)[1] if "," in data_url else data_url
-    try:
-        raw = base64.b64decode(payload)
-        return Image.open(io.BytesIO(raw))
-    except (binascii.Error, ValueError, OSError) as exc:
-        raise ValueError(messages.UPSCALE_SOURCE_MISSING) from exc
-
-
 def _resolve_source(req: UpscaleRequest):
     """Load the source PIL image from a gallery id or an uploaded data URL."""
     from PIL import Image
 
     if req.image_data:
-        return _decode_data_url(req.image_data)
+        return gallery.decode_data_url(req.image_data, messages.UPSCALE_SOURCE_MISSING)
     if req.image_id:
         path = gallery.file_path(req.image_id)
         if path is None:
@@ -169,10 +155,14 @@ def _run(
     reframe: str,
     outpaint_engine: UpscalerInfo | None,
 ) -> None:
+    # Wakes the WebSocket pusher after each state change (no-op with no subscriber).
+    pub_key = f"upscale:{job.job_id}"
+
     def on_progress(update: dict) -> None:
         with _lock:
             for key, value in update.items():
                 setattr(job, key, value)
+        live.publish(pub_key)
 
     try:
         ratio = reframe_svc.parse_ratio(target_ratio)
@@ -190,6 +180,7 @@ def _run(
             result = reframe_svc.apply(upscaled, ratio, reframe)
         with _lock:
             job.phase = "finalizing"
+        live.publish(pub_key)
         meta = gallery.save(
             result,
             {
@@ -208,10 +199,12 @@ def _run(
         with _lock:
             job.image_id = meta.id
             job.status = "done"
+        live.publish(pub_key)
     except Exception as exc:  # noqa: BLE001 - surfaced to the UI via job state
         with _lock:
             job.status = "error"
             job.error = messages.UPSCALE_FAILED.format(detail=str(exc))
+        live.publish(pub_key)
 
 
 @router.get("/engines", response_model=list[UpscalerEntry])
