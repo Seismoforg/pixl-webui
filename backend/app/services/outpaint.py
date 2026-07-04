@@ -48,6 +48,17 @@ def unload() -> None:
     vram.release()
 
 
+def _is_sdxl(model_path) -> bool:
+    """True if the inpaint repo is an SDXL pipeline (per its ``model_index.json``)."""
+    import json
+
+    try:
+        data = json.loads((model_path / "model_index.json").read_text())
+    except (OSError, ValueError):
+        return False
+    return "XL" in str(data.get("_class_name", ""))
+
+
 def _load(engine: UpscalerInfo):
     global _pipe, _slug
     with _lock:
@@ -63,19 +74,20 @@ def _load(engine: UpscalerInfo):
     _upscale.unload()
     vram.release()
 
-    from diffusers import StableDiffusionInpaintPipeline
+    from diffusers import AutoPipelineForInpainting
 
-    # Load the engine's weight variant (curated SD 1.5 inpaint ships only fp16;
-    # custom repos carry their own detected variant). Skip the safety checker:
-    # not needed for outpainting and its weights aren't fetched, so loading it
-    # would fail.
-    pipe = StableDiffusionInpaintPipeline.from_pretrained(
-        str(config.model_dir(engine.slug)),
-        torch_dtype=get_dtype(),
-        variant=engine.variant,
-        safety_checker=None,
-        requires_safety_checker=False,
-    )
+    # Pick the pipeline class from the repo so a custom SDXL inpaint engine loads
+    # as SDXL instead of being forced into the SD 1.5 class (which fails). Load the
+    # engine's weight variant (curated SD 1.5 inpaint ships only fp16; custom repos
+    # carry their own detected variant).
+    model_path = config.model_dir(engine.slug)
+    kwargs: dict = {"torch_dtype": get_dtype(), "variant": engine.variant}
+    # SD 1.x/2.x inpaint pipelines ship a safety checker whose weights we don't
+    # fetch, so skip it. SDXL has no safety checker — those kwargs are invalid there.
+    if not _is_sdxl(model_path):
+        kwargs["safety_checker"] = None
+        kwargs["requires_safety_checker"] = False
+    pipe = AutoPipelineForInpainting.from_pretrained(str(model_path), **kwargs)
     if get_torch_device() == "cpu":
         pipe = pipe.to("cpu")
     else:

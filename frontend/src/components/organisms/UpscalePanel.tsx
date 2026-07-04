@@ -212,39 +212,41 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
             <SectionHeading level={3} sx={{ mb: 1.5 }}>
               {t("upscale.engine.title")}
             </SectionHeading>
-            <Stack spacing={1.5}>
+            <TextField
+              select
+              fullWidth
+              label={t("upscale.engine.title")}
+              value={engine?.slug ?? ""}
+              onChange={(e) => setEngineSlug(e.target.value)}
+            >
               {selectableEngines.map((e) => (
-                <Paper
-                  key={e.slug}
-                  variant="outlined"
-                  onClick={() => setEngineSlug(e.slug)}
-                  sx={{
-                    p: 1.5,
-                    cursor: "pointer",
-                    borderColor: e.slug === engineSlug ? "primary.main" : "divider",
-                    borderWidth: e.slug === engineSlug ? 2 : 1,
-                  }}
-                >
-                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                    <Typography variant="subtitle1" fontWeight="medium">{e.name}</Typography>
-                    <Chip label={`${e.scale}×`} size="small" variant="outlined" />
-                    <Chip label={`≈ ${e.approx_size_gb} GB`} size="small" variant="outlined" />
-                    {e.downloaded && (
-                      <Chip
-                        icon={<CheckCircleIcon />}
-                        label={t("upscale.engine.downloaded")}
-                        color="success"
-                        variant="outlined"
-                        size="small"
-                      />
-                    )}
-                  </Stack>
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                    {e.description}
-                  </Typography>
-                </Paper>
+                <MenuItem key={e.slug} value={e.slug}>
+                  {e.name}
+                  {!e.downloaded ? ` — ${t("upscale.outpaint.notInstalled")}` : ""}
+                </MenuItem>
               ))}
-            </Stack>
+            </TextField>
+
+            {engine && (
+              <>
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mt: 1.5 }}>
+                  <Chip label={`${engine.scale}×`} size="small" variant="outlined" />
+                  <Chip label={`≈ ${engine.approx_size_gb} GB`} size="small" variant="outlined" />
+                  {engine.downloaded && (
+                    <Chip
+                      icon={<CheckCircleIcon />}
+                      label={t("upscale.engine.downloaded")}
+                      color="success"
+                      variant="outlined"
+                      size="small"
+                    />
+                  )}
+                </Stack>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  {engine.description}
+                </Typography>
+              </>
+            )}
 
             {engine && !engine.downloaded && (
               <Box sx={{ mt: 1.5 }}>
