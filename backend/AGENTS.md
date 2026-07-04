@@ -10,6 +10,8 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 - Persist user settings (HuggingFace token + performance toggles: VAE tiling/
   slicing, xformers — applied to generation and upscale pipelines on load)
 - Run text-to-image generation as a background job with live step progress
+- Encode long/weighted prompts (>77 CLIP tokens, A1111 `(word:1.2)` weighting)
+  via compel for SD 1.5 / SDXL; other families keep the native prompt path
 - Optional reference image: img2img variations, or IP-Adapter style (SD 1.5/SDXL)
 - Generate a batch of N images per run (sequential, incrementing seeds)
 - Stream a live per-step image preview (TAESD tiny decoder) while generating
@@ -34,13 +36,17 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 - app/catalog.py        — curated model catalog (domain data)
 - app/samplers.py       — sampler (diffusers scheduler) registry + apply_sampler
 - app/messages.py       — centralised English user-facing strings (i18n-ready)
+- app/live.py           — in-process pub/sub hub: producer threads publish(key) to
+                          wake the WebSocket pusher event-driven (thread→async bridge)
 - app/routers/          — HTTP controllers: system, settings, models, generate,
                           images, templates, upscale, ws
 - app/services/         — business logic: downloader (download orchestration +
                           progress), hf_browse (HF search + repo/engine resolve),
-                          pipeline, gallery, resources, fit (GPU fit check),
-                          custom_models (user-added registry), upscalers (engine
-                          registry) + upscale (engine service)
+                          pipeline, prompt_embeds (long-prompt CLIP embeds),
+                          callbacks (shared diffusers step-callback + timing),
+                          gallery (+ data-URL image decode), resources, fit (GPU
+                          fit check), custom_models (user-added registry),
+                          upscalers (engine registry) + upscale (engine service)
 
 # Key Components
 - services/downloader.py — background snapshot_download + size-based progress state
@@ -78,7 +84,10 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            canvas/mask geometry for outpainting
 - services/outpaint.py   — extend an image to a target ratio by generating the new
                            area with a selectable SD inpaint pipe (engine passed in;
-                           reloads on slug change); single whole-canvas pass; VRAM-
+                           reloads on slug change); single whole-canvas pass at a
+                           working resolution, then the pristine full-res source is
+                           composited back over its region (feathered seam) so the
+                           source stays pixel-exact and only the border is AI; VRAM-
                            coordinated. Used by the upscale job for reframe=outpaint
 - services/fit.py        — assess(model): fits_gpu / fits_offload / too_large / cpu_only
                            against live VRAM+RAM; drives both the UI badge and the
@@ -88,7 +97,12 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 - services/pipeline.py   — diffusers pipeline load/cache + generation (step callback);
                            also builds a cached img2img pipe (from_pipe) and manages
                            IP-Adapter load/unload for style conditioning
-- services/gallery.py    — persist images + metadata sidecars in outputs/, list/delete
+- services/callbacks.py  — shared diffusers step-callback wiring (`step_kwargs`,
+                           modern/legacy API) + `StepTimer` (iterations/second
+                           from the first step); used by pipeline/upscale/outpaint
+- services/gallery.py    — persist images + metadata sidecars in outputs/, list/
+                           delete; `decode_data_url` turns a base64 data URL into a
+                           PIL image (shared by the generate/upscale routers)
 - services/prompt_templates.py — JSON store for reusable prompt snippets
                            (positive/negative/upscale), in data/prompt_templates.json
 - services/resources.py  — live CPU/RAM (psutil) + VRAM (torch mem_get_info) stats;
@@ -108,6 +122,12 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 - services/preview.py    — TAESD tiny-decoder cache (SD1.5/SDXL) that turns step
                            latents into a small JPEG data URL; best-effort, never
                            blocks generation (other families → no preview)
+- services/prompt_embeds.py — builds CLIP prompt_embeds via compel for SD 1.5 /
+                           SDXL so prompts beyond 77 tokens aren't truncated and
+                           A1111 weighting works; pos/neg padded to equal length
+                           (compel's SDXL padding is broken). best-effort: returns
+                           None (→ plain prompt) if compel is missing or encoding
+                           fails. Called by pipeline.generate
 - app/samplers.py        — curated A1111-style sampler set → diffusers scheduler classes
                            + config flags; apply_sampler(pipe, id) returns the effective id
 - routers/generate.py    — generation as a background job; POST starts (returns job_id),
@@ -115,7 +135,8 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            batch index and finished image_ids; a run can produce a
                            batch of images (incrementing seeds); GET /api/samplers
                            lists the available samplers + default
-- routers/images.py      — GET /api/images, GET /api/images/{id}/file, DELETE /api/images/{id}
+- routers/images.py      — GET /api/images, GET /api/images/{id} (metadata),
+                           GET /api/images/{id}/file, DELETE /api/images/{id}
 - routers/upscale.py     — GET /api/upscale/engines (curated+custom, +per-engine
                            download/progress); add/resolve/delete custom engines
                            (GET /engines/resolve, POST /engines, DELETE /engines/{slug});
@@ -133,11 +154,14 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 - routers/ws.py          — multiplexed WebSocket at /ws: subscribe channels
                            (system/generation/upscale/download), server pushes the
                            same models the REST endpoints return, send-on-change;
-                           REST endpoints remain as the client's fallback
+                           generation/upscale (and download status) are event-driven
+                           via app/live.py publish; system stats + download bytes stay
+                           on a ~1s tick (sampled). REST endpoints remain the fallback
 
 # Dependencies
 fastapi, uvicorn, diffusers, transformers, accelerate, huggingface_hub, pillow,
-pydantic, psutil; torch (CUDA/ROCm/CPU) installed by the root installer.
+pydantic, psutil, compel (long/weighted prompts); torch (CUDA/ROCm/CPU) installed
+by the root installer.
 
 # Related Modules
 - Parent: ../  (project root)

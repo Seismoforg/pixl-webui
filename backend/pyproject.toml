@@ -21,6 +21,7 @@ dependencies = [
     "pydantic>=2.6",
     "psutil>=5.9",
     "spandrel>=0.3",  # loads Real-ESRGAN/ESRGAN .pth weights for AI upscaling
+    "compel>=2.0",  # long-prompt (>77 CLIP tokens) + weighted embeddings for SD/SDXL
 ]
 
 [build-system]

@@ -1,11 +1,15 @@
 """Outpainting service — extends an image to a target aspect ratio by generating
 plausible content in the newly-added regions with a Stable Diffusion inpaint pipe.
 
-**Single-pass, whole-canvas.** The source is placed on a target-ratio canvas at a
-moderate working resolution and outpainted in ONE pass, so the model sees the whole
-image and continues it coherently; the caller then upscales the result to full
-resolution. (Independent per-tile outpainting was tried and removed — each tile
-hallucinated its own subject instead of extending the background.)
+**Single-pass, whole-canvas — source preserved at full resolution.** Generation
+resolution and source preservation are decoupled: the inpaint pass runs at a
+moderate working resolution (whole canvas in ONE pass, so the model continues the
+image coherently without duplicating the subject), but only to invent the new
+border. The pristine full-res source is then composited back over its region with
+a feathered seam, so the source never round-trips at low resolution and its pixels
+stay pixel-exact; the caller upscales the whole result afterwards. (Independent
+per-tile outpainting was tried and removed — each tile hallucinated its own
+subject instead of extending the background.)
 
 Coordinates with the VRAM manager: loading the inpaint pipe first frees the
 generation + upscaler models.
@@ -13,9 +17,8 @@ generation + upscaler models.
 from __future__ import annotations
 
 import threading
-import time
 
-from . import reframe, vram
+from . import callbacks, reframe, vram
 from .. import config
 from ..config import load_settings
 from ..device import get_dtype, get_torch_device
@@ -100,47 +103,23 @@ def _load(engine: UpscalerInfo):
     return pipe
 
 
-def _step_kwargs(pipe, on_step):
-    import inspect
-
-    params = inspect.signature(pipe.__call__).parameters
-    if "callback_on_step_end" in params:
-        def _cb(_p, step, _t, cb):
-            on_step(step + 1)
-            return cb
-
-        return {"callback_on_step_end": _cb}
-    if "callback" in params:
-        def _legacy(step, _t, _l):
-            on_step(step + 1)
-
-        return {"callback": _legacy, "callback_steps": 1}
-    return {}
-
-
 def _inpaint(pipe, image, mask, prompt: str, report, tile_index: int, tile_total: int):
     """Run one inpaint pass, reporting step progress under the 'outpainting' phase."""
-    start = [None]
+    timer = callbacks.StepTimer()
 
     def on_step(done: int) -> None:
         completed = min(done, _STEPS)
-        now = time.perf_counter()
-        if start[0] is None and completed >= 1:
-            start[0] = now
-        its = None
-        if start[0] is not None and completed > 1 and now - start[0] > 0:
-            its = (completed - 1) / (now - start[0])
         report({
             "phase": "outpainting",
             "current_tile": tile_index,
             "total_tiles": tile_total,
             "current_step": completed,
             "total_steps": _STEPS,
-            "its": its,
+            "its": timer.its(completed),
         })
 
     on_step(0)
-    kwargs = _step_kwargs(pipe, on_step)
+    kwargs = callbacks.step_kwargs(pipe, on_step)
     result = pipe(
         prompt=prompt or _DEFAULT_PROMPT,
         negative_prompt=_NEGATIVE,
@@ -166,25 +145,32 @@ def _reframe_single(pipe, img, ratio, prompt, report):
     from PIL import Image, ImageFilter
 
     rw, rh = ratio
-    # Target-ratio canvas with its long side at the working resolution, so the whole
-    # thing fits one native-range pass (avoids the "duplicate subject" artefact).
-    if rw >= rh:
-        cw, ch = _WORK, max(8, round(_WORK * rh / rw))
-    else:
-        cw, ch = max(8, round(_WORK * rw / rh)), _WORK
-    cw, ch = reframe.round8(cw), reframe.round8(ch)
-
-    # Fit the source inside the canvas (contain) leaving the new area as a border.
     sw, sh = img.size
-    scale = min(cw / sw, ch / sh)
+
+    # Full-resolution target canvas: extend ONE axis so the source is contained at
+    # its native size and never shrunk (its pixels stay exact after composite-back).
+    cw_full, ch_full = reframe.extend_size(sw, sh, rw, rh)
+    cw_full, ch_full = reframe.round8(cw_full), reframe.round8(ch_full)
+    ox_full, oy_full = (cw_full - sw) // 2, (ch_full - sh) // 2
+
+    # Work-resolution copy of that canvas for the inpaint pass, long side ~_WORK so
+    # the model sees the whole frame in its native range (avoids duplicate subject).
+    scale = _WORK / max(cw_full, ch_full)
+    cw, ch = reframe.round8(round(cw_full * scale)), reframe.round8(round(ch_full * scale))
     nw, nh = max(8, round(sw * scale)), max(8, round(sh * scale))
-    src = img.resize((nw, nh), Image.LANCZOS)
     ox, oy = (cw - nw) // 2, (ch - nh) // 2
+    src = img.resize((nw, nh), Image.LANCZOS)
 
     # Seed the border with a blurred, cover-scaled copy of the source (a soft
-    # starting point), then paste the source; mask = the (feathered) border.
+    # starting point), then paste the (scaled) source; mask = the (feathered) border.
     canvas = img.resize((cw, ch)).filter(ImageFilter.GaussianBlur(max(8, max(cw, ch) // 20)))
     canvas = canvas.convert("RGB")
     canvas.paste(src, (ox, oy))
     mask = reframe.build_mask((cw, ch), (ox, oy, nw, nh))
-    return _inpaint(pipe, canvas, mask, prompt, report, 1, 1)
+    gen = _inpaint(pipe, canvas, mask, prompt, report, 1, 1)
+
+    # Upscale the generated border to full canvas size, then composite the pristine
+    # full-res source back with a feathered seam — only the border is AI content.
+    result = gen.resize((cw_full, ch_full), Image.LANCZOS)
+    result.paste(img, (ox_full, oy_full), reframe.feathered_keep_mask((sw, sh)))
+    return result

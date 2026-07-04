@@ -10,17 +10,28 @@ from __future__ import annotations
 from ..config import Settings
 
 
+def _enable_vae(pipe, vae_method: str, pipe_method: str) -> None:
+    """Enable a VAE optimisation, preferring the modern ``pipe.vae.<method>()``
+    API and falling back to the deprecated ``pipe.<method>()`` on older diffusers.
+    Best-effort: a missing method or a raising call is skipped silently."""
+    vae = getattr(pipe, "vae", None)
+    fn = getattr(vae, vae_method, None) or getattr(pipe, pipe_method, None)
+    if fn is None:
+        return
+    try:
+        fn()
+    except Exception:  # noqa: BLE001 - optional optimisation; never fatal
+        pass
+
+
 def apply_perf(pipe, settings: Settings) -> None:
     """Enable the optimisations selected in ``settings`` on ``pipe`` (best-effort)."""
-    toggles = [
-        (settings.vae_tiling, "enable_vae_tiling"),
-        (settings.vae_slicing, "enable_vae_slicing"),
-        (settings.xformers, "enable_xformers_memory_efficient_attention"),
-    ]
-    for enabled, method in toggles:
-        if not enabled:
-            continue
+    if settings.vae_tiling:
+        _enable_vae(pipe, "enable_tiling", "enable_vae_tiling")
+    if settings.vae_slicing:
+        _enable_vae(pipe, "enable_slicing", "enable_vae_slicing")
+    if settings.xformers:
         try:
-            getattr(pipe, method)()
+            pipe.enable_xformers_memory_efficient_attention()
         except Exception:  # noqa: BLE001 - optional optimisation; never fatal
             pass

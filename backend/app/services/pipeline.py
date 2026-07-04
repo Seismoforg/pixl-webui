@@ -15,7 +15,9 @@ from .. import config, messages, samplers
 from ..catalog import ModelInfo
 from ..config import load_settings
 from ..device import get_dtype, get_torch_device
+from . import callbacks
 from . import preview as preview_svc
+from . import prompt_embeds
 from . import vram
 from .downloader import is_downloaded
 from .fit import assess
@@ -32,6 +34,11 @@ _img2img_pipe = None
 _img2img_slug: str | None = None
 # Whether an IP-Adapter is currently loaded on the text2img pipe.
 _ip_adapter_loaded = False
+# Whether attention slicing is active on the current pipe. Slicing trades speed
+# for VRAM, so it's only enabled when the model does not fully fit the GPU; the
+# IP-Adapter restore path consults this so it never re-enables slicing that was
+# off to begin with.
+_attention_slicing = False
 
 # family -> (repo_id, subfolder, weight_name) for IP-Adapter "style" conditioning.
 # Only UNet families have ready diffusers IP-Adapters; others fall back (blocked).
@@ -54,15 +61,22 @@ def _reset_aux_state() -> None:
 
 
 def _load(model: ModelInfo):
-    global _current_slug, _pipeline
+    global _current_slug, _pipeline, _attention_slicing
 
     if _current_slug == model.slug and _pipeline is not None:
         return _pipeline
 
+    import torch
     from diffusers import AutoPipelineForText2Image
+
+    # Allow TF32 on Ampere+ matmul/cudnn — a free speedup for the fp32 ops with no
+    # visible quality impact. Idempotent; a no-op on CPU/older GPUs.
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
 
     _pipeline = None  # free the previous pipeline before loading a new one
     _reset_aux_state()
+    vram.release()  # return the previous model's VRAM before loading the next
     pipe = AutoPipelineForText2Image.from_pretrained(
         str(config.model_dir(model.slug)),
         torch_dtype=get_dtype(),
@@ -73,11 +87,17 @@ def _load(model: ModelInfo):
     # Place the model per the fit verdict so the UI badge matches reality: models
     # that fit go fully on the GPU; larger ones stream weights via CPU offloading.
     device = get_torch_device()
-    if device == "cpu" or assess(model).verdict == "fits_gpu":
+    fits_gpu = device == "cuda" and assess(model).verdict == "fits_gpu"
+    if device == "cpu" or fits_gpu:
         pipe = pipe.to(device)
     else:
         pipe.enable_model_cpu_offload()
-    pipe.enable_attention_slicing()
+    # Attention slicing saves VRAM but costs speed; only needed under memory
+    # pressure. When the model fully fits the GPU, skip it — SDPA is memory-
+    # efficient on its own — so full-GPU runs stay fast.
+    _attention_slicing = not fits_gpu
+    if _attention_slicing:
+        pipe.enable_attention_slicing()
     # User-configurable optimisations (VAE tiling/slicing, xformers) — best-effort.
     apply_perf(pipe, load_settings())
 
@@ -157,8 +177,10 @@ def _ensure_no_ip_adapter(pipe) -> None:
     if _ip_adapter_loaded:
         pipe.unload_ip_adapter()
         _ip_adapter_loaded = False
-        # Restore the attention-slicing optimization disabled for the adapter.
-        pipe.enable_attention_slicing()
+        # Restore attention slicing only if it was active before the adapter
+        # disabled it (full-GPU loads run without slicing).
+        if _attention_slicing:
+            pipe.enable_attention_slicing()
 
 
 def _supported_kwargs(pipe, kwargs: dict) -> dict:
@@ -181,36 +203,33 @@ def _step_callback_kwargs(
     ``on_preview``. Preview needs the modern ``callback_on_step_end`` API with
     latents; the legacy path only reports step counts.
     """
-    params = inspect.signature(pipe.__call__).parameters
     want_preview = on_preview is not None and preview_svc.supported(family)
+    params = inspect.signature(pipe.__call__).parameters
 
-    if "callback_on_step_end" in params:
+    # Preview needs the modern callback with the step latents; when it's wanted and
+    # available, wire a custom callback. Otherwise the shared helper handles the
+    # plain step-count wiring (modern or legacy API).
+    if want_preview and "callback_on_step_end" in params:
         last_preview = [0.0]
 
         def _cb(_pipe, step, _timestep, cb_kwargs):  # diffusers >= 0.25 API
             on_step(step + 1)
-            if want_preview:
-                now = time.monotonic()
-                if now - last_preview[0] >= _PREVIEW_MIN_INTERVAL_S:
-                    latents = cb_kwargs.get("latents")
-                    if latents is not None:
-                        data_url = preview_svc.latents_to_preview(family, latents)
-                        if data_url is not None:
-                            on_preview(data_url)
-                    last_preview[0] = now
+            now = time.monotonic()
+            if now - last_preview[0] >= _PREVIEW_MIN_INTERVAL_S:
+                latents = cb_kwargs.get("latents")
+                if latents is not None:
+                    data_url = preview_svc.latents_to_preview(family, latents)
+                    if data_url is not None:
+                        on_preview(data_url)
+                last_preview[0] = now
             return cb_kwargs
 
         kwargs: dict = {"callback_on_step_end": _cb}
-        if want_preview and "callback_on_step_end_tensor_inputs" in params:
+        if "callback_on_step_end_tensor_inputs" in params:
             kwargs["callback_on_step_end_tensor_inputs"] = ["latents"]
         return kwargs
 
-    if "callback" in params:
-        def _legacy(step, _timestep, _latents):  # older diffusers API
-            on_step(step + 1)
-
-        return {"callback": _legacy, "callback_steps": 1}
-    return {}
+    return callbacks.step_kwargs(pipe, on_step)
 
 
 def generate(
@@ -280,11 +299,18 @@ def generate(
 
     generator = torch.Generator(device=get_torch_device()).manual_seed(seed)
 
+    # CLIP families (SD 1.5 / SDXL) truncate the prompt at 77 tokens; build long-
+    # prompt / weighted embeddings and pass those instead. Best-effort: None keeps
+    # the plain prompt-string path.
+    prompt_kwargs: dict = {"prompt": prompt, "negative_prompt": negative_prompt}
+    embeds = prompt_embeds.build(run_pipe, model.family, prompt, negative_prompt)
+    if embeds is not None:
+        prompt_kwargs = embeds
+
     kwargs = _supported_kwargs(
         run_pipe,
         {
-            "prompt": prompt,
-            "negative_prompt": negative_prompt,
+            **prompt_kwargs,
             "num_inference_steps": steps,
             "guidance_scale": guidance_scale,
             "width": width,

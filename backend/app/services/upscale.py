@@ -13,12 +13,12 @@ repeated upscales don't reload weights.
 from __future__ import annotations
 
 import threading
-import time
 
 from .. import config, messages
 from ..catalog import GenerationDefaults, ModelInfo
 from ..config import load_settings
 from ..device import get_dtype, get_torch_device
+from . import callbacks
 from . import downloader
 from . import vram
 from .downloader import is_downloaded
@@ -210,27 +210,6 @@ def _upscale_realesrgan(engine: UpscalerInfo, img, tile: bool, report):
 _SD_X4_STEPS = 75
 
 
-def _sd_step_kwargs(pipe, on_step):
-    """Wire ``on_step(completed_steps)`` into whichever callback API the SD x4 pipe
-    exposes (modern ``callback_on_step_end`` or the legacy ``callback``). Returns
-    the kwargs to pass to ``pipe(...)``; empty if neither is supported."""
-    import inspect
-
-    params = inspect.signature(pipe.__call__).parameters
-    if "callback_on_step_end" in params:
-        def _cb(_pipe, step, _timestep, cb_kwargs):
-            on_step(step + 1)
-            return cb_kwargs
-
-        return {"callback_on_step_end": _cb}
-    if "callback" in params:
-        def _legacy(step, _timestep, _latents):
-            on_step(step + 1)
-
-        return {"callback": _legacy, "callback_steps": 1}
-    return {}
-
-
 def _run_sd(pipe, image, prompt: str, report, tile_index: int, tile_total: int):
     """Run one SD x4 pass, reporting live diffusion-step progress for this tile.
 
@@ -238,20 +217,11 @@ def _run_sd(pipe, image, prompt: str, report, tile_index: int, tile_total: int):
     latents (often slower than the steps themselves); flag that tail as
     "finalizing" so the status doesn't appear frozen at the final step.
     """
-    # Time the steps (from the first one) so we can report iterations/second, like
-    # generation does. Reset per tile; ``start[0]`` is the first-step timestamp.
-    start: list[float | None] = [None]
+    # Time the steps (from the first one) so we can report iterations/second, per tile.
+    timer = callbacks.StepTimer()
 
     def on_step(done: int) -> None:
         completed = min(done, _SD_X4_STEPS)
-        now = time.perf_counter()
-        if start[0] is None and completed >= 1:
-            start[0] = now
-        its = None
-        if start[0] is not None and completed > 1:
-            elapsed = now - start[0]
-            if elapsed > 0:
-                its = (completed - 1) / elapsed
         report({
             # The VAE decode runs after the final step callback; show it as the
             # finalizing tail instead of a stuck "step 75/75".
@@ -260,12 +230,12 @@ def _run_sd(pipe, image, prompt: str, report, tile_index: int, tile_total: int):
             "total_tiles": tile_total,
             "current_step": completed,
             "total_steps": _SD_X4_STEPS,
-            "its": its,
+            "its": timer.its(completed),
         })
 
     # Announce the tile immediately so the UI leaves "loading" before step 1.
     on_step(0)
-    kwargs = _sd_step_kwargs(pipe, on_step)
+    kwargs = callbacks.step_kwargs(pipe, on_step)
     result = pipe(
         prompt=prompt or "", image=image, num_inference_steps=_SD_X4_STEPS, **kwargs
     )

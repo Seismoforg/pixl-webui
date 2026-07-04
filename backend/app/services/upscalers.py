@@ -103,10 +103,3 @@ def get(slug: str) -> UpscalerInfo | None:
     from . import custom_upscalers
 
     return get_curated(slug) or custom_upscalers.get(slug)
-
-
-def inpaint() -> UpscalerInfo:
-    """The default (curated) inpaint engine used for outpainting."""
-    engine = get_curated(INPAINT_SLUG)
-    assert engine is not None  # defined above
-    return engine

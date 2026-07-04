@@ -13,7 +13,6 @@ MODEL_ALREADY_IN_CATALOG = "'{repo_id}' is already in the curated catalog."
 RESOLVE_FAILED = "Could not read '{repo_id}' from HuggingFace: {detail}"
 SEARCH_FAILED = "HuggingFace search failed: {detail}"
 DOWNLOAD_ALREADY_RUNNING = "A download for '{slug}' is already in progress."
-DOWNLOAD_FAILED = "Download of '{slug}' failed: {detail}"
 GENERATION_FAILED = "Image generation failed: {detail}"
 GENERATION_ALREADY_RUNNING = "A generation is already in progress."
 IP_ADAPTER_UNSUPPORTED = "Style (IP-Adapter) is only available for SD 1.5 and SDXL models, not {family}."
@@ -32,8 +31,6 @@ UPSCALE_SOURCE_MISSING = "No source image to upscale — pick a gallery image or
 OUTPAINT_MODEL_MISSING = "The outpaint model isn't downloaded yet — download it first."
 SNIPPET_NOT_FOUND = "Unknown prompt snippet: {id}."
 SNIPPET_INVALID_KIND = "Invalid snippet kind: {kind}."
-NO_TORCH = "PyTorch is not installed. Run install.ps1 first."
 
 # Status / info
 DOWNLOAD_STARTED = "Download of '{slug}' started."
-GATED_MODEL_HINT = "This model is gated; add a HuggingFace token in Settings to download it."

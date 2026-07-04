@@ -113,3 +113,17 @@ def build_mask(canvas_size: tuple[int, int], region: tuple[int, int, int, int], 
     mask = Image.new("L", (cw, ch), 255)
     ImageDraw.Draw(mask).rectangle([x0 + f, y0 + f, x0 + rw - f, y0 + rh - f], fill=0)
     return mask.filter(ImageFilter.GaussianBlur(max(1, f // 2)))
+
+
+def feathered_keep_mask(size: tuple[int, int], feather: int = 32):
+    """Alpha mask (mode ``L``) the size of the source: 255 (fully keep the source)
+    in the interior, fading to 0 over a ``feather``-px inset border. Used to
+    composite a pristine full-res source back over generated content so only the
+    seam blends and no hard edge shows. ``size`` is (w, h)."""
+    from PIL import Image, ImageDraw, ImageFilter
+
+    w, h = size
+    f = max(1, min(feather, w // 4, h // 4))
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).rectangle([f, f, w - f - 1, h - f - 1], fill=255)
+    return mask.filter(ImageFilter.GaussianBlur(max(1, f // 2)))
