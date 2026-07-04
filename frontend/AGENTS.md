@@ -41,13 +41,14 @@ and download models, configure settings, and generate images.
                              Logo (the app mark, mirrors app/icon.svg)
 - src/components/molecules/ — LabeledSlider, ModelListItem, GalleryCard, InfoTip,
                              ConfirmDialog, ConnectionStatus, NavDrawer (mobile nav),
-                             ActivityBubble (one off-route status card)
+                             ActivityBubble (one off-route status card), UpscaleStats
+                             (upscale status line shared by the frame/overlay)
 - src/components/organisms/ — GenerationPanel (thin two-column host) + GenerationForm
                              + GenerationResult, ModelManager, EngineManager,
-                             AddEngineDialog, GalleryPanel, SettingsPanel,
-                             SystemStatusBar, InferenceOverlay, AddModelDialog,
+                             AddEngineDialog, GalleryPanel, GalleryPicker, SettingsPanel,
+                             SystemStatusBar, ActivityOverlay, AddModelDialog,
                              ReferenceImage, PromptSnippets, PromptSnippetManager,
-                             UpscalePanel
+                             UpscalePanel, UpscaleResult
 
 # Key Components
 - AppDataProvider — mounted in the root layout, wraps AppChrome. Loads models +

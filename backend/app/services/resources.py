@@ -1,9 +1,10 @@
 """Live system-resource metrics for the status bar.
 
 CPU and RAM come from ``psutil``; VRAM from torch's ``mem_get_info``. GPU compute
-utilisation is best-effort — it needs a vendor SMI (NVIDIA: pynvml via
-``torch.cuda.utilization()``; AMD: amdsmi) that may not be present, in which case
-it is reported as ``None`` rather than a misleading zero.
+utilisation is best-effort: NVIDIA via pynvml (``torch.cuda.utilization()``), else
+the ``gpu_win`` Windows PerfMon-counter fallback (works on AMD/ROCm without any
+vendor SMI). It is reported as ``None`` only when neither path is available, rather
+than a misleading zero.
 """
 from __future__ import annotations
 

@@ -35,7 +35,7 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 - app/samplers.py       — sampler (diffusers scheduler) registry + apply_sampler
 - app/messages.py       — centralised English user-facing strings (i18n-ready)
 - app/routers/          — HTTP controllers: system, settings, models, generate,
-                          images, upscale
+                          images, templates, upscale, ws
 - app/services/         — business logic: downloader (download orchestration +
                           progress), hf_browse (HF search + repo/engine resolve),
                           pipeline, gallery, resources, fit (GPU fit check),
@@ -92,7 +92,16 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 - services/prompt_templates.py — JSON store for reusable prompt snippets
                            (positive/negative/upscale), in data/prompt_templates.json
 - services/resources.py  — live CPU/RAM (psutil) + VRAM (torch mem_get_info) stats;
-                           GPU compute % is best-effort (needs a vendor SMI, else None)
+                           GPU compute % is best-effort: NVIDIA via
+                           torch.cuda.utilization(), else the gpu_win Windows
+                           fallback; None only when neither is available
+- services/gpu_win.py    — vendor-agnostic Windows GPU% fallback: a long-lived
+                           PowerShell process streams the busiest \GPU Engine(*)
+                           utilisation perf counter (same source as Task Manager),
+                           cached by a reader thread so the endpoint never blocks.
+                           Works on AMD/ROCm where no NVML/amdsmi exists; degrades
+                           to None off-Windows or when counters are absent. Used by
+                           resources.py
 - services/pipeline.py   — also applies the chosen sampler via samplers.apply_sampler,
                            guarded by pipe.scheduler.compatibles so FLUX/SD3 stay intact;
                            step callback optionally decodes a throttled live preview

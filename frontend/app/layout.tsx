@@ -7,6 +7,7 @@ import { AppChrome } from "@/app-shell/AppChrome";
 import { I18nProvider } from "@/i18n";
 import { AppDataProvider } from "@/providers/AppDataProvider";
 import { ColorModeProvider } from "@/providers/ColorModeProvider";
+import en from "@/i18n/locales/en.json";
 
 // Self-hosted at build time by next/font (no runtime request to Google), exposed
 // as a CSS variable the theme reads for its fontFamily.
@@ -16,9 +17,11 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
+// Sourced from the locale file (single source of UI copy); metadata is a
+// server-side export so it can't use the client `useTranslations` hook.
 export const metadata: Metadata = {
-  title: "Pixl WebUI",
-  description: "Local image generation WebUI",
+  title: en.app.title,
+  description: en.app.subtitle,
 };
 
 const RootLayout = ({ children }: { children: ReactNode }) => {
