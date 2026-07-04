@@ -85,6 +85,9 @@ export interface DownloadProgress {
 
 export interface AppSettings {
   hf_token: string | null;
+  vae_tiling: boolean;
+  vae_slicing: boolean;
+  xformers: boolean;
 }
 
 export interface ResourceStats {
@@ -98,7 +101,7 @@ export interface ResourceStats {
   gpu_percent: number | null;
 }
 
-export type PromptKind = "positive" | "negative";
+export type PromptKind = "positive" | "negative" | "upscale";
 
 export interface PromptSnippet {
   id: string;
@@ -158,6 +161,73 @@ export interface GenerationProgress {
   batch_index: number; // 1-based index of the image currently generating
   image_ids: string[]; // finished batch images, in order
   preview: string | null; // data URL of the latest in-progress frame
+  image_id: string | null;
+  error: string | null;
+}
+
+export type UpscalerKind = "realesrgan" | "sd_x4" | "inpaint";
+
+export type ReframeStrategy = "cover" | "contain" | "edge" | "outpaint";
+
+export interface UpscalerEngine {
+  slug: string;
+  kind: UpscalerKind;
+  name: string;
+  description: string;
+  repo_id: string;
+  family: string; // "Upscaler" | "Outpaint" (derived from kind)
+  scale: number;
+  approx_size_gb: number;
+  prompt_capable: boolean;
+  curated: boolean;
+  downloaded: boolean;
+  status: DownloadStatus;
+}
+
+export interface EngineWeight {
+  filename: string;
+  approx_size_gb: number;
+}
+
+export interface EngineResolve {
+  repo_id: string;
+  kind: UpscalerKind;
+  approx_size_gb: number;
+  compatible: boolean;
+  variant: string | null;
+  use_safetensors: boolean;
+  weights: EngineWeight[]; // Real-ESRGAN weight candidates (empty for diffusers)
+}
+
+export interface UpscaleRequest {
+  engine: string;
+  image_id?: string | null;
+  image_data?: string | null; // uploaded image as a data URL
+  prompt: string; // guides the diffusion upscaler (SD x4) toward detail
+  outpaint_prompt: string; // describes the scene generated in the outpainted area
+  tile: boolean; // auto-split large images into tiles and stitch
+  target_ratio: string; // "original" | "16:9" | "4:3" | …
+  reframe: ReframeStrategy;
+  outpaint_engine?: string | null; // inpaint engine slug; null → curated default
+}
+
+export interface UpscaleStarted {
+  job_id: string;
+}
+
+export type UpscalePhase = "loading" | "upscaling" | "outpainting" | "finalizing";
+
+export interface UpscaleProgress {
+  job_id: string;
+  status: GenerationStatus; // "running" | "done" | "error"
+  phase: UpscalePhase;
+  current_tile: number;
+  total_tiles: number;
+  current_step: number; // diffusion step within the current tile (SD x4); 0 for Real-ESRGAN
+  total_steps: number;
+  its: number | null; // iterations/second (SD x4 steps); null until measurable
+  elapsed: number; // seconds since the job started
+  engine_name: string;
   image_id: string | null;
   error: string | null;
 }

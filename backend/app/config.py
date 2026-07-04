@@ -47,6 +47,11 @@ class Settings(BaseModel):
     """User-configurable settings persisted to ``data/settings.json``."""
 
     hf_token: str | None = None
+    # Pipeline performance optimisations (applied to generation + upscale on load).
+    # Default on; all are best-effort so absent hardware/libs are no-ops.
+    vae_tiling: bool = True
+    vae_slicing: bool = True
+    xformers: bool = True
 
 
 def ensure_dirs() -> None:

@@ -39,23 +39,29 @@ interface PromptSnippetsProps {
  * new snippet and delete existing ones. Rendered once per kind (positive /
  * negative) with its own filtered list.
  */
-export function PromptSnippets({
+export const PromptSnippets = ({
   kind,
   snippets,
   currentText,
   onApply,
   onChanged,
-}: PromptSnippetsProps) {
+}: PromptSnippetsProps) => {
   const t = useTranslations();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const loadLabel =
-    kind === "positive"
-      ? t("generate.snippets.loadPositive")
-      : t("generate.snippets.loadNegative");
+  const loadLabel = {
+    positive: t("generate.snippets.loadPositive"),
+    negative: t("generate.snippets.loadNegative"),
+    upscale: t("generate.snippets.loadUpscale"),
+  }[kind];
+  const manageTitle = {
+    positive: t("generate.snippets.manageTitlePositive"),
+    negative: t("generate.snippets.manageTitleNegative"),
+    upscale: t("generate.snippets.manageTitleUpscale"),
+  }[kind];
 
   const apply = (text: string) => {
     onApply(text);
@@ -117,11 +123,7 @@ export function PromptSnippets({
       </Menu>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {kind === "positive"
-            ? t("generate.snippets.manageTitlePositive")
-            : t("generate.snippets.manageTitleNegative")}
-        </DialogTitle>
+        <DialogTitle>{manageTitle}</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2}>
             <Box>

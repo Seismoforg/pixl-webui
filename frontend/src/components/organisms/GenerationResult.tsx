@@ -13,7 +13,7 @@ import { useTranslations } from "@/i18n";
 
 /** The result column of the generation view: live per-step preview + progress
  *  while running, an error alert, or the finished (batch) images. */
-export function GenerationResult() {
+export const GenerationResult = () => {
   const t = useTranslations();
   const gen = useGeneration();
   const { progress, running, images, error } = gen;
@@ -27,8 +27,8 @@ export function GenerationResult() {
   const speedLabel = (its: number | null): string | null => {
     if (its === null || its <= 0) return null;
     return its >= 1
-      ? t("generate.speedIts", { value: its.toFixed(1) })
-      : t("generate.speedSpit", { value: (1 / its).toFixed(1) });
+      ? t("generate.speedIts", { value: its.toFixed(2) })
+      : t("generate.speedSpit", { value: (1 / its).toFixed(2) });
   };
 
   const percent = progress && progress.total_steps > 0

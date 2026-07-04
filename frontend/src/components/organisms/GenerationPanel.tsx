@@ -15,7 +15,7 @@ interface GenerationPanelProps {
 
 /** Two-column generation view: the sectioned form on the left, the live
  *  preview / result panel on the right. */
-export function GenerationPanel({ models }: GenerationPanelProps) {
+export const GenerationPanel = ({ models }: GenerationPanelProps) => {
   const t = useTranslations();
   const downloaded = useMemo(() => models.filter((m) => m.downloaded), [models]);
 

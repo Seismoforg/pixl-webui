@@ -15,7 +15,7 @@ interface InfoTipProps {
  * real button element so it is keyboard- and screen-reader-accessible; callers
  * can size the icon via `sx.fontSize` (the icon inherits the button's fontSize).
  */
-export function InfoTip({ text, sx }: InfoTipProps) {
+export const InfoTip = ({ text, sx }: InfoTipProps) => {
   return (
     <Tooltip title={text} arrow enterTouchDelay={0}>
       <IconButton

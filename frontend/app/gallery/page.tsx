@@ -8,7 +8,7 @@ import { GalleryPanel } from "@/components/organisms/GalleryPanel";
 import { useGeneration } from "@/generation/GenerationProvider";
 import type { GalleryImage } from "@/types";
 
-export default function GalleryPage() {
+const GalleryPage = () => {
   const gen = useGeneration();
   const { galleryToken } = useAppData();
   const router = useRouter();
@@ -21,5 +21,20 @@ export default function GalleryPage() {
     [gen, router],
   );
 
-  return <GalleryPanel onRegenerate={onRegenerate} reloadToken={galleryToken} />;
+  const onUpscale = useCallback(
+    (image: GalleryImage) => {
+      router.push(`/upscale?image=${encodeURIComponent(image.id)}`);
+    },
+    [router],
+  );
+
+  return (
+    <GalleryPanel
+      onRegenerate={onRegenerate}
+      onUpscale={onUpscale}
+      reloadToken={galleryToken}
+    />
+  );
 }
+
+export default GalleryPage;

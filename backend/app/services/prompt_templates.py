@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from .. import config
 
-KINDS = ("positive", "negative")
+KINDS = ("positive", "negative", "upscale")
 
 _FILE = config.DATA_DIR / "prompt_templates.json"
 _lock = threading.Lock()
@@ -25,7 +25,7 @@ _counter = 0
 
 class PromptSnippet(BaseModel):
     id: str
-    kind: str  # "positive" | "negative"
+    kind: str  # "positive" | "negative" | "upscale"
     name: str
     text: str
 

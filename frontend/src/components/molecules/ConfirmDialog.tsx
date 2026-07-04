@@ -19,14 +19,14 @@ interface ConfirmDialogProps {
 }
 
 /** A themed, i18n-friendly confirmation dialog replacing native window.confirm. */
-export function ConfirmDialog({
+export const ConfirmDialog = ({
   open,
   title,
   message,
   confirmLabel,
   onConfirm,
   onClose,
-}: ConfirmDialogProps) {
+}: ConfirmDialogProps) => {
   const t = useTranslations();
 
   return (

@@ -33,7 +33,7 @@ type EditTarget = { mode: "add" | "edit"; kind: PromptKind; id?: string };
  * supports add (POST), edit (PUT) and delete (DELETE) via the existing
  * /api/prompt-templates endpoints.
  */
-export function PromptSnippetManager() {
+export const PromptSnippetManager = () => {
   const t = useTranslations();
   const [snippets, setSnippets] = useState<PromptSnippet[]>([]);
   const reload = useCallback(() => {
@@ -86,13 +86,17 @@ export function PromptSnippetManager() {
     }
   };
 
+  const kindTitle: Record<PromptKind, string> = {
+    positive: t("settings.snippets.positive"),
+    negative: t("settings.snippets.negative"),
+    upscale: t("settings.snippets.upscale"),
+  };
+
   const renderList = (kind: PromptKind, items: PromptSnippet[]) => (
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
         <SectionHeading level={3} variant="subtitle2">
-          {kind === "positive"
-            ? t("settings.snippets.positive")
-            : t("settings.snippets.negative")}
+          {kindTitle[kind]}
         </SectionHeading>
         <Button size="small" startIcon={<AddIcon />} onClick={() => openAdd(kind)}>
           {t("settings.snippets.add")}
@@ -148,6 +152,8 @@ export function PromptSnippetManager() {
         {renderList("positive", snippets.filter((s) => s.kind === "positive"))}
         <Divider />
         {renderList("negative", snippets.filter((s) => s.kind === "negative"))}
+        <Divider />
+        {renderList("upscale", snippets.filter((s) => s.kind === "upscale"))}
       </Stack>
 
       <Dialog open={editing !== null} onClose={() => setEditing(null)} maxWidth="sm" fullWidth>

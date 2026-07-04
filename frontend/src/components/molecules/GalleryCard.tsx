@@ -1,5 +1,6 @@
 "use client";
 
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ReplayIcon from "@mui/icons-material/Replay";
 import Box from "@mui/material/Box";
@@ -18,10 +19,11 @@ interface GalleryCardProps {
   image: GalleryImage;
   onOpen: (image: GalleryImage) => void;
   onRegenerate: (image: GalleryImage) => void;
+  onUpscale: (image: GalleryImage) => void;
   onDelete: (image: GalleryImage) => void;
 }
 
-export function GalleryCard({ image, onOpen, onRegenerate, onDelete }: GalleryCardProps) {
+export const GalleryCard = ({ image, onOpen, onRegenerate, onUpscale, onDelete }: GalleryCardProps) => {
   const t = useTranslations();
 
   return (
@@ -77,6 +79,16 @@ export function GalleryCard({ image, onOpen, onRegenerate, onDelete }: GalleryCa
               aria-label={t("gallery.regenerate")}
             >
               <ReplayIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={t("gallery.upscale")}>
+            <IconButton
+              size="small"
+              color="primary"
+              onClick={() => onUpscale(image)}
+              aria-label={t("gallery.upscale")}
+            >
+              <AutoAwesomeIcon fontSize="small" />
             </IconButton>
           </Tooltip>
           <Tooltip title={t("gallery.delete")}>

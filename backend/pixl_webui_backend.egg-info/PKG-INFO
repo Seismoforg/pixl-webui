@@ -13,3 +13,4 @@ Requires-Dist: huggingface_hub>=0.23
 Requires-Dist: pillow>=10.0
 Requires-Dist: pydantic>=2.6
 Requires-Dist: psutil>=5.9
+Requires-Dist: spandrel>=0.3

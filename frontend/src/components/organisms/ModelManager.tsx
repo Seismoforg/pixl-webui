@@ -1,14 +1,18 @@
 "use client";
 
 import AddIcon from "@mui/icons-material/Add";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
-import { useEffect, useMemo, useState } from "react";
+import TextField from "@mui/material/TextField";
+import { useMemo, useState } from "react";
 
+import { useDownloads } from "@/activity/DownloadProvider";
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { ConfirmDialog } from "@/components/molecules/ConfirmDialog";
-import { ModelCard } from "@/components/molecules/ModelCard";
+import { ModelListItem } from "@/components/molecules/ModelListItem";
 import { AddModelDialog } from "@/components/organisms/AddModelDialog";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
@@ -19,45 +23,61 @@ interface ModelManagerProps {
   onChanged: () => void;
 }
 
-const POLL_MS = 1500;
+const errorProgress = (slug: string, err: unknown): DownloadProgress => {
+  return {
+    slug,
+    status: "error",
+    downloaded_bytes: 0,
+    total_bytes: 0,
+    percent: 0,
+    error: err instanceof Error ? err.message : String(err),
+  };
+}
 
-export function ModelManager({ models, onChanged }: ModelManagerProps) {
+export const ModelManager = ({ models, onChanged }: ModelManagerProps) => {
   const t = useTranslations();
-  const [progress, setProgress] = useState<Record<string, DownloadProgress>>({});
+  // Downloads are tracked app-level (survive navigation + feed the off-route
+  // bubble); local `errors` only holds POST/delete failures for inline display.
+  const downloads = useDownloads();
+  const [errors, setErrors] = useState<Record<string, DownloadProgress>>({});
+  const progressFor = (slug: string) => errors[slug] ?? downloads.progress[slug];
   const [addOpen, setAddOpen] = useState(false);
   const [pendingSlug, setPendingSlug] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [familyFilter, setFamilyFilter] = useState("");
+  const [pipelineFilter, setPipelineFilter] = useState("");
 
-  const curated = useMemo(() => models.filter((m) => m.curated), [models]);
-  const added = useMemo(() => models.filter((m) => !m.curated), [models]);
-
-  const activeSlugs = useMemo(
-    () =>
-      models
-        .filter((m) => (progress[m.slug]?.status ?? m.status) === "downloading")
-        .map((m) => m.slug),
-    [models, progress],
+  const familyOptions = useMemo(
+    () => Array.from(new Set(models.map((m) => m.family))).sort(),
+    [models],
+  );
+  const pipelineOptions = useMemo(
+    () => Array.from(new Set(models.map((m) => m.pipeline_tag))).sort(),
+    [models],
   );
 
-  useEffect(() => {
-    if (activeSlugs.length === 0) return undefined;
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return models.filter(
+      (m) =>
+        (familyFilter === "" || m.family === familyFilter) &&
+        (pipelineFilter === "" || m.pipeline_tag === pipelineFilter) &&
+        (q === "" ||
+          m.name.toLowerCase().includes(q) ||
+          m.repo_id.toLowerCase().includes(q) ||
+          m.description.toLowerCase().includes(q)),
+    );
+  }, [models, query, familyFilter, pipelineFilter]);
 
-    const id = setInterval(async () => {
-      const updates = await Promise.all(activeSlugs.map((s) => api.getProgress(s)));
-      let finished = false;
-      setProgress((prev) => {
-        const next = { ...prev };
-        for (const update of updates) {
-          next[update.slug] = update;
-          if (update.status === "done" || update.status === "error") finished = true;
-        }
-        return next;
-      });
-      if (finished) onChanged();
-    }, POLL_MS);
-
-    return () => clearInterval(id);
-    // activeSlugs is derived; join to keep the dependency stable
-  }, [activeSlugs.join(","), onChanged]);
+  const installed = useMemo(() => filtered.filter((m) => m.downloaded), [filtered]);
+  const available = useMemo(
+    () => filtered.filter((m) => !m.downloaded && m.curated),
+    [filtered],
+  );
+  const custom = useMemo(
+    () => filtered.filter((m) => !m.downloaded && !m.curated),
+    [filtered],
+  );
 
   const handleDelete = async (slug: string) => {
     setPendingSlug(null);
@@ -65,68 +85,55 @@ export function ModelManager({ models, onChanged }: ModelManagerProps) {
       await api.deleteModel(slug);
       onChanged();
     } catch (err) {
-      setProgress((prev) => ({
-        ...prev,
-        [slug]: {
-          slug,
-          status: "error",
-          downloaded_bytes: 0,
-          total_bytes: 0,
-          percent: 0,
-          error: err instanceof Error ? err.message : String(err),
-        },
-      }));
+      setErrors((prev) => ({ ...prev, [slug]: errorProgress(slug, err) }));
     }
   };
 
   const handleDownload = async (slug: string) => {
-    setProgress((prev) => ({
-      ...prev,
-      [slug]: {
-        slug,
-        status: "downloading",
-        downloaded_bytes: 0,
-        total_bytes: 0,
-        percent: 0,
-        error: null,
-      },
-    }));
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next[slug];
+      return next;
+    });
+    const model = models.find((m) => m.slug === slug);
     try {
       await api.downloadModel(slug);
+      downloads.track(slug, {
+        title: model?.name ?? slug,
+        route: "/models",
+        fetch: () => api.getProgress(slug),
+        retry: () => api.downloadModel(slug),
+      });
     } catch (err) {
-      setProgress((prev) => ({
-        ...prev,
-        [slug]: {
-          slug,
-          status: "error",
-          downloaded_bytes: 0,
-          total_bytes: 0,
-          percent: 0,
-          error: err instanceof Error ? err.message : String(err),
-        },
-      }));
+      setErrors((prev) => ({ ...prev, [slug]: errorProgress(slug, err) }));
     }
   };
 
-  const grid = (entries: ModelEntry[]) => (
-    <Box
-      sx={{
-        display: "grid",
-        gap: 2,
-        gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-      }}
-    >
-      {entries.map((model) => (
-        <ModelCard
-          key={model.slug}
-          model={model}
-          progress={progress[model.slug]}
-          onDownload={handleDownload}
-          onDelete={setPendingSlug}
-        />
-      ))}
-    </Box>
-  );
+  const section = (titleKey: string, entries: ModelEntry[]) => {
+    if (entries.length === 0) return null;
+    return (
+      <Box key={titleKey}>
+        <SectionHeading
+          level={3}
+          variant="subtitle2"
+          sx={{ mb: 1.5, color: "text.secondary" }}
+        >
+          {t(titleKey)} ({entries.length})
+        </SectionHeading>
+        <Stack spacing={1.5}>
+          {entries.map((model) => (
+            <ModelListItem
+              key={model.slug}
+              model={model}
+              progress={progressFor(model.slug)}
+              onDownload={handleDownload}
+              onDelete={setPendingSlug}
+            />
+          ))}
+        </Stack>
+      </Box>
+    );
+  };
 
   return (
     <Box>
@@ -146,19 +153,51 @@ export function ModelManager({ models, onChanged }: ModelManagerProps) {
         </Button>
       </Stack>
 
-      {grid(curated)}
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mb: 3 }}>
+        <TextField
+          label={t("models.searchLabel")}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          sx={{ flexGrow: 1 }}
+        />
+        <TextField
+          select
+          label={t("models.filterFamily")}
+          value={familyFilter}
+          onChange={(e) => setFamilyFilter(e.target.value)}
+          sx={{ minWidth: 180 }}
+        >
+          <MenuItem value="">{t("models.allFamilies")}</MenuItem>
+          {familyOptions.map((f) => (
+            <MenuItem key={f} value={f}>
+              {f}
+            </MenuItem>
+          ))}
+        </TextField>
+        <TextField
+          select
+          label={t("models.filterPipeline")}
+          value={pipelineFilter}
+          onChange={(e) => setPipelineFilter(e.target.value)}
+          sx={{ minWidth: 180 }}
+        >
+          <MenuItem value="">{t("models.allPipelines")}</MenuItem>
+          {pipelineOptions.map((p) => (
+            <MenuItem key={p} value={p}>
+              {p}
+            </MenuItem>
+          ))}
+        </TextField>
+      </Stack>
 
-      {added.length > 0 && (
-        <>
-          <SectionHeading
-            level={3}
-            variant="subtitle2"
-            sx={{ mt: 3, mb: 1.5, color: "text.secondary" }}
-          >
-            {t("models.added")}
-          </SectionHeading>
-          {grid(added)}
-        </>
+      {filtered.length === 0 ? (
+        <Alert severity="info">{t("models.noResults")}</Alert>
+      ) : (
+        <Stack spacing={3}>
+          {section("models.installed", installed)}
+          {section("models.available", available)}
+          {section("models.custom", custom)}
+        </Stack>
       )}
 
       <AddModelDialog

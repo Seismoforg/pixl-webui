@@ -17,6 +17,6 @@ const META: Record<FitVerdict, FitChipMeta> = {
   cpu_only: { color: "info", labelKey: "models.fitCpu", tooltipKey: "models.fitTooltipCpu" },
 };
 
-export function fitChipMeta(verdict: FitVerdict): FitChipMeta {
+export const fitChipMeta = (verdict: FitVerdict): FitChipMeta => {
   return META[verdict];
 }

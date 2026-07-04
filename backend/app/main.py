@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import config
-from .routers import generate, images, models, settings, system, templates
+from .routers import generate, images, models, settings, system, templates, upscale, ws
 
 config.ensure_dirs()
 
@@ -28,6 +28,8 @@ app.include_router(models.router)
 app.include_router(generate.router)
 app.include_router(images.router)
 app.include_router(templates.router)
+app.include_router(upscale.router)
+app.include_router(ws.router)
 
 
 @app.get("/api/health")

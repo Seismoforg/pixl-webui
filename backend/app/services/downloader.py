@@ -9,6 +9,7 @@ from __future__ import annotations
 import fnmatch
 import re
 import threading
+import time
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -18,6 +19,39 @@ from ..catalog import GenerationDefaults, ModelInfo
 from .fit import FitInfo, assess
 
 _COMPLETE_MARKER = ".pixl_complete"
+
+# HuggingFace downloads over flaky links often drop mid-stream (Windows surfaces
+# this as "[WinError 10054] connection reset"). Retrying resumes already-fetched
+# files rather than restarting, so a few attempts usually push it through.
+_MAX_DOWNLOAD_ATTEMPTS = 5
+_TRANSIENT_MARKERS = (
+    "10054", "10053", "10060", "connection", "connectionreset", "reset by peer",
+    "timed out", "timeout", "temporarily", "chunkedencoding", "incompleteread",
+    "remotedisconnected", "econnreset", "broken pipe",
+)
+
+
+def _is_transient(exc: BaseException) -> bool:
+    if isinstance(exc, (ConnectionError, TimeoutError, OSError)):
+        return True
+    text = str(exc).lower()
+    return any(m in text for m in _TRANSIENT_MARKERS)
+
+
+def _download_with_retries(do_download) -> None:
+    """Run ``do_download()``, retrying transient network failures with backoff.
+
+    HuggingFace resumes partially-downloaded files, so each retry continues from
+    where it stopped. Non-transient errors (auth, 404, disk) raise immediately.
+    """
+    for attempt in range(1, _MAX_DOWNLOAD_ATTEMPTS + 1):
+        try:
+            do_download()
+            return
+        except Exception as exc:  # noqa: BLE001 - decide retry vs. surface
+            if attempt >= _MAX_DOWNLOAD_ATTEMPTS or not _is_transient(exc):
+                raise
+            time.sleep(min(2 ** attempt, 15))
 
 # Non-weight files needed to load a diffusers model (configs, tokenizers). These
 # are tiny and may live at the repo root (e.g. model_index.json).
@@ -125,12 +159,14 @@ def _run_download(model: ModelInfo, token: str | None, allow: list[str]) -> None
 
     target = config.model_dir(model.slug)
     try:
-        snapshot_download(
-            repo_id=model.repo_id,
-            local_dir=str(target),
-            token=token,
-            allow_patterns=allow,
-            local_dir_use_symlinks=False,
+        _download_with_retries(
+            lambda: snapshot_download(
+                repo_id=model.repo_id,
+                local_dir=str(target),
+                token=token,
+                allow_patterns=allow,
+                local_dir_use_symlinks=False,
+            )
         )
         (target / _COMPLETE_MARKER).touch()
         with _lock:
@@ -141,30 +177,100 @@ def _run_download(model: ModelInfo, token: str | None, allow: list[str]) -> None
             _states[model.slug].error = str(exc)
 
 
+def _mark_downloading(slug: str) -> None:
+    """Register ``slug`` as downloading *synchronously* (before any network call).
+
+    Doing this up front — rather than after the HuggingFace metadata fetch — closes
+    the race where ``get_progress`` briefly returns ``idle`` after the user starts a
+    download, which the live UI would otherwise read as "not downloading". Raises
+    ValueError if a download for the slug is already running.
+    """
+    with _lock:
+        current = _states.get(slug)
+        if current and current.status == "downloading":
+            raise ValueError(messages.DOWNLOAD_ALREADY_RUNNING.format(slug=slug))
+        _states[slug] = DownloadState(status="downloading", total_bytes=0)
+
+
+def _run_file_download(slug: str, repo_id: str, filename: str, token: str | None) -> None:
+    from huggingface_hub import HfApi, hf_hub_download
+
+    target = config.model_dir(slug)
+    try:
+        try:  # size is only a progress hint; never fail the download over it
+            info = HfApi().model_info(repo_id, token=token, files_metadata=True)
+            total = next(
+                (s.size or 0 for s in (info.siblings or []) if s.rfilename == filename), 0
+            )
+            with _lock:
+                _states[slug].total_bytes = total
+        except Exception:  # noqa: BLE001
+            pass
+        _download_with_retries(
+            lambda: hf_hub_download(
+                repo_id=repo_id,
+                filename=filename,
+                local_dir=str(target),
+                token=token,
+                local_dir_use_symlinks=False,
+            )
+        )
+        (target / _COMPLETE_MARKER).touch()
+        with _lock:
+            _states[slug].status = "done"
+    except Exception as exc:  # noqa: BLE001 - surfaced to the user via state
+        with _lock:
+            _states[slug].status = "error"
+            _states[slug].error = str(exc)
+
+
+def start_file_download(slug: str, repo_id: str, filename: str, token: str | None) -> None:
+    """Download a single file (e.g. an upscaler ``.pth``) into ``models/<slug>``.
+
+    Uses the same progress/state machinery as :func:`start_download` so the
+    frontend can poll it via :func:`get_progress` unchanged. Raises ValueError if
+    a download for the same slug is already running.
+    """
+    _mark_downloading(slug)
+    thread = threading.Thread(
+        target=_run_file_download, args=(slug, repo_id, filename, token), daemon=True
+    )
+    thread.start()
+
+
+def _prepare_and_download(model: ModelInfo, token: str | None) -> None:
+    """Resolve the file list + size (network), then download. Runs on the thread so
+    the state is already ``downloading`` before this (slow) work begins."""
+    from huggingface_hub import HfApi
+
+    try:
+        info = HfApi().model_info(model.repo_id, token=token, files_metadata=True)
+        siblings = info.siblings or []
+        names = [s.rfilename for s in siblings]
+        allow = resolve_download_files(names, model.variant, model.use_safetensors)
+        allow_set = set(allow)
+        total = sum(s.size or 0 for s in siblings if s.rfilename in allow_set)
+        with _lock:
+            _states[model.slug].total_bytes = total
+    except Exception as exc:  # noqa: BLE001 - surfaced to the user via state
+        with _lock:
+            _states[model.slug].status = "error"
+            _states[model.slug].error = str(exc)
+        return
+
+    _run_download(model, token, allow)
+
+
 def start_download(model: ModelInfo, token: str | None) -> None:
     """Begin downloading ``model`` in the background.
 
-    Resolves the exact per-component file list up front (so mixed-variant repos
-    fetch all weights, not just the fp16 ones) and uses it for both the size
-    estimate and the download. Raises ValueError if a download for the same model
-    is already running.
+    Marks the download as running synchronously, then resolves the exact
+    per-component file list + size and downloads on a background thread (so
+    mixed-variant repos fetch all weights, not just the fp16 ones). Raises
+    ValueError if a download for the same model is already running.
     """
-    from huggingface_hub import HfApi
-
-    info = HfApi().model_info(model.repo_id, token=token, files_metadata=True)
-    siblings = info.siblings or []
-    names = [s.rfilename for s in siblings]
-    allow = resolve_download_files(names, model.variant, model.use_safetensors)
-    allow_set = set(allow)
-    total = sum(s.size or 0 for s in siblings if s.rfilename in allow_set)
-
-    with _lock:
-        current = _states.get(model.slug)
-        if current and current.status == "downloading":
-            raise ValueError(messages.DOWNLOAD_ALREADY_RUNNING.format(slug=model.slug))
-        _states[model.slug] = DownloadState(status="downloading", total_bytes=total)
-
-    thread = threading.Thread(target=_run_download, args=(model, token, allow), daemon=True)
+    _mark_downloading(model.slug)
+    thread = threading.Thread(target=_prepare_and_download, args=(model, token), daemon=True)
     thread.start()
 
 
@@ -388,3 +494,74 @@ def resolve_repo(repo_id: str, token: str | None) -> ResolvedModel:
         defaults=defaults,
     )
     return ResolvedModel(**model.model_dump(), compatible=compatible, fit=assess(model))
+
+
+# --- Resolve an upscale/outpaint engine repo ----------------------------------
+
+class EngineWeight(BaseModel):
+    """A single downloadable weight file (Real-ESRGAN ``.pth``/safetensors)."""
+
+    filename: str
+    approx_size_gb: float
+
+
+class EngineResolve(BaseModel):
+    """A repo inspected for use as a custom upscale/outpaint engine."""
+
+    repo_id: str
+    kind: str  # "realesrgan" | "sd_x4" | "inpaint"
+    approx_size_gb: float  # diffusers total; 0 for realesrgan (depends on the file)
+    compatible: bool
+    variant: str | None = None
+    use_safetensors: bool = True
+    # Real-ESRGAN weight-file candidates (empty for diffusers kinds).
+    weights: list[EngineWeight] = []
+
+
+def resolve_engine(repo_id: str, kind: str, token: str | None) -> EngineResolve:
+    """Inspect ``repo_id`` for use as a custom engine of ``kind``.
+
+    ``realesrgan`` lists the repo's single-file weight candidates (a ``.pth`` or a
+    root-level ``.safetensors``) so the user can pick one; the diffusers kinds
+    (``sd_x4`` / ``inpaint``) resolve the download size, weight variant and
+    diffusers-compatibility like :func:`resolve_repo`.
+    """
+    from huggingface_hub import HfApi
+
+    info = HfApi().model_info(repo_id, token=token, files_metadata=True)
+    siblings = info.siblings or []
+    names = [s.rfilename for s in siblings]
+    size_gb = {s.rfilename: round((s.size or 0) / (1024**3), 2) for s in siblings}
+
+    if kind == "realesrgan":
+        # Single-file weights live at the repo root (no subfolder).
+        weights = [
+            EngineWeight(filename=n, approx_size_gb=size_gb.get(n, 0.0))
+            for n in names
+            if "/" not in n and (n.endswith(".pth") or n.endswith(".safetensors"))
+        ]
+        return EngineResolve(
+            repo_id=repo_id, kind=kind, approx_size_gb=0.0,
+            compatible=len(weights) > 0, weights=weights,
+        )
+
+    # Diffusers pipeline (sd_x4 / inpaint).
+    has_index = "model_index.json" in names
+    has_safetensors = any(fnmatch.fnmatch(n, "*/*.safetensors") for n in names)
+    has_bin = any(fnmatch.fnmatch(n, "*/*.bin") for n in names)
+    use_safetensors = has_safetensors
+    variant = (
+        "fp16"
+        if use_safetensors and any(fnmatch.fnmatch(n, "*/*.fp16.safetensors") for n in names)
+        else None
+    )
+    allow = set(resolve_download_files(names, variant, use_safetensors))
+    size_bytes = sum(s.size or 0 for s in siblings if s.rfilename in allow)
+    return EngineResolve(
+        repo_id=repo_id,
+        kind=kind,
+        approx_size_gb=round(size_bytes / (1024**3), 1),
+        compatible=has_index and (has_safetensors or has_bin),
+        variant=variant,
+        use_safetensors=use_safetensors,
+    )

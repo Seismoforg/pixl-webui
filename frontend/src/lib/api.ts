@@ -15,11 +15,17 @@ import type {
   ResourceStats,
   SamplerList,
   SystemInfo,
+  EngineResolve,
+  UpscalerEngine,
+  UpscalerKind,
+  UpscaleProgress,
+  UpscaleRequest,
+  UpscaleStarted,
 } from "@/types";
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const res = await fetch(`${BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...init,
@@ -114,6 +120,41 @@ export const api = {
     request<{ id: string; status: string }>(`/api/prompt-templates/${id}`, {
       method: "DELETE",
     }),
+
+  getUpscalers: () => request<UpscalerEngine[]>("/api/upscale/engines"),
+
+  resolveUpscaler: (repoId: string, kind: UpscalerKind) =>
+    request<EngineResolve>(
+      `/api/upscale/engines/resolve?repo_id=${encodeURIComponent(repoId)}&kind=${kind}`,
+    ),
+
+  addUpscaler: (repoId: string, kind: UpscalerKind, filename?: string | null) =>
+    request<{ slug: string; message: string }>("/api/upscale/engines", {
+      method: "POST",
+      body: JSON.stringify({ repo_id: repoId, kind, filename: filename ?? null }),
+    }),
+
+  deleteUpscaler: (slug: string) =>
+    request<{ slug: string; status: string }>(`/api/upscale/engines/${slug}`, {
+      method: "DELETE",
+    }),
+
+  downloadUpscaler: (slug: string) =>
+    request<{ slug: string; message: string }>(`/api/upscale/engines/${slug}/download`, {
+      method: "POST",
+    }),
+
+  getUpscalerProgress: (slug: string) =>
+    request<DownloadProgress>(`/api/upscale/engines/${slug}/progress`),
+
+  upscale: (req: UpscaleRequest) =>
+    request<UpscaleStarted>("/api/upscale", {
+      method: "POST",
+      body: JSON.stringify(req),
+    }),
+
+  getUpscaleProgress: (jobId: string) =>
+    request<UpscaleProgress>(`/api/upscale/${jobId}`),
 
   getImages: () => request<GalleryImage[]>("/api/images"),
 

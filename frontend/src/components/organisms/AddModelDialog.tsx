@@ -44,7 +44,7 @@ const PIPELINES = [
   "unconditional-image-generation",
 ];
 
-export function AddModelDialog({ open, onClose, onAdded }: AddModelDialogProps) {
+export const AddModelDialog = ({ open, onClose, onAdded }: AddModelDialogProps) => {
   const t = useTranslations();
 
   const [query, setQuery] = useState("");
@@ -126,7 +126,13 @@ export function AddModelDialog({ open, onClose, onAdded }: AddModelDialogProps) 
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="lg" fullWidth>
+    <Dialog
+      open={open}
+      onClose={handleClose}
+      maxWidth="lg"
+      fullWidth
+      PaperProps={{ sx: { m: { xs: 1, sm: 4 }, maxHeight: { xs: "calc(100% - 16px)", sm: "calc(100% - 64px)" } } }}
+    >
       <DialogTitle>{t("models.browser.title")}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2}>
@@ -146,7 +152,7 @@ export function AddModelDialog({ open, onClose, onAdded }: AddModelDialogProps) 
               onChange={(e) => setQuery(e.target.value)}
               helperText={t("models.browser.searchHint")}
               size="small"
-              sx={{ flexGrow: 1, minWidth: 220 }}
+              sx={{ flexGrow: 1, minWidth: { xs: "100%", sm: 220 } }}
             />
             <TextField
               select
@@ -154,7 +160,7 @@ export function AddModelDialog({ open, onClose, onAdded }: AddModelDialogProps) 
               value={family}
               onChange={(e) => setFamily(e.target.value)}
               size="small"
-              sx={{ minWidth: 150 }}
+              sx={{ minWidth: { xs: "100%", sm: 150 } }}
             >
               <MenuItem value="">{t("models.browser.familyAll")}</MenuItem>
               {FAMILIES.map((f) => (
@@ -172,7 +178,7 @@ export function AddModelDialog({ open, onClose, onAdded }: AddModelDialogProps) 
                 setPipelines(typeof v === "string" ? v.split(",") : (v as string[]));
               }}
               size="small"
-              sx={{ minWidth: 200 }}
+              sx={{ minWidth: { xs: "100%", sm: 200 } }}
               SelectProps={{
                 multiple: true,
                 renderValue: (sel) => (sel as string[]).join(", "),
@@ -191,7 +197,7 @@ export function AddModelDialog({ open, onClose, onAdded }: AddModelDialogProps) 
               value={sort}
               onChange={(e) => setSort(e.target.value)}
               size="small"
-              sx={{ minWidth: 150 }}
+              sx={{ minWidth: { xs: "100%", sm: 150 } }}
             >
               <MenuItem value="downloads">{t("models.browser.sortDownloads")}</MenuItem>
               <MenuItem value="likes">{t("models.browser.sortLikes")}</MenuItem>
@@ -268,7 +274,7 @@ export function AddModelDialog({ open, onClose, onAdded }: AddModelDialogProps) 
   );
 }
 
-function ResolvedDetails({ resolved }: { resolved: ResolvedModel }) {
+const ResolvedDetails = ({ resolved }: { resolved: ResolvedModel }) => {
   const t = useTranslations();
   const fitMeta = fitChipMeta(resolved.fit.verdict);
 

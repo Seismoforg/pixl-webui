@@ -6,7 +6,7 @@ import { useAppData } from "@/app-shell/AppChrome";
 import { PromptSnippetManager } from "@/components/organisms/PromptSnippetManager";
 import { SettingsPanel } from "@/components/organisms/SettingsPanel";
 
-export default function SettingsPage() {
+const SettingsPage = () => {
   const { system } = useAppData();
   return (
     <Stack spacing={3}>
@@ -15,3 +15,5 @@ export default function SettingsPage() {
     </Stack>
   );
 }
+
+export default SettingsPage;

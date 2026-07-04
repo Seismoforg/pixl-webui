@@ -15,14 +15,14 @@ export const defaultLocale: Locale = "en";
 
 type Vars = Record<string, string | number>;
 
-function resolve(dict: unknown, path: string): string {
+const resolve = (dict: unknown, path: string): string => {
   const value = path
     .split(".")
     .reduce<unknown>((acc, key) => (acc as Record<string, unknown>)?.[key], dict);
   return typeof value === "string" ? value : path;
 }
 
-function interpolate(text: string, vars?: Vars): string {
+const interpolate = (text: string, vars?: Vars): string => {
   if (!vars) return text;
   return text.replace(/\{(\w+)\}/g, (_, key) =>
     key in vars ? String(vars[key]) : `{${key}}`,
@@ -36,19 +36,19 @@ interface I18nContextValue {
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
-export function useTranslations() {
+export const useTranslations = () => {
   const ctx = useContext(I18nContext);
   if (!ctx) throw new Error("useTranslations must be used within I18nProvider");
   return ctx.t;
 }
 
-export function I18nProvider({
+export const I18nProvider = ({
   locale = defaultLocale,
   children,
 }: {
   locale?: Locale;
   children: ReactNode;
-}) {
+}) => {
   const value = useMemo<I18nContextValue>(
     () => ({
       locale,

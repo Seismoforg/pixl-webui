@@ -13,10 +13,13 @@ from typing import Callable
 
 from .. import config, messages, samplers
 from ..catalog import ModelInfo
+from ..config import load_settings
 from ..device import get_dtype, get_torch_device
 from . import preview as preview_svc
+from . import vram
 from .downloader import is_downloaded
 from .fit import assess
+from .optimizations import apply_perf
 
 # Minimum wall-clock gap between decoded previews, so high step counts don't spam
 # the (relatively) expensive decode + JPEG encode.
@@ -75,6 +78,8 @@ def _load(model: ModelInfo):
     else:
         pipe.enable_model_cpu_offload()
     pipe.enable_attention_slicing()
+    # User-configurable optimisations (VAE tiling/slicing, xformers) — best-effort.
+    apply_perf(pipe, load_settings())
 
     _current_slug = model.slug
     _pipeline = pipe
@@ -94,6 +99,7 @@ def unload(slug: str | None = None) -> None:
     _pipeline = None
     _current_slug = None
     _reset_aux_state()
+    vram.release()  # actually return the freed VRAM to the allocator
 
 
 def _img2img(model: ModelInfo, base_pipe):
@@ -239,6 +245,14 @@ def generate(
     """
     if not is_downloaded(model.slug):
         raise ValueError(messages.MODEL_NOT_DOWNLOADED.format(slug=model.slug))
+
+    # Free VRAM held by the upscaler / outpaint models before generating (lazy
+    # imports avoid the pipeline <-> upscale/outpaint cycle; unload() empties cache).
+    from . import outpaint as _outpaint
+    from . import upscale as _upscale
+
+    _upscale.unload()
+    _outpaint.unload()
 
     import torch
 

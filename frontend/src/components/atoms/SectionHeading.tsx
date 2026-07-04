@@ -20,7 +20,7 @@ interface SectionHeadingProps {
  * A heading that pairs a visual style with the correct semantic element, so the
  * document keeps a proper h1 → h2 → h3 hierarchy instead of visual-only titles.
  */
-export function SectionHeading({ children, level, variant, sx }: SectionHeadingProps) {
+export const SectionHeading = ({ children, level, variant, sx }: SectionHeadingProps) => {
   const resolved: Variant = variant ?? (level === 2 ? "h2" : "h3");
   return (
     <Typography variant={resolved} component={`h${level}`} sx={sx}>

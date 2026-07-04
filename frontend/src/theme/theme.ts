@@ -8,10 +8,20 @@ export type ColorMode = "light" | "dark";
 // theme so panels read them from one place instead of using magic pixel values.
 declare module "@mui/material/styles" {
   interface Theme {
-    layout: { controlColumn: number; resultMinHeight: number; thumbSize: number };
+    layout: {
+      controlColumn: number;
+      resultMinHeight: number;
+      thumbSize: number;
+      contentMaxWidth: number;
+    };
   }
   interface ThemeOptions {
-    layout?: { controlColumn?: number; resultMinHeight?: number; thumbSize?: number };
+    layout?: {
+      controlColumn?: number;
+      resultMinHeight?: number;
+      thumbSize?: number;
+      contentMaxWidth?: number;
+    };
   }
 }
 
@@ -19,7 +29,7 @@ declare module "@mui/material/styles" {
  * Central design tokens. Components must read from the theme rather than
  * hard-coding values; global tweaks belong in `components` below.
  */
-export function createAppTheme(mode: ColorMode): Theme {
+export const createAppTheme = (mode: ColorMode): Theme => {
   const isDark = mode === "dark";
 
   return createTheme({
@@ -29,15 +39,21 @@ export function createAppTheme(mode: ColorMode): Theme {
       // (contrast ~5.5:1); the previous #6366f1 was ~4.47:1.
       primary: { main: "#5457e0" },
       secondary: { main: "#ec4899" },
+      // A cohesive surface + divider set per mode so panels, borders and the page
+      // background read as one system rather than ad-hoc greys.
       background: isDark
-        ? { default: "#0b0d12", paper: "#151922" }
-        : { default: "#f6f7f9", paper: "#ffffff" },
+        ? { default: "#0a0b10", paper: "#14171f" }
+        : { default: "#f4f5f8", paper: "#ffffff" },
+      divider: isDark ? "rgba(255,255,255,0.10)" : "rgba(16,18,27,0.10)",
+      text: isDark
+        ? { primary: "#e7e9ee", secondary: "#a2a8b6" }
+        : { primary: "#1b1e28", secondary: "#5b6474" },
     },
     shape: { borderRadius: 12 },
-    layout: { controlColumn: 400, resultMinHeight: 360, thumbSize: 72 },
+    layout: { controlColumn: 400, resultMinHeight: 360, thumbSize: 72, contentMaxWidth: 1700 },
     typography: {
       fontFamily:
-        'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+        'var(--font-inter), system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
       // Emphasis weight token; components use fontWeight="medium" instead of a
       // magic 600 so the emphasis weight is defined in exactly one place.
       fontWeightMedium: 600,

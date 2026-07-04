@@ -10,8 +10,10 @@ import {
   type ReactNode,
 } from "react";
 
+import { useActivity } from "@/activity/ActivityProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import { live } from "@/lib/ws";
 import type {
   GalleryImage,
   GenerationProgress,
@@ -72,7 +74,7 @@ const GenerationContext = createContext<GenerationContextValue | null>(null);
 
 const POLL_MS = 500;
 
-export function useGeneration() {
+export const useGeneration = () => {
   const ctx = useContext(GenerationContext);
   if (!ctx) throw new Error("useGeneration must be used within GenerationProvider");
   return ctx;
@@ -84,7 +86,7 @@ interface GenerationProviderProps {
   children: ReactNode;
 }
 
-export function GenerationProvider({ models, onGenerated, children }: GenerationProviderProps) {
+export const GenerationProvider = ({ models, onGenerated, children }: GenerationProviderProps) => {
   const t = useTranslations();
   const downloaded = useMemo(() => models.filter((m) => m.downloaded), [models]);
 
@@ -135,29 +137,71 @@ export function GenerationProvider({ models, onGenerated, children }: Generation
     setHeight(first.defaults.height);
   }, [downloaded, slug]);
 
-  // Poll the running job for step progress and completion.
+  // Track the running job over the WebSocket, with a REST poll fallback while the
+  // socket is down. Both feed the same handler so completion logic is identical.
   useEffect(() => {
     if (!jobId) return undefined;
-    const id = setInterval(async () => {
-      try {
-        const p = await api.getGenerationProgress(jobId);
-        setProgress(p);
-        // Fill the grid live as batch images complete.
-        setImages(p.image_ids.map((id) => api.imageFileUrl(id)));
-        if (p.status === "done") {
-          setJobId(null);
-          onGenerated();
-        } else if (p.status === "error") {
-          setError(p.error ?? t("common.error"));
-          setJobId(null);
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+    const handle = (p: GenerationProgress) => {
+      setProgress(p);
+      // Fill the grid live as batch images complete.
+      setImages(p.image_ids.map((id) => api.imageFileUrl(id)));
+      if (p.status === "done") {
+        setJobId(null);
+        onGenerated();
+      } else if (p.status === "error") {
+        setError(p.error ?? t("common.error"));
         setJobId(null);
       }
+    };
+    const unsub = live.subscribe(
+      `generation:${jobId}`,
+      { channel: "generation", job_id: jobId },
+      (d) => handle(d as GenerationProgress),
+    );
+    const id = setInterval(() => {
+      if (live.isConnected()) return;
+      api
+        .getGenerationProgress(jobId)
+        .then(handle)
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : String(err));
+          setJobId(null);
+        });
     }, POLL_MS);
-    return () => clearInterval(id);
+    return () => {
+      unsub();
+      clearInterval(id);
+    };
   }, [jobId, onGenerated, t]);
+
+  // Publish the running job to the shared activity store for the off-route bubble.
+  const { set: setActivity } = useActivity();
+  useEffect(() => {
+    if (!running) {
+      setActivity("generation", null);
+      return;
+    }
+    let detail: string;
+    let percent: number | null = null;
+    if (!progress) {
+      detail = t("generate.running");
+    } else if (progress.phase === "loading") {
+      detail = t("generate.phaseLoading");
+    } else if (progress.phase === "finalizing") {
+      detail = t("generate.phaseFinalizing");
+    } else {
+      detail = t("generate.step", { current: progress.current_step, total: progress.total_steps });
+      percent = progress.total_steps > 0 ? (progress.current_step / progress.total_steps) * 100 : null;
+    }
+    setActivity("generation", {
+      id: "generation",
+      title: t("activity.generation"),
+      route: "/generate",
+      status: "running",
+      detail,
+      percent,
+    });
+  }, [running, progress, setActivity, t]);
 
   const changeModel = useCallback(
     (nextSlug: string) => {

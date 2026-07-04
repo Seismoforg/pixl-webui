@@ -30,7 +30,7 @@ const appendPrompt = (current: string, addition: string): string =>
   current.trim() === "" ? addition : `${current.trim()}, ${addition}`;
 
 /** One labelled group of controls in the generation form. */
-function FormSection({ title, children }: { title: string; children: ReactNode }) {
+const FormSection = ({ title, children }: { title: string; children: ReactNode }) => {
   return (
     <Box component="section">
       <SectionHeading level={3} sx={{ mb: 1.5 }}>
@@ -43,7 +43,7 @@ function FormSection({ title, children }: { title: string; children: ReactNode }
 
 /** The generation form: model, prompts, reference image and parameters, grouped
  *  into labelled sections. Reads/writes the generation context. */
-export function GenerationForm({ downloaded }: GenerationFormProps) {
+export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
   const t = useTranslations();
   const gen = useGeneration();
 

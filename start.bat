@@ -1,5 +1,7 @@
 @echo off
 rem Pixl WebUI - start backend (uvicorn) and frontend (next) together.
+rem The backend also serves the live WebSocket at ws://localhost:8000/ws (same
+rem uvicorn process); --ws auto enables it via the installed websockets library.
 setlocal
 set "ROOT=%~dp0"
 set "VENV_PY=%ROOT%.venv\Scripts\python.exe"
@@ -15,8 +17,8 @@ if not exist "%ROOT%frontend\node_modules" (
   exit /b 1
 )
 
-echo Starting backend on http://localhost:8000 ...
-start "Pixl Backend" /D "%ROOT%backend" cmd /k ""%VENV_PY%" -m uvicorn app.main:app --host 127.0.0.1 --port 8000"
+echo Starting backend (HTTP + WebSocket) on http://localhost:8000 ...
+start "Pixl Backend" /D "%ROOT%backend" cmd /k ""%VENV_PY%" -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --ws auto"
 
 echo Starting frontend on http://localhost:3000 ...
 start "Pixl Frontend" /D "%ROOT%frontend" cmd /k "npm run dev"

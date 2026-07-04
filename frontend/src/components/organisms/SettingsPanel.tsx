@@ -3,8 +3,10 @@
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
+import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useEffect, useState } from "react";
@@ -12,13 +14,37 @@ import { useEffect, useState } from "react";
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
-import type { SystemInfo } from "@/types";
+import type { AppSettings, SystemInfo } from "@/types";
 
 interface SettingsPanelProps {
   system: SystemInfo | null;
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+const PerfSwitch = ({
+  label,
+  help,
+  checked,
+  onChange,
+}: {
+  label: string;
+  help: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) => {
+  return (
+    <Box>
+      <FormControlLabel
+        control={<Switch checked={checked} onChange={(e) => onChange(e.target.checked)} />}
+        label={label}
+      />
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", ml: 6, mt: -0.5 }}>
+        {help}
+      </Typography>
+    </Box>
+  );
+}
+
+const InfoRow = ({ label, value }: { label: string; value: string }) => {
   return (
     <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2 }}>
       <Typography variant="body2" color="text.secondary">
@@ -31,24 +57,37 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function SettingsPanel({ system }: SettingsPanelProps) {
+export const SettingsPanel = ({ system }: SettingsPanelProps) => {
   const t = useTranslations();
   const [token, setToken] = useState("");
+  const [perf, setPerf] = useState({ vae_tiling: true, vae_slicing: true, xformers: true });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    api.getSettings().then((s) => setToken(s.hf_token ?? ""));
+    api.getSettings().then((s) => {
+      setToken(s.hf_token ?? "");
+      setPerf({ vae_tiling: s.vae_tiling, vae_slicing: s.vae_slicing, xformers: s.xformers });
+    });
   }, []);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await api.saveSettings({ hf_token: token.trim() === "" ? null : token.trim() });
+      const payload: AppSettings = {
+        hf_token: token.trim() === "" ? null : token.trim(),
+        ...perf,
+      };
+      await api.saveSettings(payload);
       setSaved(true);
     } finally {
       setSaving(false);
     }
+  };
+
+  const setFlag = (key: keyof typeof perf) => (checked: boolean) => {
+    setPerf((p) => ({ ...p, [key]: checked }));
+    setSaved(false);
   };
 
   const device = system?.device;
@@ -70,6 +109,34 @@ export function SettingsPanel({ system }: SettingsPanelProps) {
           helperText={t("settings.hfTokenHelp")}
           autoComplete="off"
         />
+
+        <Divider />
+
+        <Box>
+          <SectionHeading level={3} variant="subtitle2" sx={{ mb: 1 }}>
+            {t("settings.performance.title")}
+          </SectionHeading>
+          <Stack>
+            <PerfSwitch
+              label={t("settings.performance.vaeTiling")}
+              help={t("settings.performance.vaeTilingHelp")}
+              checked={perf.vae_tiling}
+              onChange={setFlag("vae_tiling")}
+            />
+            <PerfSwitch
+              label={t("settings.performance.vaeSlicing")}
+              help={t("settings.performance.vaeSlicingHelp")}
+              checked={perf.vae_slicing}
+              onChange={setFlag("vae_slicing")}
+            />
+            <PerfSwitch
+              label={t("settings.performance.xformers")}
+              help={t("settings.performance.xformersHelp")}
+              checked={perf.xformers}
+              onChange={setFlag("xformers")}
+            />
+          </Stack>
+        </Box>
 
         <Box>
           <Button variant="contained" onClick={handleSave} disabled={saving}>

@@ -19,13 +19,13 @@ interface ColorModeContextValue {
 
 const ColorModeContext = createContext<ColorModeContextValue | null>(null);
 
-export function useColorMode(): ColorModeContextValue {
+export const useColorMode = (): ColorModeContextValue => {
   const ctx = useContext(ColorModeContext);
   if (!ctx) throw new Error("useColorMode must be used within ColorModeProvider");
   return ctx;
 }
 
-export function ColorModeProvider({ children }: { children: ReactNode }) {
+export const ColorModeProvider = ({ children }: { children: ReactNode }) => {
   const [mode, setMode] = useState<ColorMode>("dark");
 
   const value = useMemo<ColorModeContextValue>(

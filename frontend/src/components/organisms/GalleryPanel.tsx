@@ -1,6 +1,7 @@
 "use client";
 
 import DeleteIcon from "@mui/icons-material/Delete";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import ReplayIcon from "@mui/icons-material/Replay";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
@@ -24,11 +25,12 @@ import type { GalleryImage, Sampler } from "@/types";
 
 interface GalleryPanelProps {
   onRegenerate: (image: GalleryImage) => void;
+  onUpscale: (image: GalleryImage) => void;
   // Changes whenever the gallery should refetch (navigation / finished generation).
   reloadToken: number;
 }
 
-export function GalleryPanel({ onRegenerate, reloadToken }: GalleryPanelProps) {
+export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPanelProps) => {
   const t = useTranslations();
 
   const [images, setImages] = useState<GalleryImage[]>([]);
@@ -134,6 +136,7 @@ export function GalleryPanel({ onRegenerate, reloadToken }: GalleryPanelProps) {
               image={img}
               onOpen={setSelected}
               onRegenerate={handleRegenerate}
+              onUpscale={onUpscale}
               onDelete={(image) => setPendingId(image.id)}
             />
           ))}
@@ -196,6 +199,15 @@ export function GalleryPanel({ onRegenerate, reloadToken }: GalleryPanelProps) {
                 {t("gallery.delete")}
               </Button>
               <Box sx={{ flexGrow: 1 }} />
+              <Button
+                component="a"
+                href={api.imageFileUrl(selected.id)}
+                target="_blank"
+                rel="noopener"
+                startIcon={<OpenInNewIcon />}
+              >
+                {t("gallery.openFull")}
+              </Button>
               <Button onClick={() => setSelected(null)}>{t("gallery.close")}</Button>
               <Button
                 variant="contained"
@@ -221,7 +233,7 @@ export function GalleryPanel({ onRegenerate, reloadToken }: GalleryPanelProps) {
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+const DetailRow = ({ label, value }: { label: string; value: string }) => {
   return (
     <Box>
       <Typography variant="caption" color="text.secondary">

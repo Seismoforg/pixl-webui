@@ -4,8 +4,11 @@ version = "0.1.0"
 description = "FastAPI + diffusers inference backend for Pixl WebUI"
 requires-python = ">=3.10,<3.14"
 
-# NOTE: torch is intentionally NOT listed here. It is installed by install.ps1
-# with the GPU-specific index (CUDA for NVIDIA, ROCm for AMD) before this package.
+# NOTE: torch AND torchvision are intentionally NOT listed here. They are installed
+# by install.ps1 with the GPU-specific index (CUDA for NVIDIA, ROCm for AMD) BEFORE
+# this package, so that spandrel's torchvision requirement is already satisfied and
+# pip does not pull a mismatched CPU/CUDA build from PyPI (which would break the GPU
+# torch). torchvision is required by spandrel (the Real-ESRGAN upscaler).
 dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
@@ -17,6 +20,7 @@ dependencies = [
     "pillow>=10.0",
     "pydantic>=2.6",
     "psutil>=5.9",
+    "spandrel>=0.3",  # loads Real-ESRGAN/ESRGAN .pth weights for AI upscaling
 ]
 
 [build-system]

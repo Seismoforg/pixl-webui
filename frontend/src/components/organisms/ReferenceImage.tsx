@@ -27,7 +27,7 @@ interface ReferenceImageProps {
  * variations of it (img2img) or borrow its style (IP-Adapter). Reads/writes the
  * generation context so the choice survives navigation like the other fields.
  */
-export function ReferenceImage({ styleSupported }: ReferenceImageProps) {
+export const ReferenceImage = ({ styleSupported }: ReferenceImageProps) => {
   const t = useTranslations();
   const gen = useGeneration();
 

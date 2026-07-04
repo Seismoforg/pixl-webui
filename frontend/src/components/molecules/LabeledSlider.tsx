@@ -17,7 +17,7 @@ interface LabeledSliderProps {
   onChange: (value: number) => void;
 }
 
-export function LabeledSlider({
+export const LabeledSlider = ({
   label,
   value,
   min,
@@ -25,7 +25,7 @@ export function LabeledSlider({
   step = 1,
   info,
   onChange,
-}: LabeledSliderProps) {
+}: LabeledSliderProps) => {
   const labelId = useId();
 
   return (

@@ -12,7 +12,7 @@ interface LogoProps {
  * The Pixl app mark (same artwork as app/icon.svg), for use in the UI header.
  * Decorative: hidden from assistive tech since the adjacent app title labels it.
  */
-export function Logo({ size = 32, sx }: LogoProps) {
+export const Logo = ({ size = 32, sx }: LogoProps) => {
   return (
     <Box
       component="svg"

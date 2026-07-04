@@ -2,36 +2,26 @@
 
 import Box from "@mui/material/Box";
 import LinearProgress from "@mui/material/LinearProgress";
-import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import { useLive } from "@/lib/ws";
 import type { ResourceStats } from "@/types";
 
-const POLL_MS = 2000;
-
 /** Compact live resource meter shown on every page, under the tab bar. */
-export function SystemStatusBar() {
+export const SystemStatusBar = () => {
   const t = useTranslations();
   const [stats, setStats] = useState<ResourceStats | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    const tick = () => {
-      api
-        .getSystemStats()
-        .then((s) => active && setStats(s))
-        .catch(() => active && setStats(null));
-    };
-    tick();
-    const id = setInterval(tick, POLL_MS);
-    return () => {
-      active = false;
-      clearInterval(id);
-    };
-  }, []);
+  // Live via WebSocket; falls back to REST polling while the socket is down.
+  useLive<ResourceStats>(
+    "system",
+    { channel: "system" },
+    setStats,
+    { fetch: api.getSystemStats, intervalMs: 2000 },
+  );
 
   if (!stats) return null;
 
@@ -45,11 +35,17 @@ export function SystemStatusBar() {
         bgcolor: "background.paper",
       }}
     >
-      <Stack
-        direction="row"
-        spacing={{ xs: 2, sm: 3 }}
-        sx={{ flexWrap: "wrap", rowGap: 0.5 }}
+      {/* CSS grid (not a flex-wrap Stack): even gaps, tidy 2x2 on mobile, one row
+          from sm up. Cells are minWidth:0 so values never force overflow. */}
+      <Box
+        role="group"
         aria-label={t("status.title")}
+        sx={{
+          display: "grid",
+          columnGap: { xs: 2, sm: 3 },
+          rowGap: 1,
+          gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", sm: "repeat(4, minmax(0, 1fr))" },
+        }}
       >
         <Meter label={t("status.cpu")} percent={stats.cpu_percent} />
         <Meter
@@ -67,12 +63,12 @@ export function SystemStatusBar() {
               : t("status.na")
           }
         />
-      </Stack>
+      </Box>
     </Box>
   );
 }
 
-function Meter({
+const Meter = ({
   label,
   percent,
   detail,
@@ -80,21 +76,30 @@ function Meter({
   label: string;
   percent: number | null;
   detail?: string;
-}) {
+}) => {
   const t = useTranslations();
   const value = percent ?? 0;
   const shown = percent != null ? `${Math.round(percent)}%` : t("status.na");
 
   return (
-    <Box sx={{ minWidth: 120 }}>
-      <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.25 }}>
-        <Typography variant="caption" color="text.secondary">
+    <Box sx={{ minWidth: 0 }}>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          gap: { xs: 0.5, sm: 2 },
+          mb: 0.25,
+          minWidth: 0,
+        }}
+      >
+        <Typography variant="caption" color="text.secondary" noWrap>
           {label}
         </Typography>
-        <Typography variant="caption" fontWeight="medium">
+        <Typography variant="caption" fontWeight="medium" sx={{ whiteSpace: "nowrap" }}>
           {detail ?? shown}
         </Typography>
-      </Stack>
+      </Box>
       <LinearProgress
         variant="determinate"
         value={percent != null ? Math.min(100, value) : 0}
