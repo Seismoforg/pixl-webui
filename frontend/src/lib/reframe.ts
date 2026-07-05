@@ -29,10 +29,30 @@ export interface Rect {
   h: number;
 }
 
-/** Centre-crop rectangle of w×h to ratio rw:rh — the region `cover` keeps
- * (mirrors `cover`). Coordinates are in source pixels. */
-export const coverRect = (w: number, h: number, rw: number, rh: number): Rect => {
+/** Crop rectangle of w×h to ratio rw:rh — the region `cover` keeps (mirrors
+ * `cover`). `posX`/`posY` (0..1, 0.5 = centred) pan the crop along the cropped
+ * axis. Coordinates are in source pixels. */
+export const coverRect = (
+  w: number,
+  h: number,
+  rw: number,
+  rh: number,
+  posX = 0.5,
+  posY = 0.5,
+): Rect => {
   const target = rw / rh;
   const [nw, nh] = w / h > target ? [Math.round(h * target), h] : [w, Math.round(w / target)];
-  return { x: Math.floor((w - nw) / 2), y: Math.floor((h - nh) / 2), w: nw, h: nh };
+  return { x: Math.round((w - nw) * posX), y: Math.round((h - nh) * posY), w: nw, h: nh };
 };
+
+// Softness → feather-px, mirroring backend reframe.default_*_feather + scale_softness
+// (0.5 = tuned default, 1.0 = 2×, 0 = off). Drives the preview's gradient overlay so
+// the drawn band width tracks what the server will actually produce.
+
+/** Outpaint mask gradient-band width in canvas pixels for a given softness. */
+export const maskFeatherPx = (cw: number, ch: number, softness: number): number =>
+  Math.max(0, Math.round(Math.max(24, Math.min(cw, ch) / 12) * softness * 2));
+
+/** Composite-back seam fade width in source pixels for a given softness. */
+export const seamFeatherPx = (w: number, h: number, softness: number): number =>
+  Math.max(0, Math.round(Math.max(32, Math.min(w, h) / 14) * softness * 2));

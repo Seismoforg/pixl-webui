@@ -1,5 +1,51 @@
 # Technical Debt
 
+## Removing a downloaded catalog entry orphans its files  (added 2026-07-05)
+- Problem: The Settings catalog editors edit the curated list only. Deleting an
+  entry (or changing its slug) that was already downloaded leaves the weights in
+  `models/<slug>` on disk — they are no longer listed, so the UI offers no way to
+  reclaim the space.
+- Impact: Orphaned model/engine folders accumulate disk usage after catalog edits;
+  the user must delete them manually from `models/`.
+- Proposed Resolution: On catalog save, detect downloaded slugs that no longer
+  appear and offer to delete their folders (or surface an "orphaned downloads"
+  cleanup action on the Models page).
+
+## Flux Fill outpaint depends on a community GGUF repo  (added 2026-07-05)
+- Problem: The curated `outpaint--flux-fill-gguf` engine pulls its transformer from
+  a community GGUF repo (`YarvixPA/FLUX.1-Fill-dev-GGUF`) and its base components
+  from the gated `black-forest-labs/FLUX.1-Fill-dev` (needs a HuggingFace token).
+- Impact: The community repo could move/rename/disappear, and the gated base fails
+  to download without a token; either breaks the engine with a download error.
+- Proposed Resolution: Pin/verify the GGUF repo periodically (or mirror it), and
+  surface a clear "needs token / repo unavailable" message when the download 401s.
+
+## torch.compile toggle is inert without Triton on ROCm  (added 2026-07-05)
+- Problem: The `torch_compile` performance setting needs Triton (inductor's GPU
+  backend), which is not installed on ROCm (`pytorch-triton-rocm`). Without it,
+  `apply_compile` guards and no-ops, so the toggle has no effect on AMD setups.
+- Impact: Users can enable the toggle but get no speedup on ROCm until Triton is
+  installed; the potential torch.compile win is unrealized there.
+- Windows finding (researched 2026-07-05): AMD's official "PyTorch on Windows"
+  ROCm repo (repo.radeon.com/rocm/windows/rocm-rel-7.2.1 and 7.1.1) ships torch/
+  torchvision/torchaudio but **no Triton wheel**, and the Windows install docs do
+  not mention Triton/torch.compile. So on Windows+ROCm there is currently NO
+  supported Triton, and torch.compile is not achievable via the official channel.
+  Only Linux ROCm ships `pytorch-triton-rocm`. The community `triton-windows` fork
+  is CUDA-focused (AMD support is early-stage, issue #179).
+- Proposed Resolution: On Linux/ROCm, install a matching `pytorch-triton-rocm` in
+  `install.ps1` and re-measure it/s. On Windows/ROCm, revisit only once AMD
+  publishes a Windows Triton wheel (or the triton-windows AMD port matures).
+
+## GGUF FLUX still downloads the full fp16 T5 encoder  (added 2026-07-05)
+- Problem: A GGUF FLUX entry downloads the base repo's ~9.5 GB fp16 T5 text encoder
+  even though only the transformer is quantized, so on-disk size is ~17 GB despite
+  the low (~16 GB) VRAM footprint.
+- Impact: Larger download/disk than the VRAM budget implies; no separate control to
+  pick a smaller text encoder.
+- Proposed Resolution: Support an fp8/GGUF T5 text encoder (swap the
+  `text_encoder_2` component at load) to shrink the base download.
+
 ## Download progress is polled, size-based  (added 2026-07-03)
 - Problem: Download progress is derived by comparing on-disk bytes against the
   repo's total size and polled by the frontend, rather than streamed (SSE/WS).

@@ -1,18 +1,39 @@
-"""Registry of available AI upscaler engines.
+"""Registry of available AI upscaler / outpaint engines.
 
-Two kinds are supported and selectable by the user:
+Kinds supported and selectable by the user:
 
 * ``realesrgan`` — a fast Real-ESRGAN GAN upscaler loaded from a single ``.pth``
   weight via :mod:`spandrel`. No prompt, general purpose.
 * ``sd_x4`` — Stable Diffusion x4 latent upscaler (a diffusers repo) run with an
   optional text prompt. Slower and more VRAM-heavy.
+* ``inpaint`` — an inpaint model used for the outpaint reframe strategy.
 
 Each engine downloads into ``models/<slug>`` like a generation model, so the
 existing download/progress/delete machinery applies unchanged.
+
+The engine list is JSON-backed: ``engines_catalog.json`` next to the app package
+ships the default catalog, and a git-ignored ``data/engines_catalog.json``
+override (written by the Settings editor) fully replaces it when present. An
+unreadable/invalid override silently falls back to the bundled default.
 """
 from __future__ import annotations
 
-from pydantic import BaseModel
+import json
+from pathlib import Path
+
+from pydantic import BaseModel, TypeAdapter
+
+from ..config import DATA_DIR, ensure_dirs
+
+
+class EngineDefaults(BaseModel):
+    """Default generation parameters for an engine. Meaningful for the diffusion
+    kinds (``sd_x4`` denoising, ``inpaint`` outpaint composition + hires refine);
+    the GAN ``realesrgan`` kind carries zeros (it has no steps/guidance)."""
+
+    steps: int  # denoising / composition steps
+    guidance_scale: float  # CFG scale (0 for prompt-free / GAN engines)
+    refine_steps: int  # hires refinement pass steps (outpaint); 0 when unused
 
 
 class UpscalerInfo(BaseModel):
@@ -25,81 +46,73 @@ class UpscalerInfo(BaseModel):
     filename: str | None
     scale: int
     approx_size_gb: float
+    min_vram_gb: float  # recommended GPU VRAM — drives the GPU-fit badge (see fit.py)
     prompt_capable: bool
     # Weight precision variant for diffusers engines ("fp16" or None); ignored for
     # single-file ``realesrgan`` weights. Threaded into the download + pipeline load
     # so custom fp16-only repos fetch and load their fp16 weights.
     variant: str | None = None
     use_safetensors: bool = True
+    # GGUF-quantized transformer source (FLUX Fill inpaint only), mirroring
+    # ``ModelInfo``. When set, ``repo_id`` supplies the base components and the
+    # transformer is loaded from this ``.gguf``; the download reuses the ModelInfo
+    # GGUF path via ``upscale.to_model_info``.
+    gguf_repo_id: str | None = None
+    gguf_filename: str | None = None
+    # Default generation parameters (steps / guidance / hires-refine steps).
+    defaults: EngineDefaults
 
+    @property
+    def is_gguf(self) -> bool:
+        """True when this engine loads a GGUF-quantized transformer (FLUX Fill)."""
+        return bool(self.gguf_filename)
 
-UPSCALERS: list[UpscalerInfo] = [
-    UpscalerInfo(
-        slug="upscaler--realesrgan-x4",
-        kind="realesrgan",
-        name="Real-ESRGAN x4",
-        description="Fast GAN upscaler (4×), general purpose — no prompt needed.",
-        repo_id="ai-forever/Real-ESRGAN",
-        filename="RealESRGAN_x4.pth",
-        scale=4,
-        approx_size_gb=0.07,
-        prompt_capable=False,
-    ),
-    UpscalerInfo(
-        slug="upscaler--sd-x4",
-        kind="sd_x4",
-        name="Stable Diffusion x4 Upscaler",
-        description="Diffusion upscaler (4×) with an optional text prompt — slower, more VRAM.",
-        repo_id="stabilityai/stable-diffusion-x4-upscaler",
-        filename=None,
-        scale=4,
-        approx_size_gb=1.7,
-        prompt_capable=True,
-    ),
-    # The outpaint (inpaint) model. Not a selectable upscaler engine — the frontend
-    # filters `kind == "inpaint"` out of the engine picker — but it is listed so its
-    # download state can be shown/triggered when the user picks the outpaint reframe.
-    UpscalerInfo(
-        slug="outpaint--sd-inpaint",
-        kind="inpaint",
-        # SD 1.5 inpainting (the maintained, ungated re-host of the classic Runway
-        # inpainting model). SD 2 inpainting is gated (401); this one is open.
-        name="Stable Diffusion Inpainting (outpaint)",
-        description="Fills newly-added areas when reframing with the outpaint strategy.",
-        repo_id="stable-diffusion-v1-5/stable-diffusion-inpainting",
-        filename=None,
-        scale=1,
-        approx_size_gb=4.3,
-        prompt_capable=True,
-        # This repo ships only fp16 safetensors; load them with variant="fp16".
-        variant="fp16",
-    ),
-]
 
 # Slug of the inpaint model used for the outpaint reframe strategy.
 INPAINT_SLUG = "outpaint--sd-inpaint"
 
+DEFAULT_CATALOG_FILE = Path(__file__).parents[1] / "engines_catalog.json"
+OVERRIDE_CATALOG_FILE = DATA_DIR / "engines_catalog.json"
+
+_CATALOG_ADAPTER = TypeAdapter(list[UpscalerInfo])
+
+
+def default_catalog() -> list[UpscalerInfo]:
+    """The bundled default engine catalog shipped with the app."""
+    return _CATALOG_ADAPTER.validate_json(DEFAULT_CATALOG_FILE.read_text("utf-8"))
+
+
+def load_catalog() -> list[UpscalerInfo]:
+    """Return the active engine catalog: the user override if present and valid,
+    else the bundled default (also the fallback for an invalid override)."""
+    if OVERRIDE_CATALOG_FILE.exists():
+        try:
+            return _CATALOG_ADAPTER.validate_json(OVERRIDE_CATALOG_FILE.read_text("utf-8"))
+        except (ValueError, OSError):
+            return default_catalog()
+    return default_catalog()
+
+
+def save_catalog(engines: list[UpscalerInfo]) -> list[UpscalerInfo]:
+    """Persist ``engines`` as the user override and return the stored value."""
+    ensure_dirs()
+    OVERRIDE_CATALOG_FILE.write_text(
+        json.dumps([e.model_dump() for e in engines], indent=2), "utf-8"
+    )
+    return engines
+
+
+def reset_catalog() -> list[UpscalerInfo]:
+    """Drop the user override so the bundled default takes effect again."""
+    OVERRIDE_CATALOG_FILE.unlink(missing_ok=True)
+    return default_catalog()
+
 
 def all_engines() -> list[UpscalerInfo]:
-    """Curated engines first, then user-added custom ones.
-
-    Custom engines live in :mod:`custom_upscalers`; the import is lazy to avoid a
-    cycle (custom_upscalers imports :class:`UpscalerInfo` from this module)."""
-    from . import custom_upscalers
-
-    return [*UPSCALERS, *custom_upscalers.load()]
-
-
-def get_curated(slug: str) -> UpscalerInfo | None:
-    return next((u for u in UPSCALERS if u.slug == slug), None)
-
-
-def is_curated(slug: str) -> bool:
-    return get_curated(slug) is not None
+    """The active engine catalog."""
+    return load_catalog()
 
 
 def get(slug: str) -> UpscalerInfo | None:
-    """Return the upscaler engine for ``slug`` (curated first, then custom)."""
-    from . import custom_upscalers
-
-    return get_curated(slug) or custom_upscalers.get(slug)
+    """Return the engine for ``slug`` from the active catalog, or ``None``."""
+    return next((u for u in load_catalog() if u.slug == slug), None)

@@ -98,6 +98,8 @@ export const PromptSnippetManager = () => {
     positive: t("settings.snippets.positive"),
     negative: t("settings.snippets.negative"),
     upscale: t("settings.snippets.upscale"),
+    outpaint: t("settings.snippets.outpaint"),
+    outpaint_negative: t("settings.snippets.outpaintNegative"),
   };
 
   const renderList = (kind: PromptKind, items: PromptSnippet[]) => (
@@ -167,6 +169,10 @@ export const PromptSnippetManager = () => {
         {renderList("negative", snippets.filter((s) => s.kind === "negative"))}
         <Divider />
         {renderList("upscale", snippets.filter((s) => s.kind === "upscale"))}
+        <Divider />
+        {renderList("outpaint", snippets.filter((s) => s.kind === "outpaint"))}
+        <Divider />
+        {renderList("outpaint_negative", snippets.filter((s) => s.kind === "outpaint_negative"))}
       </Stack>
 
       <Dialog open={editing !== null} onClose={() => setEditing(null)} maxWidth="sm" fullWidth>

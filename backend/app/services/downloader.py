@@ -103,6 +103,21 @@ def resolve_download_files(
     return base + _component_weight_files(names, variant, use_safetensors)
 
 
+def resolve_gguf_base_files(
+    names: list[str], variant: str | None, use_safetensors: bool
+) -> list[str]:
+    """Base-repo file list for a GGUF model: :func:`resolve_download_files` minus
+    the transformer weight files, which the ``.gguf`` replaces. The transformer's
+    config JSON is kept (matched by ``*.json``) so the loader's ``from_single_file``
+    can read it locally instead of hitting the network."""
+    weight_exts = (".safetensors", ".bin")
+    return [
+        n
+        for n in resolve_download_files(names, variant, use_safetensors)
+        if not (n.startswith("transformer/") and n.endswith(weight_exts))
+    ]
+
+
 class DownloadState(BaseModel):
     status: str  # "downloading" | "done" | "error"
     total_bytes: int = 0
@@ -163,6 +178,42 @@ def _run_download(model: ModelInfo, token: str | None, allow: list[str]) -> None
                 local_dir=str(target),
                 token=token,
                 allow_patterns=allow,
+                local_dir_use_symlinks=False,
+            )
+        )
+        (target / _COMPLETE_MARKER).touch()
+        with _lock:
+            _states[model.slug].status = "done"
+        live.publish(f"download:{model.slug}")
+    except Exception as exc:  # noqa: BLE001 - surfaced to the user via state
+        with _lock:
+            _states[model.slug].status = "error"
+            _states[model.slug].error = str(exc)
+        live.publish(f"download:{model.slug}")
+
+
+def _run_gguf_download(model: ModelInfo, token: str | None, allow: list[str]) -> None:
+    """Download a GGUF model: the base repo (without the transformer weights) plus
+    the single ``.gguf`` transformer file, both into ``models/<slug>``."""
+    from huggingface_hub import hf_hub_download, snapshot_download
+
+    target = config.model_dir(model.slug)
+    try:
+        _download_with_retries(
+            lambda: snapshot_download(
+                repo_id=model.repo_id,
+                local_dir=str(target),
+                token=token,
+                allow_patterns=allow,
+                local_dir_use_symlinks=False,
+            )
+        )
+        _download_with_retries(
+            lambda: hf_hub_download(
+                repo_id=model.gguf_repo_id,
+                filename=model.gguf_filename,
+                local_dir=str(target),
+                token=token,
                 local_dir_use_symlinks=False,
             )
         )
@@ -247,13 +298,24 @@ def _prepare_and_download(model: ModelInfo, token: str | None) -> None:
     the state is already ``downloading`` before this (slow) work begins."""
     from huggingface_hub import HfApi
 
+    api = HfApi()
     try:
-        info = HfApi().model_info(model.repo_id, token=token, files_metadata=True)
+        info = api.model_info(model.repo_id, token=token, files_metadata=True)
         siblings = info.siblings or []
         names = [s.rfilename for s in siblings]
-        allow = resolve_download_files(names, model.variant, model.use_safetensors)
+        if model.is_gguf:
+            allow = resolve_gguf_base_files(names, model.variant, model.use_safetensors)
+            gguf_info = api.model_info(model.gguf_repo_id, token=token, files_metadata=True)
+            gguf_size = next(
+                (s.size or 0 for s in (gguf_info.siblings or [])
+                 if s.rfilename == model.gguf_filename),
+                0,
+            )
+        else:
+            allow = resolve_download_files(names, model.variant, model.use_safetensors)
+            gguf_size = 0
         allow_set = set(allow)
-        total = sum(s.size or 0 for s in siblings if s.rfilename in allow_set)
+        total = sum(s.size or 0 for s in siblings if s.rfilename in allow_set) + gguf_size
         with _lock:
             _states[model.slug].total_bytes = total
         live.publish(f"download:{model.slug}")
@@ -264,7 +326,10 @@ def _prepare_and_download(model: ModelInfo, token: str | None) -> None:
         live.publish(f"download:{model.slug}")
         return
 
-    _run_download(model, token, allow)
+    if model.is_gguf:
+        _run_gguf_download(model, token, allow)
+    else:
+        _run_download(model, token, allow)
 
 
 def start_download(model: ModelInfo, token: str | None) -> None:

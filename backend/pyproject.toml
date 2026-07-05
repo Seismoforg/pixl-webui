@@ -12,7 +12,7 @@ requires-python = ">=3.10,<3.14"
 dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
-    "diffusers>=0.27",
+    "diffusers>=0.31",  # GGUFQuantizationConfig (GGUF-quantized FLUX) needs >=0.31
     "transformers>=4.40",
     "accelerate>=0.29",
     "safetensors>=0.4",
@@ -22,6 +22,7 @@ dependencies = [
     "psutil>=5.9",
     "spandrel>=0.3",  # loads Real-ESRGAN/ESRGAN .pth weights for AI upscaling
     "compel>=2.0",  # long-prompt (>77 CLIP tokens) + weighted embeddings for SD/SDXL
+    "gguf>=0.10",  # load GGUF-quantized FLUX transformers via diffusers GGUFQuantizationConfig
 ]
 
 [build-system]

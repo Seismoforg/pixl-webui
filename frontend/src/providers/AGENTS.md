@@ -7,6 +7,8 @@ navigation-surviving state or wraps the tree in a context lives here.
   providers so running jobs and data survive client-side navigation
 - Provide the light/dark color mode + MUI theme
 - Provide generation, upscale, reframe, activity and download contexts
+- Persist in-flight job/download ids (via lib/jobPersistence) and rehydrate them on
+  mount so a running activity's status bubble survives a full page reload
 
 # File Structure
 - AppDataProvider.tsx    — shared models/system state + `useAppData`; hosts the
@@ -20,10 +22,17 @@ navigation-surviving state or wraps the tree in a context lives here.
                            theme from `@/theme/theme` and mounts ThemeProvider
 - GenerationProvider.tsx — generation form + running job + polling; `useGeneration`
 - UpscaleProvider.tsx    — upscale form + job + polling; `useUpscale`
-- ReframeProvider.tsx    — reframe form (source/ratio/strategy/outpaint) + job +
-                           live tracking; `useReframe`. Reframing changes aspect
-                           ratio WITHOUT upscaling; reuses the upscale progress
-                           shape + `UpscaleSource` type
+- ReframeProvider.tsx    — reframe form (source/ratio/strategy/outpaint prompt +
+                           negative + outpaint seam-blend softness:
+                           maskFeather/seamFeather/seedBlur +
+                           source position posX/posY, all 0–100 % + outpaint
+                           generation params: sampler/steps/refineSteps/guidance/
+                           seed/batch, with the sampler list fetched once) + job +
+                           live tracking; `useReframe`. Reframing changes aspect ratio
+                           WITHOUT upscaling; tracks the job via the `ReframeProgress`
+                           shape (the upscale shape + batch fields) and exposes
+                           `resultIds` for the batch result grid; reuses the
+                           `UpscaleSource` type
 - ActivityProvider.tsx   — generic off-route status store; `useActivity`
 - DownloadProvider.tsx   — app-level download tracking; `useDownloads` +
                            `trackUpscalerDownload` helper (start + track an engine

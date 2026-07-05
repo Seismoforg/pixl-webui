@@ -4,13 +4,20 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 
 # Responsibilities
 - Detect the torch device/backend (CUDA / ROCm / CPU)
-- Serve the curated model catalog and download models into `models/<slug>`
-- Browse/resolve arbitrary HuggingFace diffusers models and add them as custom models
+- Serve the curated model catalog (JSON-backed, editable in Settings) and download
+  models into `models/<slug>`
 - Assess whether a model fits the current GPU (full / CPU-offload / too large)
 - Persist user settings (HuggingFace token + performance toggles: VAE tiling/
-  slicing, xformers — applied to generation and upscale pipelines on load; plus
-  the SD x4 upscaler step count, read per-run)
+  slicing, xformers, torch.compile — applied to generation and upscale pipelines on
+  load; plus the SD x4 upscaler step count and the outpaint negative-prompt default,
+  read per-run; plus preferred default dropdown selections
+  `default_model`/`default_upscaler`/`default_outpaint_engine`, consumed by the UI).
+  On ROCm, GEMM kernels are auto-tuned via TunableOp (persistently cached in `data/`)
 - Run text-to-image generation as a background job with live step progress
+- Load GGUF-quantized FLUX models (catalog entries carrying a `.gguf` transformer
+  source): download the base repo without its transformer weights + the single
+  `.gguf`, and load the quantized transformer via diffusers' GGUFQuantizationConfig
+  so FLUX runs in ~16 GB VRAM
 - Encode long/weighted prompts (>77 CLIP tokens, A1111 `(word:1.2)` weighting)
   via compel for SD 1.5 / SDXL; other families keep the native prompt path
 - Optional reference image: img2img variations, or IP-Adapter style (SD 1.5/SDXL)
@@ -24,18 +31,29 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
   engine on demand and optionally tiling large inputs
 - Reframe an image to a target aspect ratio WITHOUT upscaling (cover/contain/edge,
   or AI outpaint with a selectable inpaint model + its own outpaint prompt) — a
-  standalone job/endpoint, separate from upscaling
-- Browse/add custom upscale & outpaint engines (custom Real-ESRGAN weight, SD x4
-  or inpaint diffusers repo), managed like generation models (curated + custom)
-- Persist reusable positive/negative/upscale prompt snippets (prompt templates)
+  standalone job/endpoint, separate from upscaling. The inpaint model can be SD/SDXL
+  or a GGUF-quantized FLUX.1-Fill-dev engine (Flux-quality outpainting in ~16 GB)
+- Serve the curated upscale/outpaint engine catalog (JSON-backed, editable in
+  Settings) and download engines like generation models
+- Persist reusable positive/negative/upscale/outpaint/outpaint-negative prompt
+  snippets (prompt templates)
 - Delete downloaded models from disk and report live system-resource stats
 
 # File Structure
 - pyproject.toml        — package + runtime deps (torch installed separately by install.ps1)
 - app/main.py           — FastAPI app, CORS, router registration (controller entry)
-- app/config.py         — paths, HF cache redirection, settings store
-- app/device.py         — device/backend detection and dtype selection
-- app/catalog.py        — curated model catalog (domain data)
+- app/config.py         — paths, HF cache redirection, settings store; also pins the
+                          ROCm TunableOp results file into `data/`
+- app/device.py         — device/backend detection and dtype selection (fp16 for
+                          normal loads; bf16 compute dtype for the GGUF FLUX path)
+- app/catalog.py        — curated model catalog (domain data), JSON-backed:
+                          `models_catalog.json` ships the default, a git-ignored
+                          `data/models_catalog.json` override (written by the Settings
+                          editor) replaces it. `ModelInfo` carries optional
+                          `gguf_repo_id`/`gguf_filename` (+ `is_gguf`) for
+                          GGUF-quantized FLUX entries
+- app/models_catalog.json — bundled default generation-model catalog
+- app/engines_catalog.json — bundled default upscale/outpaint engine catalog
 - app/samplers.py       — sampler (diffusers scheduler) registry + apply_sampler
 - app/messages.py       — centralised English user-facing strings (i18n-ready)
 - app/live.py           — in-process pub/sub hub: producer threads publish(key) to
@@ -43,26 +61,23 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 - app/routers/          — HTTP controllers: system, settings, models, generate,
                           images, templates, upscale, reframe, ws
 - app/services/         — business logic: downloader (download orchestration +
-                          progress), hf_browse (HF search + repo/engine resolve),
-                          pipeline, prompt_embeds (long-prompt CLIP embeds),
-                          callbacks (shared diffusers step-callback + timing),
-                          gallery (+ data-URL image decode), resources, fit (GPU
-                          fit check), custom_models (user-added registry),
-                          upscalers (engine registry) + upscale (engine service)
+                          progress), pipeline, prompt_embeds (long-prompt CLIP
+                          embeds), callbacks (shared diffusers step-callback +
+                          timing), gallery (+ data-URL image decode), resources,
+                          fit (GPU fit check), upscalers (JSON-backed engine
+                          catalog) + upscale (engine service)
 
 # Key Components
 - services/downloader.py — background snapshot_download + size-based progress state
                            machine; `resolve_download_files` picks one weight per
                            diffusers component (handles mixed-variant repos);
                            `start_file_download` fetches a single weight (upscaler
-                           .pth) reusing the same progress state; delete/is_downloaded
-- services/hf_browse.py  — HuggingFace browsing (split out of downloader): HF search
-                           (list_models) and repo resolve (size/variant/diffusers-
-                           compatibility/VRAM estimate/pipeline_tag) for the browser;
-                           search takes a list of pipeline_tags (default text-to-image),
-                           one query per tag, merged + deduped; `resolve_engine`
-                           inspects a custom upscale/outpaint engine repo. Imports
-                           `resolve_download_files` from downloader (one-way)
+                           .pth) reusing the same progress state; delete/is_downloaded.
+                           GGUF models take a dedicated path: `resolve_gguf_base_files`
+                           = the base repo minus the transformer weights (keeps its
+                           config), and `_run_gguf_download` fetches that base snapshot
+                           plus the single `.gguf` transformer file into models/<slug>
+                           (combined size for progress)
 - services/vram.py       — release(): gc + torch.cuda.empty_cache (best-effort). The
                            generation and upscale services free each other's models
                            (and the non-active upscaler engine) + call release before
@@ -70,38 +85,70 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            cross-service calls use lazy imports to avoid a cycle
 - services/optimizations.py — apply_perf(pipe, settings): best-effort VAE tiling/
                            slicing + xformers, shared by the generation and upscale
-                           pipeline loaders; driven by the persisted settings
+                           pipeline loaders; driven by the persisted settings.
+                           apply_compile(pipe, settings): optional torch.compile of
+                           the denoising module (transformer/unet), Triton-guarded so
+                           it's a safe no-op on GPU without Triton (never breaks a load)
 - services/upscalers.py  — registry of upscale/outpaint engines (Real-ESRGAN
                            `realesrgan`, SD x4 `sd_x4`, inpaint `inpaint` kinds):
-                           slug, repo id/filename, scale, size, prompt-capable,
-                           variant/use_safetensors; all_engines() = curated + custom
-                           (get()/is_curated() resolve both, lazy custom import)
-- services/custom_upscalers.py — persists user-added engines in
-                           data/custom_upscalers.json (mirrors custom_models.py)
+                           slug, repo id/filename, scale, size, min_vram (GPU-fit
+                           badge), prompt-capable, variant/use_safetensors,
+                           `defaults` (steps/guidance_scale/refine_steps); inpaint
+                           engines may carry
+                           `gguf_repo_id`/`gguf_filename` (+ `is_gguf`) for a GGUF
+                           FLUX.1-Fill-dev outpaint model. JSON-backed like the model
+                           catalog: `engines_catalog.json` ships the default, a
+                           git-ignored `data/engines_catalog.json` override replaces
+                           it; all_engines()/get() read the active catalog
 - services/upscale.py    — dispatches upscaling by engine kind: spandrel-loaded
                            Real-ESRGAN or a cached StableDiffusionUpscalePipeline;
                            optional tiling stitches large inputs (bounds VRAM);
                            caches loaded engines like pipeline.py
 - services/reframe.py    — aspect-ratio reframing (pure PIL): cover/contain/edge +
-                           canvas/mask geometry for outpainting
+                           canvas/mask geometry for outpainting (build_mask gradient
+                           band, feathered_keep_mask seam, reflect_fill seed) with
+                           default_*_feather/default_seed_blur + scale_softness so the
+                           seam widths are user-tunable (0.5 = tuned default);
+                           place_offset positions the source (pos_x/pos_y, 0.5 =
+                           centred): contain/edge/outpaint place it in the extended
+                           canvas, cover pans the kept crop
 - services/outpaint.py   — extend an image to a target ratio by generating the new
-                           area with a selectable SD inpaint pipe (engine passed in;
-                           reloads on slug change); whole-canvas composition pass at a
-                           model-family working cap (SD 1.x 768 / SDXL 1024) — the full
+                           area with a selectable inpaint pipe (engine passed in;
+                           reloads on slug change). GGUF engines load FLUX.1-Fill via
+                           `_load_flux_fill` (GGUF transformer + FluxFillPipeline +
+                           CPU offload); the Flux branch drops the negative prompt,
+                           passes explicit height/width, and uses a 1024 cap. Non-GGUF
+                           engines use AutoPipelineForInpainting as before. Whole-canvas
+                           composition pass at a model-family working cap (SD 1.x 768 /
+                           SDXL 1024 / FLUX 1024) — the full
                            canvas directly when it fits, else generated at the cap and
                            upscaled, then a short low-strength hires refinement pass
                            re-adds full-res border detail. The pristine full-res source
                            is composited back over its region (feathered seam) so the
                            source stays pixel-exact and only the border is AI; VRAM-
-                           coordinated. Used by the reframe job for reframe=outpaint
+                           coordinated. The mask/seam/seed widths are user-scalable via
+                           mask_softness/seam_softness/seed_softness (0..1, 0.5 =
+                           default) and the source placement via pos_x/pos_y (0.5 =
+                           centred). The negative prompt = the configurable
+                           Settings.outpaint_negative default with the per-run negative
+                           appended. Generation params are configurable per run:
+                           steps (composition) + refine_steps (hires pass) + guidance +
+                           an optional sampler (applied via samplers.apply_sampler when
+                           the pipe supports it) + a seed (seeded torch.Generator for a
+                           reproducible border). Used by the reframe job for
+                           reframe=outpaint
 - services/fit.py        — assess(model): fits_gpu / fits_offload / too_large / cpu_only
                            against live VRAM+RAM; drives both the UI badge and the
                            pipeline's device placement (offload) so they never disagree
-- services/custom_models.py — persists user-added models in data/custom_models.json;
-                           resolve_model(slug) = curated first, then custom
 - services/pipeline.py   — diffusers pipeline load/cache + generation (step callback);
                            also builds a cached img2img pipe (from_pipe) and manages
-                           IP-Adapter load/unload for style conditioning
+                           IP-Adapter load/unload for style conditioning. GGUF entries
+                           branch to `_load_gguf`: the transformer is built from the
+                           local `.gguf` (GGUFQuantizationConfig, bf16) and passed into
+                           FluxPipeline.from_pretrained (overriding that component),
+                           then CPU-offloaded to bound VRAM (FLUX only). On ROCm the
+                           load prologue enables TunableOp (GEMM tuning); after
+                           apply_perf it runs apply_compile (optional torch.compile)
 - services/callbacks.py  — shared diffusers step-callback wiring (`step_kwargs`,
                            modern/legacy API) + `StepTimer` (iterations/second
                            from the first step); used by pipeline/upscale/outpaint
@@ -109,7 +156,8 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            delete; `decode_data_url` turns a base64 data URL into a
                            PIL image (shared by the generate/upscale routers)
 - services/prompt_templates.py — JSON store for reusable prompt snippets
-                           (positive/negative/upscale), in data/prompt_templates.json
+                           (positive/negative/upscale/outpaint/outpaint_negative),
+                           in data/prompt_templates.json
 - services/resources.py  — live CPU/RAM (psutil) + VRAM (torch mem_get_info) stats;
                            GPU compute % is best-effort: NVIDIA via
                            torch.cuda.utilization(), else the gpu_win Windows
@@ -142,9 +190,10 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            lists the available samplers + default
 - routers/images.py      — GET /api/images, GET /api/images/{id} (metadata),
                            GET /api/images/{id}/file, DELETE /api/images/{id}
-- routers/upscale.py     — GET /api/upscale/engines (curated+custom, +per-engine
-                           download/progress); add/resolve/delete custom engines
-                           (GET /engines/resolve, POST /engines, DELETE /engines/{slug});
+- routers/upscale.py     — GET /api/upscale/engines (curated list + per-engine
+                           download/progress + GPU-fit verdict); engine-catalog editing
+                           (GET/PUT /engines/catalog, POST /engines/catalog/reset);
+                           DELETE /engines/{slug} (remove from disk);
                            POST /api/upscale (engine + gallery-id or uploaded data URL
                            + upscaler prompt + tile flag + per-run sd_x4_steps
                            override) as a background job,
@@ -153,17 +202,25 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            now a separate router (below)
 - routers/reframe.py     — POST /api/reframe (gallery-id or uploaded data URL +
                            target_ratio + reframe strategy + outpaint_prompt +
-                           outpaint_engine) as a background job that reframes the
+                           outpaint_negative + outpaint_engine + outpaint seam-blend
+                           softness mask/seam/seed_softness + source position
+                           pos_x/pos_y + outpaint generation params
+                           outpaint_steps/refine_steps/guidance/sampler/seed/batch)
+                           as a background job that reframes the
                            image to a target aspect ratio WITHOUT upscaling
                            (cover/contain/edge = pure PIL; outpaint = the outpaint
-                           service) and saves to the gallery; GET /api/reframe/{job_id}
-                           reuses the upscale `UpscaleProgress` shape (phase incl.
-                           "outpainting"/steps/elapsed). Mirrors the upscale job
-                           store; publishes the `reframe` WS channel
+                           service, generating `outpaint_batch` variants with
+                           incrementing seeds) and saves to the gallery;
+                           GET /api/reframe/{job_id} returns `ReframeProgress` (the
+                           upscale `UpscaleProgress` shape + batch_index/batch_size/
+                           image_ids; phase incl. "outpainting"/steps/elapsed).
+                           Mirrors the upscale job store; publishes the `reframe`
+                           WS channel
 - routers/templates.py   — CRUD for prompt snippets under /api/prompt-templates
-- routers/models.py      — catalog (curated+custom, each with a fit verdict) +
-                           GET /search, GET /resolve, POST /api/models (add by repo_id) +
-                           download/progress + DELETE /api/models/{slug} (remove from disk)
+- routers/models.py      — catalog list (curated, each with a fit verdict) +
+                           catalog editing (GET/PUT /api/models/catalog,
+                           POST /api/models/catalog/reset) + download/progress +
+                           DELETE /api/models/{slug} (remove from disk)
 - routers/system.py      — GET /api/system (device) + GET /api/system/stats (live resources)
 - routers/ws.py          — multiplexed WebSocket at /ws: subscribe channels
                            (system/generation/upscale/reframe/download), server pushes the
@@ -173,9 +230,10 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            on a ~1s tick (sampled). REST endpoints remain the fallback
 
 # Dependencies
-fastapi, uvicorn, diffusers, transformers, accelerate, huggingface_hub, pillow,
-pydantic, psutil, compel (long/weighted prompts); torch (CUDA/ROCm/CPU) installed
-by the root installer.
+fastapi, uvicorn, diffusers (>=0.31 for GGUF), transformers, accelerate,
+huggingface_hub, pillow, pydantic, psutil, compel (long/weighted prompts), gguf
+(GGUF-quantized FLUX transformers); torch (CUDA/ROCm/CPU) installed by the root
+installer.
 
 # Related Modules
 - Parent: ../  (project root)

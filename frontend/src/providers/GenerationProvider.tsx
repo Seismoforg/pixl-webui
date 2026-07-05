@@ -13,6 +13,7 @@ import {
 import { useActivity } from "@/providers/ActivityProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import { clearJob, loadJob, saveJob } from "@/lib/jobPersistence";
 import { useJobTracker } from "@/lib/ws";
 import type {
   GalleryImage,
@@ -116,6 +117,10 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
   const [progress, setProgress] = useState<GenerationProgress | null>(null);
   const [images, setImages] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Preferred default model from Settings (applied only when downloaded); gated so
+  // the initial model pick waits for it rather than racing to the first model.
+  const [defaultModel, setDefaultModel] = useState<string | null>(null);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   const running = jobId !== null;
 
@@ -130,17 +135,27 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
       .catch(() => setSamplers([]));
   }, []);
 
-  // Select the first available model and apply its defaults.
+  // Load the preferred default model from Settings (best-effort).
   useEffect(() => {
-    if (downloaded.length === 0) return;
+    api
+      .getSettings()
+      .then((s) => setDefaultModel(s.default_model))
+      .catch(() => setDefaultModel(null))
+      .finally(() => setSettingsLoaded(true));
+  }, []);
+
+  // Select the initial model — the Settings default when downloaded, else the first
+  // downloaded — and apply its defaults. Waits for Settings so the default wins.
+  useEffect(() => {
+    if (!settingsLoaded || downloaded.length === 0) return;
     if (downloaded.some((m) => m.slug === slug)) return;
-    const first = downloaded[0];
-    setSlug(first.slug);
-    setSteps(first.defaults.steps);
-    setGuidance(first.defaults.guidance_scale);
-    setWidth(first.defaults.width);
-    setHeight(first.defaults.height);
-  }, [downloaded, slug]);
+    const target = downloaded.find((m) => m.slug === defaultModel) ?? downloaded[0];
+    setSlug(target.slug);
+    setSteps(target.defaults.steps);
+    setGuidance(target.defaults.guidance_scale);
+    setWidth(target.defaults.width);
+    setHeight(target.defaults.height);
+  }, [downloaded, slug, defaultModel, settingsLoaded]);
 
   // Track the running job over the WebSocket, with a REST poll fallback while the
   // socket is down (see useJobTracker). The handler fills the grid live as batch
@@ -154,18 +169,41 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
       setImages(p.image_ids.map((id) => api.imageFileUrl(id)));
       if (p.status === "done") {
         setJobId(null);
+        clearJob("generation");
         onGenerated();
       } else if (p.status === "error") {
         setError(p.error ?? t("common.error"));
         setJobId(null);
+        clearJob("generation");
       }
     },
     (message) => {
       setError(message);
       setJobId(null);
+      clearJob("generation");
     },
     POLL_MS,
   );
+
+  // Rehydrate a job that was still running when the page reloaded: the backend job
+  // keeps going, so re-attach the tracker (which republishes progress + the bubble)
+  // if it is still running; otherwise drop the stale id.
+  useEffect(() => {
+    const saved = loadJob("generation");
+    if (!saved) return undefined;
+    let active = true;
+    api
+      .getGenerationProgress(saved)
+      .then((p) => {
+        if (!active) return;
+        if (p.status === "running") setJobId(saved);
+        else clearJob("generation");
+      })
+      .catch(() => active && clearJob("generation"));
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Publish the running job to the shared activity store for the off-route bubble.
   const { set: setActivity } = useActivity();
@@ -233,6 +271,7 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
         ip_adapter_scale: ipAdapterScale,
       });
       setJobId(job_id);
+      saveJob("generation", job_id);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }

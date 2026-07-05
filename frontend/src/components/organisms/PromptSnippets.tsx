@@ -54,15 +54,19 @@ export const PromptSnippets = ({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
 
-  const loadLabel = {
+  const loadLabel: string = {
     positive: t("generate.snippets.loadPositive"),
     negative: t("generate.snippets.loadNegative"),
     upscale: t("generate.snippets.loadUpscale"),
+    outpaint: t("generate.snippets.loadOutpaint"),
+    outpaint_negative: t("generate.snippets.loadOutpaintNegative"),
   }[kind];
-  const manageTitle = {
+  const manageTitle: string = {
     positive: t("generate.snippets.manageTitlePositive"),
     negative: t("generate.snippets.manageTitleNegative"),
     upscale: t("generate.snippets.manageTitleUpscale"),
+    outpaint: t("generate.snippets.manageTitleOutpaint"),
+    outpaint_negative: t("generate.snippets.manageTitleOutpaintNegative"),
   }[kind];
 
   const apply = (text: string) => {

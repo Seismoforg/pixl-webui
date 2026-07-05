@@ -1,9 +1,9 @@
 "use client";
 
-import AddIcon from "@mui/icons-material/Add";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DownloadIcon from "@mui/icons-material/Download";
+import MemoryIcon from "@mui/icons-material/Memory";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import StorageIcon from "@mui/icons-material/Storage";
 import Alert from "@mui/material/Alert";
@@ -23,24 +23,23 @@ import { trackUpscalerDownload, useDownloads } from "@/providers/DownloadProvide
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { ConfirmDialog } from "@/components/molecules/ConfirmDialog";
 import { SkeletonList } from "@/components/molecules/SkeletonList";
-import { AddEngineDialog } from "@/components/organisms/AddEngineDialog";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import { fitBucket, fitChipMeta, fitRank } from "@/lib/fit";
 import { useAsyncData } from "@/lib/useAsyncData";
 import type { DownloadProgress, UpscalerEngine } from "@/types";
 
 /**
  * Models-page section for upscale/outpaint engines — the counterpart to
  * ModelManager for the engine registry. Lists engines grouped by install state
- * with install/progress/delete (via the app-level DownloadProvider) and an
- * "Add engine" dialog for custom Real-ESRGAN weights and SD-x4 / inpaint repos.
+ * with install/progress/delete (via the app-level DownloadProvider). The curated
+ * engine list is edited in Settings (CuratedEnginesEditor), not here.
  */
 export const EngineManager = () => {
   const t = useTranslations();
   const downloads = useDownloads();
   const { data, loading, reload } = useAsyncData(() => api.getUpscalers(), []);
   const engines = useMemo<UpscalerEngine[]>(() => data ?? [], [data]);
-  const [addOpen, setAddOpen] = useState(false);
   const [pendingSlug, setPendingSlug] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,14 +51,18 @@ export const EngineManager = () => {
   }, [downloads.progress, engines, reload]);
 
   const installed = useMemo(() => engines.filter((e) => e.downloaded), [engines]);
-  const available = useMemo(
-    () => engines.filter((e) => !e.downloaded && e.curated),
-    [engines],
-  );
-  const custom = useMemo(
-    () => engines.filter((e) => !e.downloaded && !e.curated),
-    [engines],
-  );
+  // Not-yet-downloaded engines, split into fit buckets (best fit first) like the
+  // model list.
+  const byBucket = useMemo(() => {
+    const rest = engines
+      .filter((e) => !e.downloaded)
+      .sort((a, b) => fitRank[a.fit.verdict] - fitRank[b.fit.verdict]);
+    return {
+      available: rest.filter((e) => fitBucket(e.fit.verdict) === "available"),
+      offload: rest.filter((e) => fitBucket(e.fit.verdict) === "offload"),
+      tooLarge: rest.filter((e) => fitBucket(e.fit.verdict) === "tooLarge"),
+    };
+  }, [engines]);
 
   const handleDownload = async (engine: UpscalerEngine) => {
     setError(null);
@@ -104,12 +107,9 @@ export const EngineManager = () => {
 
   return (
     <Box sx={{ mt: 5 }}>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-        <SectionHeading level={2}>{t("engines.title")}</SectionHeading>
-        <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setAddOpen(true)}>
-          {t("engines.add")}
-        </Button>
-      </Stack>
+      <SectionHeading level={2} sx={{ mb: 1 }}>
+        {t("engines.title")}
+      </SectionHeading>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         {t("engines.subtitle")}
       </Typography>
@@ -125,12 +125,11 @@ export const EngineManager = () => {
       ) : (
         <Stack spacing={3}>
           {section("models.installed", installed)}
-          {section("models.available", available)}
-          {section("engines.custom", custom)}
+          {section("models.available", byBucket.available)}
+          {section("models.availableOffload", byBucket.offload)}
+          {section("models.availableTooLarge", byBucket.tooLarge)}
         </Stack>
       )}
-
-      <AddEngineDialog open={addOpen} onClose={() => setAddOpen(false)} onAdded={reload} />
 
       <ConfirmDialog
         open={pendingSlug !== null}
@@ -156,6 +155,11 @@ const EngineRow = ({ engine, progress, onDownload, onDelete }: EngineRowProps) =
   const status = progress?.status ?? engine.status;
   const isDownloading = status === "downloading";
   const isError = status === "error";
+  const fitMeta = fitChipMeta(engine.fit.verdict);
+  const fitTooltip = t(fitMeta.tooltipKey, {
+    vram: engine.fit.est_vram_gb,
+    total: engine.fit.gpu_total_gb ?? "?",
+  });
 
   return (
     <Paper variant="outlined" sx={{ p: 1.5 }}>
@@ -169,12 +173,6 @@ const EngineRow = ({ engine, progress, onDownload, onDelete }: EngineRowProps) =
             <Typography variant="subtitle1" fontWeight="medium" sx={{ mr: 0.5 }}>
               {engine.name}
             </Typography>
-            <Chip
-              label={engine.curated ? t("models.originCurated") : t("models.originCustom")}
-              size="small"
-              color={engine.curated ? "primary" : "default"}
-              variant="outlined"
-            />
             <Tooltip title={t("models.hfCard")}>
               <IconButton
                 size="small"
@@ -208,6 +206,15 @@ const EngineRow = ({ engine, progress, onDownload, onDelete }: EngineRowProps) =
               variant="outlined"
             />
           )}
+          <Chip
+            icon={<MemoryIcon />}
+            label={`${t("models.vram")} ≥ ${engine.min_vram_gb} GB`}
+            size="small"
+            variant="outlined"
+          />
+          <Tooltip title={fitTooltip}>
+            <Chip label={t(fitMeta.labelKey)} size="small" color={fitMeta.color} variant="outlined" />
+          </Tooltip>
         </Box>
 
         <Box sx={{ flexShrink: 0 }}>

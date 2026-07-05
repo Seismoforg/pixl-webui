@@ -15,10 +15,9 @@ from pydantic import BaseModel
 
 from .. import live, messages
 from ..services import (
-    custom_upscalers,
     downloader,
+    fit,
     gallery,
-    hf_browse,
     outpaint as outpaint_svc,
     upscale as upscale_svc,
     upscalers,
@@ -38,24 +37,17 @@ class UpscalerEntry(BaseModel):
     family: str  # "Upscaler" | "Outpaint" (derived from kind)
     scale: int
     approx_size_gb: float
+    min_vram_gb: float  # recommended GPU VRAM — shown as a per-row badge
     prompt_capable: bool
-    curated: bool
+    is_gguf: bool  # GGUF-quantized (FLUX Fill) — drives Flux-specific UI handling
     downloaded: bool
     status: str  # "idle" | "downloading" | "done" | "error"
+    fit: fit.FitInfo  # GPU-fit verdict, like the model catalog entries
 
 
 class DownloadStarted(BaseModel):
     slug: str
     message: str
-
-
-class AddEngineRequest(BaseModel):
-    repo_id: str
-    kind: str  # "realesrgan" | "sd_x4" | "inpaint"
-    filename: str | None = None  # required for "realesrgan"
-
-
-_ENGINE_KINDS = ("realesrgan", "sd_x4", "inpaint")
 
 
 def _engine_family(kind: str) -> str:
@@ -194,78 +186,41 @@ def list_engines() -> list[UpscalerEntry]:
         progress = downloader.get_progress(u.slug)
         entries.append(
             UpscalerEntry(
-                **u.model_dump(exclude={"filename", "variant", "use_safetensors"}),
+                **u.model_dump(exclude={
+                    "filename", "variant", "use_safetensors",
+                    "gguf_repo_id", "gguf_filename", "defaults",
+                }),
+                is_gguf=u.is_gguf,
                 family=_engine_family(u.kind),
-                curated=upscalers.is_curated(u.slug),
                 downloaded=downloader.is_downloaded(u.slug),
                 status=progress.status,
+                fit=fit.assess(upscale_svc.to_model_info(u)),
             )
         )
     return entries
 
 
-@router.get("/engines/resolve", response_model=hf_browse.EngineResolve)
-def resolve_engine(repo_id: str, kind: str) -> hf_browse.EngineResolve:
-    if kind not in _ENGINE_KINDS:
-        raise HTTPException(400, messages.ENGINE_KIND_INVALID.format(kind=kind))
-    token = load_settings().hf_token
-    try:
-        return hf_browse.resolve_engine(repo_id, kind, token)
-    except Exception as exc:  # noqa: BLE001 - surfaced to the user
-        raise HTTPException(
-            400, messages.RESOLVE_FAILED.format(repo_id=repo_id, detail=exc)
-        ) from exc
+# --- Engine-catalog editing (Settings) ----------------------------------------
+# Registered before the `/engines/{slug}` routes so "catalog" is never a slug.
+
+@router.get("/engines/catalog", response_model=list[UpscalerInfo])
+def read_engine_catalog() -> list[UpscalerInfo]:
+    """The raw, editable curated engine catalog (no per-engine runtime state)."""
+    return upscalers.load_catalog()
 
 
-@router.post("/engines", response_model=DownloadStarted)
-def add_engine(body: AddEngineRequest) -> DownloadStarted:
-    if body.kind not in _ENGINE_KINDS:
-        raise HTTPException(400, messages.ENGINE_KIND_INVALID.format(kind=body.kind))
-    if body.kind == "realesrgan" and not body.filename:
-        raise HTTPException(400, messages.ENGINE_FILENAME_REQUIRED)
+@router.put("/engines/catalog", response_model=list[UpscalerInfo])
+def write_engine_catalog(engines: list[UpscalerInfo]) -> list[UpscalerInfo]:
+    slugs = [e.slug for e in engines]
+    duplicate = next((s for s in slugs if slugs.count(s) > 1), None)
+    if duplicate is not None:
+        raise HTTPException(400, messages.CATALOG_DUPLICATE_SLUG.format(slug=duplicate))
+    return upscalers.save_catalog(engines)
 
-    token = load_settings().hf_token
-    try:
-        resolved = hf_browse.resolve_engine(body.repo_id, body.kind, token)
-    except Exception as exc:  # noqa: BLE001 - surfaced to the user
-        raise HTTPException(
-            400, messages.RESOLVE_FAILED.format(repo_id=body.repo_id, detail=exc)
-        ) from exc
-    if not resolved.compatible:
-        raise HTTPException(
-            409, messages.ENGINE_INCOMPATIBLE.format(repo_id=body.repo_id, kind=body.kind)
-        )
 
-    role = "outpaint" if body.kind == "inpaint" else "upscaler"
-    slug = f"{role}--{hf_browse.slug_for(body.repo_id)}"
-    if upscalers.get(slug) is not None:
-        raise HTTPException(409, messages.ENGINE_ALREADY_ADDED.format(repo_id=body.repo_id))
-
-    if body.kind == "realesrgan":
-        size = next(
-            (w.approx_size_gb for w in resolved.weights if w.filename == body.filename), 0.0
-        )
-        engine = UpscalerInfo(
-            slug=slug, kind=body.kind, name=body.repo_id.split("/")[-1],
-            description=body.repo_id, repo_id=body.repo_id, filename=body.filename,
-            scale=4, approx_size_gb=size, prompt_capable=False,
-        )
-    else:
-        engine = UpscalerInfo(
-            slug=slug, kind=body.kind, name=body.repo_id.split("/")[-1],
-            description=body.repo_id, repo_id=body.repo_id, filename=None,
-            scale=4 if body.kind == "sd_x4" else 1,
-            approx_size_gb=resolved.approx_size_gb,
-            prompt_capable=True, variant=resolved.variant,
-            use_safetensors=resolved.use_safetensors,
-        )
-
-    custom_upscalers.add(engine)
-    try:
-        upscale_svc.start_engine_download(engine, token)
-    except ValueError as exc:
-        raise HTTPException(409, str(exc)) from exc
-    return DownloadStarted(slug=slug, message=messages.DOWNLOAD_STARTED.format(slug=slug))
+@router.post("/engines/catalog/reset", response_model=list[UpscalerInfo])
+def reset_engine_catalog() -> list[UpscalerInfo]:
+    return upscalers.reset_catalog()
 
 
 @router.delete("/engines/{slug}")
@@ -278,7 +233,6 @@ def delete_engine(slug: str) -> dict[str, str]:
         raise HTTPException(409, str(exc)) from exc
     upscale_svc.unload(keep_slug=None)  # drop cached engines if this one was loaded
     outpaint_svc.unload()
-    custom_upscalers.remove(slug)  # no-op for curated engines
     return {"slug": slug, "status": "deleted"}
 
 

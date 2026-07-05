@@ -30,8 +30,8 @@ interface ModelListItemProps {
 
 /**
  * One catalog model rendered as a compact horizontal row (list layout): identity
- * + origin on the left, metric chips in the middle, the primary action on the
- * right, with the download progress bar spanning the full width below.
+ * on the left, metric chips in the middle, the primary action on the right, with
+ * the download progress bar spanning the full width below.
  */
 export const ModelListItem = ({ model, progress, onDownload, onDelete }: ModelListItemProps) => {
   const t = useTranslations();
@@ -48,9 +48,7 @@ export const ModelListItem = ({ model, progress, onDownload, onDelete }: ModelLi
       total: model.fit.gpu_total_gb ?? "?",
     }),
   };
-  const vramLabel = model.curated
-    ? `${t("models.vram")} ≥ ${model.min_vram_gb} GB`
-    : `${t("models.vram")} ≈ ${model.min_vram_gb} GB (${t("models.estimated")})`;
+  const vramLabel = `${t("models.vram")} ≥ ${model.min_vram_gb} GB`;
 
   return (
     <Paper variant="outlined" sx={{ p: 1.5 }}>
@@ -65,14 +63,13 @@ export const ModelListItem = ({ model, progress, onDownload, onDelete }: ModelLi
             <Typography variant="subtitle1" fontWeight="medium" sx={{ mr: 0.5 }}>
               {model.name}
             </Typography>
-            <Chip
-              label={model.curated ? t("models.originCurated") : t("models.originCustom")}
-              size="small"
-              color={model.curated ? "primary" : "default"}
-              variant="outlined"
-            />
             {model.gated && (
               <Chip label={t("models.gatedHint")} size="small" variant="outlined" />
+            )}
+            {model.gguf_filename && (
+              <Tooltip title={t("models.quantizedHint")}>
+                <Chip label={t("models.quantized")} size="small" color="info" variant="outlined" />
+              </Tooltip>
             )}
             <Tooltip title={t("models.hfCard")}>
               <IconButton

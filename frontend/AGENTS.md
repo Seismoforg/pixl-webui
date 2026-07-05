@@ -55,11 +55,20 @@ and download models, configure settings, and generate images.
                              ReframePreview (static canvas preview of a reframe's
                              layout — target-ratio frame + source placement + the
                              new/generated or cropped region; client-side geometry
-                             from src/lib/reframe, no generation run)
+                             from src/lib/reframe, no generation run; reflects the
+                             source position (pos_x/pos_y); for outpaint it draws
+                             alpha-gradient bands whose widths track the mask/seam
+                             feather softness controls; fills its parent column width.
+                             An `overlay` variant renders only the frame decorations
+                             (tint/seam/crop lines) — no source image, the source
+                             region punched transparent — as a semi-transparent,
+                             non-interactive canvas filling a positioned parent, used
+                             by ReframeResult to superimpose the layout over the result)
 - src/components/organisms/ — GenerationPanel (thin two-column host) + GenerationForm
                              + GenerationResult, ModelManager, EngineManager,
-                             AddEngineDialog, GalleryPanel, GalleryPicker, SettingsPanel,
-                             SystemStatusBar, ActivityOverlay, AddModelDialog,
+                             GalleryPanel, GalleryPicker, SettingsPanel,
+                             CatalogEditor (+ CuratedModelsEditor / CuratedEnginesEditor),
+                             SystemStatusBar, ActivityOverlay,
                              ReferenceImage, PromptSnippets, PromptSnippetManager,
                              SnippetPromptField (snippet control + prompt field),
                              UpscalePanel (host) + EnginePicker + SourcePicker +
@@ -100,35 +109,42 @@ and download models, configure settings, and generate images.
                     data URL so the request is unchanged), with a SourceInfo readout
                     (full-res size + gallery seed/prompt/model); img2img (strength)
                     or IP-Adapter style (scale, SD1.5/SDXL)
-- PromptSnippets  — reusable per-field control (positive/negative/upscale) to append
-                    a saved snippet and to save/delete snippets (/api/prompt-templates)
-- PromptSnippetManager — Settings-page section listing positive/negative/upscale
-                    snippets with add/edit/delete (full CRUD over /api/prompt-templates)
+- PromptSnippets  — reusable per-field control (positive/negative/upscale/outpaint/
+                    outpaint_negative) to append a saved snippet and to save/delete
+                    snippets (/api/prompt-templates)
+- PromptSnippetManager — Settings-page section listing positive/negative/upscale/
+                    outpaint/outpaint-negative snippets with add/edit/delete (full
+                    CRUD over /api/prompt-templates)
 - SystemStatusBar — polls /api/system/stats; CPU/RAM/GPU/VRAM meters on every page
 - ActivityOverlay — one shared overlay: stacks a floating bubble (bottom-right) for
                     every running activity whose home route isn't the current page
                     (generation, upscaling, downloads, …); tapping navigates there.
                     Replaces the old per-feature InferenceOverlay/UpscaleOverlay
 - ModelManager    — searchable catalog list with a filter bar (text search +
-                    family + pipeline) and models grouped by install state
-                    (Installed → Available/curated → Custom), each section
-                    counted; download/progress polling + delete-from-disk;
-                    "Add model" opens AddModelDialog. Generation models only —
-                    upscale/outpaint engines are handled by EngineManager below it
-- EngineManager   — Models-page section for upscale/outpaint engines (curated +
-                    custom), grouped by install state; install/progress/delete via
-                    the app-level DownloadProvider; "Add engine" opens AddEngineDialog
-- AddEngineDialog — add a custom engine by repo id + kind (Real-ESRGAN weight / SD x4
-                    / inpaint); resolve previews size + (for Real-ESRGAN) the weight-
-                    file choices, then download it as a custom engine
-- AddModelDialog  — HuggingFace browser: search/sort diffusers models, filter by
-                    family and a multi-select pipeline (default text-to-image),
-                    resolve a repo (size/VRAM est/fit/compatibility/pipeline), then
-                    download it as a custom model
-- ModelListItem   — one model as a compact list row: name + origin badge
-                    (Curated/Custom) + description, family/pipeline/size/VRAM
-                    chips, GPU-fit badge, HF model-card link, and the download/
-                    downloaded+delete action with a full-width progress bar
+                    family + pipeline) and models grouped by install state then GPU
+                    fit (Installed → Available → Only with RAM offload → Doesn't fit
+                    this GPU), each section counted; download/progress
+                    polling + delete-from-disk. Read-only over the curated catalog —
+                    the list itself is edited in Settings (CuratedModelsEditor).
+                    Generation models only — upscale/outpaint engines are handled by
+                    EngineManager below it
+- EngineManager   — Models-page section for upscale/outpaint engines, grouped by
+                    install state then GPU fit (same sections as ModelManager) with a
+                    GPU-fit badge per row; install/progress/delete via the app-level
+                    DownloadProvider. Read-only over the curated engine catalog —
+                    edited in Settings (CuratedEnginesEditor)
+- CatalogEditor   — reusable Settings section that edits a curated JSON catalog:
+                    list + add/edit/remove via a per-field structured dialog + a
+                    reset-to-defaults action; each change PUTs the whole list. Driven
+                    by a declarative `FieldSpec[]` (text/multiline/number/boolean/
+                    select, nullable, dotted keys for nested fields)
+- CuratedModelsEditor / CuratedEnginesEditor — thin wrappers that supply the model /
+                    engine field specs + the catalog CRUD API calls to CatalogEditor;
+                    the models editor calls `reloadModels()` on save
+- ModelListItem   — one model as a compact list row: name + a "GGUF" tag for
+                    quantized entries + description, family/pipeline/size/VRAM chips,
+                    GPU-fit badge, HF model-card link, and the download/downloaded+
+                    delete action with a full-width progress bar
 - GalleryPanel    — stored images grid with search/model-filter; cards have inline
                     regenerate/upscale/delete plus an optional detail dialog. The
                     upscale action deep-links to /upscale?image=<id>
@@ -144,16 +160,38 @@ and download models, configure settings, and generate images.
                     upscaling. Choose a source (gallery picker or upload), a target
                     aspect ratio + strategy (cover/contain/edge/outpaint); for
                     outpaint pick the inpaint model (dropdown, curated or custom,
-                    downloaded on demand) + an outpaint prompt (upscale snippet
-                    control, with an "auto-fill from source" action that reuses a
-                    gallery source's own original prompt). Shows a pre-generation
-                    ReframePreview of the target frame + new/cropped area. Runs the
-                    job via ReframeProvider and shows the saved result with live
-                    stats; reuses SourcePicker/GalleryPicker/UpscaleStats.
-                    ReframeResult is the result column
+                    downloaded on demand) + an outpaint prompt and negative prompt
+                    (each with its own outpaint/outpaint-negative snippet control; the
+                    prompt has an "auto-fill from source" action reusing a gallery
+                    source's original prompt; the negative is appended to the
+                    Settings default) + seam-blend tuning sliders
+                    (mask gradient / composite seam / seed blur, 0–100 %, 50 =
+                    default). Horizontal/vertical source-position sliders (all
+                    strategies; place the source, or pan the crop for cover; 50 =
+                    centred). For outpaint, a Generation-parameters section
+                    (sampler dropdown / steps / refine steps / guidance / seed /
+                    batch) whose sampler/steps/guidance auto-fill from a gallery
+                    source's original metadata. Runs the
+                    job via ReframeProvider and shows the saved result(s) with live
+                    stats; reuses SourcePicker/GalleryPicker/UpscaleStats. Passes the
+                    source preview + dims to ReframeResult (which now hosts the layout
+                    preview)
+- ReframeResult   — the sticky result column (right, stays visible while the left
+                    form scrolls). Hosts the pre-generation ReframePreview on top
+                    (target frame + new/cropped area, tracking the sliders + position),
+                    then live stats and the saved result(s) — a selectable thumbnail
+                    grid for a batch of outpaint variants. A toggle button on the
+                    result image superimposes the ReframePreview `overlay` variant
+                    over the result to recall the planned layout (all strategies, not
+                    just outpaint)
 - SettingsPanel   — HF token + performance toggles (VAE tiling/slicing, xformers)
-                    + SD x4 upscaler step count (number input) + system info; the
-                    /settings page also renders the PromptSnippetManager below it
+                    + SD x4 upscaler step count (number input) + the outpaint negative
+                    default (multiline) + a Defaults section (preferred default
+                    generation model / upscaler / outpaint engine — dropdowns of the
+                    downloaded entries + an "Auto (first downloaded)" option, driving
+                    each page's initial dropdown selection) + system info; the
+                    /settings page also renders the CuratedModelsEditor,
+                    CuratedEnginesEditor and PromptSnippetManager below it
 
 # Conventions
 - MUI standard components with minimal component-level overrides

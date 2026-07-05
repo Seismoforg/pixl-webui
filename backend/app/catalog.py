@@ -1,11 +1,20 @@
 """Curated model catalog (domain data).
 
 The catalog is the single source of truth for which models the UI offers, their
-HuggingFace repository ids and sensible default generation parameters.
+HuggingFace repository ids and sensible default generation parameters. It is
+JSON-backed: ``models_catalog.json`` next to this module ships the default
+catalog, and a git-ignored ``data/models_catalog.json`` override (written by the
+Settings editor) fully replaces it when present. An unreadable/invalid override
+silently falls back to the bundled default so the app never fails to start.
 """
 from __future__ import annotations
 
-from pydantic import BaseModel
+import json
+from pathlib import Path
+
+from pydantic import BaseModel, TypeAdapter
+
+from .config import DATA_DIR, ensure_dirs
 
 
 class GenerationDefaults(BaseModel):
@@ -34,75 +43,57 @@ class ModelInfo(BaseModel):
     # community diffusers repos ship only .bin (pickle) weights → False. Drives
     # both the download patterns and the pipeline loader.
     use_safetensors: bool = True
+    # GGUF-quantized variant (FLUX only). When set, the transformer is loaded from
+    # this single ``.gguf`` file instead of ``repo_id``'s transformer weights;
+    # ``repo_id`` still supplies the remaining components (VAE, text encoders,
+    # tokenizers, scheduler). Absent (None) for normal full-precision models.
+    gguf_repo_id: str | None = None
+    gguf_filename: str | None = None
     defaults: GenerationDefaults
 
+    @property
+    def is_gguf(self) -> bool:
+        """True when this entry loads a GGUF-quantized transformer."""
+        return bool(self.gguf_filename)
 
-CATALOG: list[ModelInfo] = [
-    ModelInfo(
-        slug="sd15",
-        repo_id="stable-diffusion-v1-5/stable-diffusion-v1-5",
-        name="Stable Diffusion 1.5",
-        family="SD 1.5",
-        description="Lightweight, runs on almost any GPU. Huge ecosystem.",
-        gated=False,
-        approx_size_gb=2.7,
-        min_vram_gb=4.0,
-        variant="fp16",
-        defaults=GenerationDefaults(steps=30, guidance_scale=7.5, width=512, height=512),
-    ),
-    ModelInfo(
-        slug="sdxl",
-        repo_id="stabilityai/stable-diffusion-xl-base-1.0",
-        name="Stable Diffusion XL",
-        family="SDXL",
-        description="High quality, widely used. Good quality/VRAM balance.",
-        gated=False,
-        approx_size_gb=7.1,
-        min_vram_gb=8.0,
-        variant="fp16",
-        defaults=GenerationDefaults(steps=30, guidance_scale=7.0, width=1024, height=1024),
-    ),
-    ModelInfo(
-        slug="flux-schnell",
-        repo_id="black-forest-labs/FLUX.1-schnell",
-        name="FLUX.1 schnell",
-        family="FLUX",
-        description="Modern, fast, few-step model. Open weights.",
-        gated=False,
-        approx_size_gb=34.0,
-        min_vram_gb=24.0,
-        variant=None,
-        defaults=GenerationDefaults(steps=4, guidance_scale=0.0, width=1024, height=1024),
-    ),
-    ModelInfo(
-        slug="flux-dev",
-        repo_id="black-forest-labs/FLUX.1-dev",
-        name="FLUX.1 dev",
-        family="FLUX",
-        description="High quality FLUX variant. Gated — needs a HuggingFace token.",
-        gated=True,
-        approx_size_gb=34.0,
-        min_vram_gb=24.0,
-        variant=None,
-        defaults=GenerationDefaults(steps=28, guidance_scale=3.5, width=1024, height=1024),
-    ),
-    ModelInfo(
-        slug="sd35-large",
-        repo_id="stabilityai/stable-diffusion-3.5-large",
-        name="Stable Diffusion 3.5 Large",
-        family="SD 3.x",
-        description="Modern SD 3.5. Gated — needs a HuggingFace token.",
-        gated=True,
-        approx_size_gb=28.0,
-        min_vram_gb=16.0,
-        variant=None,
-        defaults=GenerationDefaults(steps=28, guidance_scale=4.5, width=1024, height=1024),
-    ),
-]
 
-_BY_SLUG = {m.slug: m for m in CATALOG}
+DEFAULT_CATALOG_FILE = Path(__file__).parent / "models_catalog.json"
+OVERRIDE_CATALOG_FILE = DATA_DIR / "models_catalog.json"
+
+_CATALOG_ADAPTER = TypeAdapter(list[ModelInfo])
+
+
+def default_catalog() -> list[ModelInfo]:
+    """The bundled default catalog shipped with the app."""
+    return _CATALOG_ADAPTER.validate_json(DEFAULT_CATALOG_FILE.read_text("utf-8"))
+
+
+def load_catalog() -> list[ModelInfo]:
+    """Return the active catalog: the user override if present and valid, else
+    the bundled default (also the fallback for an invalid override)."""
+    if OVERRIDE_CATALOG_FILE.exists():
+        try:
+            return _CATALOG_ADAPTER.validate_json(OVERRIDE_CATALOG_FILE.read_text("utf-8"))
+        except (ValueError, OSError):
+            return default_catalog()
+    return default_catalog()
+
+
+def save_catalog(models: list[ModelInfo]) -> list[ModelInfo]:
+    """Persist ``models`` as the user override and return the stored value."""
+    ensure_dirs()
+    OVERRIDE_CATALOG_FILE.write_text(
+        json.dumps([m.model_dump() for m in models], indent=2), "utf-8"
+    )
+    return models
+
+
+def reset_catalog() -> list[ModelInfo]:
+    """Drop the user override so the bundled default takes effect again."""
+    OVERRIDE_CATALOG_FILE.unlink(missing_ok=True)
+    return default_catalog()
 
 
 def get_model(slug: str) -> ModelInfo | None:
-    """Return the catalog entry for ``slug`` or ``None``."""
-    return _BY_SLUG.get(slug)
+    """Return the active-catalog entry for ``slug`` or ``None``."""
+    return next((m for m in load_catalog() if m.slug == slug), None)

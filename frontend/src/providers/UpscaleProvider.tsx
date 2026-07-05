@@ -12,6 +12,7 @@ import {
 import { useActivity } from "@/providers/ActivityProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import { clearJob, loadJob, saveJob } from "@/lib/jobPersistence";
 import { useJobTracker } from "@/lib/ws";
 import { upscaleStatsView } from "@/lib/stats";
 import type { UpscaleProgress, UpscaleRequest } from "@/types";
@@ -98,18 +99,40 @@ export const UpscaleProvider = ({ onUpscaled, children }: UpscaleProviderProps) 
       if (p.status === "done") {
         setResultId(p.image_id);
         setJobId(null);
+        clearJob("upscale");
         onUpscaled();
       } else if (p.status === "error") {
         setError(p.error ?? t("common.error"));
         setJobId(null);
+        clearJob("upscale");
       }
     },
     (message) => {
       setError(message);
       setJobId(null);
+      clearJob("upscale");
     },
     POLL_MS,
   );
+
+  // Re-attach to a job that was still running when the page reloaded (see the
+  // generation provider for the rationale).
+  useEffect(() => {
+    const saved = loadJob("upscale");
+    if (!saved) return undefined;
+    let active = true;
+    api
+      .getUpscaleProgress(saved)
+      .then((p) => {
+        if (!active) return;
+        if (p.status === "running") setJobId(saved);
+        else clearJob("upscale");
+      })
+      .catch(() => active && clearJob("upscale"));
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Publish the running job to the shared activity store for the off-route bubble.
   const { set: setActivity } = useActivity();
@@ -136,6 +159,7 @@ export const UpscaleProvider = ({ onUpscaled, children }: UpscaleProviderProps) 
     try {
       const { job_id } = await api.upscale(req);
       setJobId(job_id);
+      saveJob("upscale", job_id);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }

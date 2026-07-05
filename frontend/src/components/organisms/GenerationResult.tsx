@@ -48,6 +48,15 @@ export const GenerationResult = () => {
         alignItems: "center",
         justifyContent: "center",
         gap: 2,
+        // Sticky result: stays in view while the form scrolls; on mobile it moves
+        // to the top of the single-column layout (matches the reframe page).
+        position: "sticky",
+        top: (theme) => theme.spacing(10),
+        alignSelf: "start",
+        order: { xs: -1, md: 0 },
+        // `order` also flips grid paint order; a z-index keeps the result above
+        // the form so its labels don't bleed over the panel (still below AppBar).
+        zIndex: 1,
       }}
     >
       {running && progress?.preview && (

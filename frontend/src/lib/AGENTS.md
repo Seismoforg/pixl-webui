@@ -17,13 +17,19 @@ Backend-communication infrastructure and small pure helpers shared across the UI
               job (shared by the generation, upscale & reframe providers)
 - fit.ts    — maps a GPU-fit verdict to a chip color + locale keys
 - reframe.ts— pure reframe geometry mirroring the backend (parseRatio / extendSize
-              / coverRect); drives the client-side ReframePreview so it matches the
-              server without a generation run
+              / coverRect + maskFeatherPx / seamFeatherPx softness→feather helpers);
+              drives the client-side ReframePreview (incl. the outpaint gradient
+              overlay) so it matches the server without a generation run
 - stats.ts  — derives the upscale/reframe status line + percent (same progress
               shape) shared by the frame/overlay
 - useAsyncData.ts — hook wrapping a mount/deps-driven fetch into
               `{ data, loading, error, reload }` (last-request-wins, no state set
               after unmount); the shared loading/error lifecycle for read-only fetches
+- jobPersistence.ts — localStorage-backed persistence of in-flight work
+              (`loadJob`/`saveJob`/`clearJob` for the generation/upscale/reframe job
+              ids + `loadDownloads`/`saveDownloads` for tracked downloads) so status
+              bubbles survive a full page reload. SSR-guarded + best-effort; the
+              providers rehydrate from it on mount
 
 # Key Components
 - api — the single typed entry point for all REST calls

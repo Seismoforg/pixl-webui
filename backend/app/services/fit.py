@@ -4,9 +4,8 @@ Decides whether a model's weights fit fully into the selected GPU's VRAM, only
 with CPU offloading into system RAM, or not at all. The same verdict drives both
 the UI badge and the pipeline's device placement so the two never disagree.
 
-The VRAM requirement is a heuristic: HuggingFace exposes no VRAM figure, so custom
-models estimate it from download size (see ``hf_browse.estimate_min_vram_gb``)
-and curated models carry a hand-tuned value.
+The VRAM requirement is a heuristic: HuggingFace exposes no VRAM figure, so each
+catalog entry carries a hand-tuned ``min_vram_gb`` value.
 """
 from __future__ import annotations
 

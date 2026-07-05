@@ -35,3 +35,37 @@ def apply_perf(pipe, settings: Settings) -> None:
             pipe.enable_xformers_memory_efficient_attention()
         except Exception:  # noqa: BLE001 - optional optimisation; never fatal
             pass
+
+
+def apply_compile(pipe, settings: Settings) -> None:
+    """torch.compile the pipe's denoising module when enabled in ``settings``.
+
+    Compiles ``pipe.transformer`` (FLUX/SD3) or ``pipe.unet`` (SD/SDXL) with the
+    default mode — no CUDA graphs, so it coexists with CPU offloading. Best-effort:
+    any compile failure (common on ROCm) is swallowed so generation continues
+    uncompiled. The first run after enabling pays the compile cost."""
+    if not settings.torch_compile:
+        return
+    # The denoising module is `transformer` on FLUX/SD3 and `unet` on SD/SDXL;
+    # compile whichever this pipe exposes and assign it back in place.
+    attr = None
+    if getattr(pipe, "transformer", None) is not None:
+        attr = "transformer"
+    elif getattr(pipe, "unet", None) is not None:
+        attr = "unet"
+    if attr is None:
+        return
+    try:
+        import importlib.util
+
+        import torch
+
+        # torch.compile's GPU (inductor) backend needs Triton, and compilation is
+        # lazy — it happens on the first forward pass, outside this guard. Without
+        # Triton that first pass would raise and break generation, so when running
+        # on GPU without Triton we skip: the toggle becomes a safe no-op instead.
+        if torch.cuda.is_available() and importlib.util.find_spec("triton") is None:
+            return
+        setattr(pipe, attr, torch.compile(getattr(pipe, attr)))
+    except Exception:  # noqa: BLE001 - optional optimisation; never fatal
+        pass

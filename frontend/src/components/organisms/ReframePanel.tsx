@@ -12,12 +12,12 @@ import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { InfoTip } from "@/components/molecules/InfoTip";
+import { LabeledSlider } from "@/components/molecules/LabeledSlider";
 import { LoadingIndicator } from "@/components/molecules/LoadingIndicator";
-import { ReframePreview } from "@/components/molecules/ReframePreview";
 import { GalleryPicker } from "@/components/organisms/GalleryPicker";
 import { ReframeResult } from "@/components/organisms/ReframeResult";
 import { SnippetPromptField } from "@/components/organisms/SnippetPromptField";
@@ -42,6 +42,16 @@ interface ReframePanelProps {
 const RATIOS = ["16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16", "21:9"];
 const REFRAME: ReframeStrategy[] = ["cover", "contain", "edge", "outpaint"];
 
+// Reset-styled fieldset that locks (and dims) the form's controls while running.
+const formLockStyle = (locked: boolean): CSSProperties => ({
+  border: 0,
+  margin: 0,
+  padding: 0,
+  minInlineSize: 0,
+  opacity: locked ? 0.6 : 1,
+  pointerEvents: locked ? "none" : "auto",
+});
+
 export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps) => {
   const t = useTranslations();
   // The reframe job AND the form live in a persistent provider so they survive
@@ -55,12 +65,37 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
     targetRatio,
     reframe: strategy,
     outpaintPrompt,
+    outpaintNegative,
     outpaintEngine,
+    maskFeather,
+    seamFeather,
+    seedBlur,
+    posX,
+    posY,
+    outpaintSteps,
+    outpaintRefineSteps,
+    outpaintGuidance,
+    outpaintSampler,
+    outpaintSeed,
+    outpaintBatch,
+    samplers,
     setSource,
     setTargetRatio,
     setReframe,
     setOutpaintPrompt,
+    setOutpaintNegative,
     setOutpaintEngine,
+    setMaskFeather,
+    setSeamFeather,
+    setSeedBlur,
+    setPosX,
+    setPosY,
+    setOutpaintSteps,
+    setOutpaintRefineSteps,
+    setOutpaintGuidance,
+    setOutpaintSampler,
+    setOutpaintSeed,
+    setOutpaintBatch,
   } = reframe;
 
   const downloads = useDownloads();
@@ -73,6 +108,9 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
   const [sourceMeta, setSourceMeta] = useState<GalleryImage | null>(null);
   const [uploadDims, setUploadDims] = useState<{ w: number; h: number } | null>(null);
   const [enginesLoading, setEnginesLoading] = useState(true);
+  // Preferred default outpaint engine from Settings (applied only when downloaded).
+  const [defaultOutpaint, setDefaultOutpaint] = useState<string | null>(null);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   const reloadEngines = useCallback(() => {
     api
@@ -85,7 +123,7 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
   const reloadSnippets = useCallback(() => {
     api
       .getPromptSnippets()
-      .then((all) => setSnippets(all.filter((s) => s.kind === "upscale")))
+      .then(setSnippets)
       .catch(() => setSnippets([]));
   }, []);
 
@@ -99,11 +137,29 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
   // The chosen outpaint model (falls back to the first available inpaint engine).
   const inpaintEngine =
     inpaintEngines.find((e) => e.slug === outpaintEngine) ?? inpaintEngines[0] ?? null;
+  // FLUX Fill (GGUF) is flow-matching: it ignores the sampler and wants a higher
+  // guidance / more steps than SD inpaint.
+  const fluxOutpaint = !!inpaintEngine?.is_gguf;
 
-  // Default the outpaint model to the first inpaint engine once loaded.
+  // Load the preferred default outpaint engine from Settings (best-effort).
   useEffect(() => {
-    if (outpaintEngine === "" && inpaintEngines.length > 0) setOutpaintEngine(inpaintEngines[0].slug);
-  }, [inpaintEngines, outpaintEngine, setOutpaintEngine]);
+    api
+      .getSettings()
+      .then((s) => setDefaultOutpaint(s.default_outpaint_engine))
+      .catch(() => setDefaultOutpaint(null))
+      .finally(() => setSettingsLoaded(true));
+  }, []);
+
+  // Default the outpaint model once loaded: the Settings default when downloaded,
+  // else the first downloaded inpaint engine (else the first so its download prompt
+  // shows). Waits for Settings so the default wins.
+  useEffect(() => {
+    if (outpaintEngine !== "" || !settingsLoaded || inpaintEngines.length === 0) return;
+    const downloaded = inpaintEngines.filter((e) => e.downloaded);
+    const target =
+      downloaded.find((e) => e.slug === defaultOutpaint) ?? downloaded[0] ?? inpaintEngines[0];
+    setOutpaintEngine(target.slug);
+  }, [inpaintEngines, outpaintEngine, defaultOutpaint, settingsLoaded, setOutpaintEngine]);
 
   // Preselect a gallery image passed via the deep-link (?image=<id>).
   useEffect(() => {
@@ -129,6 +185,28 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
     setSourceMeta(null);
     return undefined;
   }, [source]);
+
+  // Auto-fill the outpaint generation params from a gallery source's original
+  // metadata (like the prompt auto-fill), so extending an image reuses how it was
+  // made. Guarded: only a sampler present in the registry and only steps/guidance
+  // > 0 (a source that was itself a reframe/upscale carries sampler:"reframe" /
+  // steps:0, which is skipped). Seed/batch are intentionally not adopted.
+  useEffect(() => {
+    // For a Flux outpaint engine the Flux defaults below take precedence over the
+    // source's SD-tuned params, so skip this autofill then.
+    if (!sourceMeta || samplers.length === 0 || fluxOutpaint) return;
+    if (sourceMeta.steps > 0) setOutpaintSteps(sourceMeta.steps);
+    if (sourceMeta.guidance_scale > 0) setOutpaintGuidance(sourceMeta.guidance_scale);
+    if (samplers.some((s) => s.id === sourceMeta.sampler)) setOutpaintSampler(sourceMeta.sampler);
+  }, [sourceMeta, samplers, fluxOutpaint, setOutpaintSteps, setOutpaintGuidance, setOutpaintSampler]);
+
+  // FLUX Fill wants a higher guidance (~30) and more steps (~50) than SD inpaint;
+  // apply those defaults when a Flux (GGUF) outpaint engine is selected.
+  useEffect(() => {
+    if (!fluxOutpaint) return;
+    setOutpaintGuidance(30);
+    setOutpaintSteps(50);
+  }, [fluxOutpaint, setOutpaintGuidance, setOutpaintSteps]);
 
   const outpaint = strategy === "outpaint";
   // Auto-fill source: a gallery image carries its original generation prompt in
@@ -167,7 +245,19 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
       target_ratio: targetRatio,
       reframe: strategy,
       outpaint_prompt: outpaintPrompt,
+      outpaint_negative: outpaintNegative,
       outpaint_engine: inpaintEngine?.slug ?? null,
+      mask_softness: maskFeather / 100,
+      seam_softness: seamFeather / 100,
+      seed_softness: seedBlur / 100,
+      pos_x: posX / 100,
+      pos_y: posY / 100,
+      outpaint_steps: outpaintSteps,
+      outpaint_refine_steps: outpaintRefineSteps,
+      outpaint_guidance: outpaintGuidance,
+      outpaint_sampler: outpaintSampler || null,
+      outpaint_seed: outpaintSeed.trim() === "" ? null : Number(outpaintSeed),
+      outpaint_batch: outpaintBatch,
     });
   };
 
@@ -186,6 +276,7 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
   const handleClear = () => {
     setSource(null);
     setOutpaintPrompt("");
+    setOutpaintNegative("");
     setError(null);
     reframe.reset();
   };
@@ -202,6 +293,9 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
 
       <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, alignItems: "start" }}>
         <Stack spacing={3}>
+          {/* Lock the controls while a job runs (see formLockStyle). */}
+          <fieldset disabled={running} style={formLockStyle(running)}>
+            <Stack spacing={3}>
           <SourcePicker
             preview={sourcePreview}
             dims={sourceDims}
@@ -298,20 +392,73 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
             )}
           </Box>
 
-          {/* Pre-generation layout preview: the target frame + the new/cropped area. */}
-          <ReframePreview
-            preview={sourcePreview}
-            dims={sourceDims}
-            targetRatio={targetRatio}
-            strategy={strategy}
-          />
+          {/* Source position — where the image sits in the extended frame, or (for
+              cover) which part of the crop is kept. */}
+          <Box>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
+              <Typography variant="subtitle2">{t("reframe.position.title")}</Typography>
+              <InfoTip text={t("reframe.position.help")} />
+            </Box>
+            <Stack spacing={1.5}>
+              <LabeledSlider
+                label={t("reframe.position.horizontal")}
+                value={posX}
+                min={0}
+                max={100}
+                onChange={setPosX}
+              />
+              <LabeledSlider
+                label={t("reframe.position.vertical")}
+                value={posY}
+                min={0}
+                max={100}
+                onChange={setPosY}
+              />
+            </Stack>
+          </Box>
+
+          {/* Seam-blend tuning — mask gradient / composite seam / seed blur. */}
+          {outpaint && (
+            <Box>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
+                <Typography variant="subtitle2">{t("reframe.outpaint.tuning")}</Typography>
+                <InfoTip text={t("reframe.outpaint.tuningHelp")} />
+              </Box>
+              <Stack spacing={1.5}>
+                <LabeledSlider
+                  label={t("reframe.outpaint.maskFeather")}
+                  info={t("reframe.outpaint.maskFeatherHelp")}
+                  value={maskFeather}
+                  min={0}
+                  max={100}
+                  onChange={setMaskFeather}
+                />
+                <LabeledSlider
+                  label={t("reframe.outpaint.seamFeather")}
+                  info={t("reframe.outpaint.seamFeatherHelp")}
+                  value={seamFeather}
+                  min={0}
+                  max={100}
+                  onChange={setSeamFeather}
+                />
+                <LabeledSlider
+                  label={t("reframe.outpaint.seedBlur")}
+                  info={t("reframe.outpaint.seedBlurHelp")}
+                  value={seedBlur}
+                  min={0}
+                  max={100}
+                  onChange={setSeedBlur}
+                />
+              </Stack>
+            </Box>
+          )}
 
           {/* Outpaint prompt — describes the scene generated in the new area. */}
           {outpaint && (
             <Box>
               <SnippetPromptField
-                kind="upscale"
-                snippets={snippets}
+                kind="outpaint"
+                snippets={snippets.filter((s) => s.kind === "outpaint")}
                 value={outpaintPrompt}
                 onChange={setOutpaintPrompt}
                 onAppend={(text) =>
@@ -335,8 +482,100 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
                   {t("reframe.outpaint.autofillHint")}
                 </Typography>
               ) : null}
+
+              <Box sx={{ mt: 2 }}>
+                <SnippetPromptField
+                  kind="outpaint_negative"
+                  snippets={snippets.filter((s) => s.kind === "outpaint_negative")}
+                  value={outpaintNegative}
+                  onChange={setOutpaintNegative}
+                  onAppend={(text) =>
+                    setOutpaintNegative(outpaintNegative ? `${outpaintNegative}, ${text}` : text)
+                  }
+                  onSnippetsChanged={reloadSnippets}
+                  label={t("reframe.outpaint.negativeLabel")}
+                  helperText={t("reframe.outpaint.negativeHelp")}
+                />
+              </Box>
             </Box>
           )}
+
+          {/* Generation parameters — sampler / steps / guidance / seed / batch for
+              the AI outpaint pass (the PIL strategies ignore them). */}
+          {outpaint && (
+            <Box>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
+                <Typography variant="subtitle2">{t("reframe.params.title")}</Typography>
+                <InfoTip text={t("reframe.params.help")} />
+              </Box>
+              <Stack spacing={1.5}>
+                {!fluxOutpaint && (
+                  <TextField
+                    select
+                    size="small"
+                    label={t("reframe.params.sampler")}
+                    value={samplers.some((s) => s.id === outpaintSampler) ? outpaintSampler : ""}
+                    onChange={(e) => setOutpaintSampler(e.target.value)}
+                    helperText={t("reframe.params.samplerHelp")}
+                  >
+                    {samplers.map((s) => (
+                      <MenuItem key={s.id} value={s.id}>
+                        {s.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                )}
+                <LabeledSlider
+                  label={t("reframe.params.steps")}
+                  info={t("reframe.params.stepsHelp")}
+                  value={outpaintSteps}
+                  min={1}
+                  max={150}
+                  onChange={setOutpaintSteps}
+                />
+                <LabeledSlider
+                  label={t("reframe.params.refineSteps")}
+                  info={t("reframe.params.refineStepsHelp")}
+                  value={outpaintRefineSteps}
+                  min={1}
+                  max={150}
+                  onChange={setOutpaintRefineSteps}
+                />
+                <LabeledSlider
+                  label={t("reframe.params.guidance")}
+                  info={t("reframe.params.guidanceHelp")}
+                  value={outpaintGuidance}
+                  min={0}
+                  max={30}
+                  step={0.5}
+                  onChange={setOutpaintGuidance}
+                />
+                <LabeledSlider
+                  label={t("reframe.params.batch")}
+                  info={t("reframe.params.batchHelp")}
+                  value={outpaintBatch}
+                  min={1}
+                  max={8}
+                  onChange={setOutpaintBatch}
+                />
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                  <TextField
+                    size="small"
+                    label={t("reframe.params.seed")}
+                    placeholder={t("reframe.params.seedPlaceholder")}
+                    type="number"
+                    value={outpaintSeed}
+                    onChange={(e) => setOutpaintSeed(e.target.value)}
+                    sx={{ flexGrow: 1 }}
+                  />
+                  <InfoTip text={t("reframe.params.seedHelp")} />
+                </Box>
+              </Stack>
+            </Box>
+          )}
+
+            </Stack>
+          </fieldset>
 
           <Stack direction="row" spacing={1}>
             <Button
@@ -362,7 +601,7 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
         </Stack>
 
         {/* Result */}
-        <ReframeResult />
+        <ReframeResult preview={sourcePreview} dims={sourceDims} />
       </Box>
 
       <GalleryPicker

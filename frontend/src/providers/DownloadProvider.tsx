@@ -13,6 +13,11 @@ import {
 import { useActivity } from "@/providers/ActivityProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import {
+  loadDownloads,
+  saveDownloads,
+  type PersistedDownload,
+} from "@/lib/jobPersistence";
 import { live } from "@/lib/ws";
 import type { DownloadProgress, UpscalerEngine } from "@/types";
 
@@ -26,6 +31,7 @@ import type { DownloadProgress, UpscalerEngine } from "@/types";
 interface TrackMeta {
   title: string; // human name for the bubble
   route: string; // page it belongs to
+  kind: PersistedDownload["kind"]; // which API rebuilds fetch/retry after a reload
   fetch: () => Promise<DownloadProgress>; // REST fallback fetcher (per endpoint)
   retry: () => Promise<unknown>; // re-issue the download (e.g. api.downloadModel(slug))
 }
@@ -58,10 +64,30 @@ export const trackUpscalerDownload = (
     track(engine.slug, {
       title: engine.name,
       route,
+      kind: "upscaler",
       fetch: () => api.getUpscalerProgress(engine.slug),
       retry: () => api.downloadUpscaler(engine.slug),
     });
   });
+
+/** Rebuild the non-serializable fetch/retry closures for a persisted download from
+ *  its `kind`, so a still-running download's bubble can resume after a reload. */
+const rebuildMeta = (d: PersistedDownload): TrackMeta =>
+  d.kind === "model"
+    ? {
+        title: d.title,
+        route: d.route,
+        kind: "model",
+        fetch: () => api.getProgress(d.slug),
+        retry: () => api.downloadModel(d.slug),
+      }
+    : {
+        title: d.title,
+        route: d.route,
+        kind: "upscaler",
+        fetch: () => api.getUpscalerProgress(d.slug),
+        retry: () => api.downloadUpscaler(d.slug),
+      };
 
 interface DownloadProviderProps {
   onFinished: () => void; // e.g. reload the models list when a download completes
@@ -88,8 +114,24 @@ export const DownloadProvider = ({ onFinished, children }: DownloadProviderProps
     error: null,
   });
 
+  // Persist the tracked set (serializable descriptors only) so bubbles survive a
+  // reload. Called from inside the state updater so it always sees the next map.
+  const persistMeta = (map: Record<string, TrackMeta>) =>
+    saveDownloads(
+      Object.entries(map).map(([slug, m]) => ({
+        slug,
+        title: m.title,
+        route: m.route,
+        kind: m.kind,
+      })),
+    );
+
   const track = useCallback((slug: string, m: TrackMeta) => {
-    setMeta((prev) => ({ ...prev, [slug]: m }));
+    setMeta((prev) => {
+      const next = { ...prev, [slug]: m };
+      persistMeta(next);
+      return next;
+    });
     setProgress((prev) => ({ ...prev, [slug]: downloadingState(slug) }));
   }, []);
 
@@ -98,12 +140,50 @@ export const DownloadProvider = ({ onFinished, children }: DownloadProviderProps
       setMeta((prev) => {
         const next = { ...prev };
         delete next[slug];
+        persistMeta(next);
         return next;
       });
       set(`download:${slug}`, null);
     },
     [set],
   );
+
+  // Rehydrate downloads that were still running when the page reloaded: validate
+  // each persisted slug (only "downloading" ones are still live) and re-track those,
+  // reconciling storage to the live set. Runs once on mount.
+  useEffect(() => {
+    const saved = loadDownloads();
+    if (saved.length === 0) return undefined;
+    let active = true;
+    Promise.all(
+      saved.map((d) =>
+        rebuildMeta(d)
+          .fetch()
+          .then((p) => (p.status === "downloading" ? d : null))
+          .catch(() => null),
+      ),
+    ).then((results) => {
+      if (!active) return;
+      const live = results.filter((d): d is PersistedDownload => d !== null);
+      if (live.length === 0) {
+        saveDownloads([]);
+        return;
+      }
+      const rebuilt: Record<string, TrackMeta> = {};
+      const prog: Record<string, DownloadProgress> = {};
+      for (const d of live) {
+        rebuilt[d.slug] = rebuildMeta(d);
+        prog[d.slug] = downloadingState(d.slug);
+      }
+      setMeta(rebuilt);
+      setProgress((prev) => ({ ...prev, ...prog }));
+      saveDownloads(live);
+    });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Retry a failed download from anywhere (e.g. the off-route bubble). Re-issues
   // the original request; the slug stays tracked so progress keeps flowing.

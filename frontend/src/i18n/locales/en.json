@@ -107,11 +107,15 @@
       "loadPositive": "Snippets",
       "loadNegative": "Snippets",
       "loadUpscale": "Snippets",
+      "loadOutpaint": "Snippets",
+      "loadOutpaintNegative": "Snippets",
       "save": "Save snippet",
       "empty": "No snippets saved yet",
       "manageTitlePositive": "Positive prompt snippets",
       "manageTitleNegative": "Negative prompt snippets",
       "manageTitleUpscale": "Upscale prompt snippets",
+      "manageTitleOutpaint": "Outpaint prompt snippets",
+      "manageTitleOutpaintNegative": "Outpaint negative snippets",
       "saveHint": "Save the current field text as a reusable snippet.",
       "name": "Snippet name",
       "delete": "Delete",
@@ -224,14 +228,47 @@
       "notInstalled": "not installed",
       "promptLabel": "Outpaint prompt (optional)",
       "promptHelp": "Describes the scene generated in the added area. Tip: describe the background/scene, not the subject.",
+      "negativeLabel": "Outpaint negative (optional)",
+      "negativeHelp": "What to avoid in the generated area. Appended to the built-in default (editable in Settings).",
       "autofill": "Auto-fill from source",
-      "autofillHint": "Auto-fill needs a gallery source — uploads carry no prompt."
+      "autofillHint": "Auto-fill needs a gallery source — uploads carry no prompt.",
+      "tuning": "Seam blending",
+      "tuningHelp": "Fine-tune how the generated border blends with your image. 50 % is the tuned default; higher is softer/wider, lower is tighter.",
+      "maskFeather": "Mask gradient",
+      "maskFeatherHelp": "Width of the gradient band where the AI blends into the kept image. Wider = smoother transition, but generation reaches further inward. Shown in the preview.",
+      "seamFeather": "Composite seam",
+      "seamFeatherHelp": "How softly your pixel-exact source fades into the generated border. Wider = less visible seam. Shown in the preview.",
+      "seedBlur": "Seed blur",
+      "seedBlurHelp": "Blur of the reflected border seed before generation. Higher = softer starting point. Not shown in the layout preview."
+    },
+    "params": {
+      "title": "Generation parameters",
+      "help": "Diffusion settings for the AI outpaint pass. Sampler, steps and guidance auto-fill from a gallery source's original settings; the cover/contain/edge strategies ignore these.",
+      "sampler": "Sampler",
+      "samplerHelp": "Scheduler used for the outpaint denoising. Applied when the inpaint model supports it.",
+      "steps": "Steps",
+      "stepsHelp": "Denoising steps for the composition pass that invents the new border. More = more detail, slower.",
+      "refineSteps": "Refine steps",
+      "refineStepsHelp": "Denoising steps for the hires refinement pass that restores full-resolution detail along the border.",
+      "guidance": "Guidance scale",
+      "guidanceHelp": "How strongly the outpaint follows your prompt (CFG). Higher = closer to the prompt, less variety.",
+      "batch": "Batch",
+      "batchHelp": "How many variants to generate, each with an incrementing seed. Pick the best afterwards.",
+      "seed": "Seed",
+      "seedPlaceholder": "Random",
+      "seedHelp": "Fix the seed to reproduce a border, or leave blank for a random one. Batch variant k uses seed + k."
+    },
+    "position": {
+      "title": "Source position",
+      "help": "Where the source sits in the frame: for outpaint/contain/edge it positions the image (the rest becomes the new area); for cover it pans which part of the crop is kept. 50 % = centered. Only the axis with room to move has an effect; the preview shows it.",
+      "horizontal": "Horizontal position",
+      "vertical": "Vertical position"
     },
     "preview": {
       "label": "Preview",
       "none": "Pick a source to preview how the frame will look.",
       "alt": "Reframe layout preview",
-      "hintOutpaint": "Tinted border = area the AI will generate. Dashed line = blend seam.",
+      "hintOutpaint": "Tinted border = area the AI will generate. Dashed line = seam; the glow bands show the blend widths you set below.",
       "hintFill": "Tinted border = area filled from the existing image.",
       "hintCover": "Dimmed area = cropped away.",
       "approx": "Approximate layout — the final render may differ."
@@ -242,7 +279,11 @@
     "result": {
       "title": "Result",
       "open": "Open full size",
-      "empty": "Your reframed image will appear here."
+      "empty": "Your reframed image will appear here.",
+      "imageOfBatch": "Variant {current} of {total}",
+      "thumbAlt": "Reframe variant {index}",
+      "showPreview": "Overlay layout preview",
+      "hidePreview": "Hide layout preview"
     }
   },
   "models": {
@@ -257,8 +298,6 @@
     "confirmDelete": "Delete this model from disk?",
     "gatedHint": "Gated — add a HuggingFace token in Settings",
     "downloadFailed": "Download failed",
-    "curated": "Curated",
-    "added": "Added models",
     "searchLabel": "Search models",
     "filterFamily": "Family",
     "allFamilies": "All families",
@@ -266,12 +305,12 @@
     "allPipelines": "All pipelines",
     "installed": "Installed",
     "available": "Available",
-    "custom": "Custom models",
+    "availableOffload": "Only with RAM offload",
+    "availableTooLarge": "Doesn't fit this GPU",
     "noResults": "No models match your filters.",
-    "originCurated": "Curated",
-    "originCustom": "Custom",
+    "quantized": "GGUF",
+    "quantizedHint": "GGUF-quantized transformer — lower VRAM",
     "hfCard": "View on HuggingFace",
-    "estimated": "estimated",
     "fitFitsGpu": "Fits in GPU",
     "fitOffload": "Fits only with RAM offload",
     "fitTooLarge": "Too large for this GPU",
@@ -279,32 +318,7 @@
     "fitTooltipGpu": "Runs fully on the GPU (~{vram} GB of {total} GB VRAM).",
     "fitTooltipOffload": "Needs ~{vram} GB VRAM but the GPU has {total} GB — will run slower via CPU offloading to system RAM.",
     "fitTooltipTooLarge": "Needs ~{vram} GB VRAM; does not fit even with CPU offloading.",
-    "fitTooltipCpu": "No GPU detected — runs on the CPU (slow).",
-    "browser": {
-      "add": "Add model",
-      "title": "Add a model from HuggingFace",
-      "search": "Search HuggingFace",
-      "searchHint": "Search diffusers text-to-image models, or paste a full repo id (owner/name).",
-      "sort": "Sort by",
-      "sortDownloads": "Downloads",
-      "sortLikes": "Likes",
-      "sortTrending": "Trending",
-      "family": "Family",
-      "familyAll": "All families",
-      "pipeline": "Pipeline",
-      "noResults": "No models found.",
-      "searching": "Searching…",
-      "resolving": "Reading model details…",
-      "downloads": "Downloads",
-      "likes": "Likes",
-      "size": "Download size",
-      "vram": "Est. VRAM",
-      "incompatible": "Not a diffusers-format model — cannot be loaded here.",
-      "download": "Download",
-      "close": "Close",
-      "added": "Download started — see the models list.",
-      "failed": "Could not add this model."
-    }
+    "fitTooltipCpu": "No GPU detected — runs on the CPU (slow)."
   },
   "status": {
     "title": "System resources",
@@ -338,15 +352,68 @@
       "vaeSlicingHelp": "Decode images one at a time — saves memory on batches.",
       "xformers": "xformers attention",
       "xformersHelp": "Faster, memory-efficient attention (only if xformers is installed; otherwise ignored).",
+      "torchCompile": "torch.compile",
+      "torchCompileHelp": "Compile the model for faster iterations. The first image after enabling compiles slowly; may be ignored if unsupported.",
       "sdX4Steps": "SD x4 upscaler steps",
       "sdX4StepsHelp": "Default denoising steps for the SD x4 diffusion upscaler (adjustable per run on the Upscale page). Fewer is faster; 30–50 look near-identical to the default of 75.",
       "note": "Applies to generation and upscaling. Takes effect on the next run."
+    },
+    "outpaint": {
+      "title": "Outpaint",
+      "negativeLabel": "Outpaint negative default",
+      "negativeHelp": "Built-in negative prompt base for AI outpainting (fights watermarks, text and duplicated subjects). A reframe run's own negative is appended to this."
+    },
+    "modelsCatalog": {
+      "title": "Curated models",
+      "description": "The list of generation models the app offers. Edit these to fix a repo id or add a model when the community models change."
+    },
+    "enginesCatalog": {
+      "title": "Curated engines",
+      "description": "The upscale and outpaint engines the app offers. Edit these to fix a repo id or add an engine."
+    },
+    "catalog": {
+      "add": "Add",
+      "edit": "Edit",
+      "delete": "Delete",
+      "save": "Save",
+      "reset": "Reset to defaults",
+      "empty": "No entries yet — add one or reset to defaults.",
+      "addTitle": "Add entry",
+      "editTitle": "Edit entry",
+      "deleteConfirm": "Remove this entry from the catalog?",
+      "resetConfirm": "Discard your edits and restore the bundled default catalog?",
+      "fields": {
+        "slug": "Slug (unique id)",
+        "name": "Name",
+        "repoId": "HuggingFace repo id",
+        "family": "Family",
+        "pipelineTag": "Pipeline tag",
+        "description": "Description",
+        "gated": "Gated (needs token)",
+        "useSafetensors": "Use safetensors",
+        "sizeGb": "Download size (GB)",
+        "vramGb": "Min VRAM (GB)",
+        "variant": "Weight variant (e.g. fp16)",
+        "ggufRepoId": "GGUF repo id",
+        "ggufFilename": "GGUF filename",
+        "steps": "Default steps",
+        "guidance": "Default guidance",
+        "refineSteps": "Default refine steps",
+        "width": "Default width",
+        "height": "Default height",
+        "kind": "Engine type",
+        "filename": "Weight filename (Real-ESRGAN)",
+        "scale": "Scale (×)",
+        "promptCapable": "Prompt-capable"
+      }
     },
     "snippets": {
       "title": "Prompt snippets",
       "positive": "Positive",
       "negative": "Negative",
       "upscale": "Upscale",
+      "outpaint": "Outpaint",
+      "outpaintNegative": "Outpaint negative",
       "add": "Add",
       "edit": "Edit",
       "delete": "Delete",
@@ -357,29 +424,24 @@
       "addTitle": "Add snippet",
       "editTitle": "Edit snippet",
       "confirmDelete": "Delete this snippet permanently?"
+    },
+    "defaults": {
+      "title": "Defaults",
+      "help": "Preselect a default in the model / upscaler / outpaint dropdowns. Only downloaded models are listed; \"Auto\" uses the first downloaded one.",
+      "auto": "Auto (first downloaded)",
+      "model": "Default generation model",
+      "upscaler": "Default upscaler",
+      "outpaint": "Default outpaint model"
     }
   },
   "engines": {
     "title": "Upscale & outpaint models",
-    "subtitle": "Engines used for AI upscaling and outpainting. Add custom Real-ESRGAN weights, SD x4 upscalers or inpaint models.",
-    "add": "Add engine",
-    "custom": "Custom engines",
+    "subtitle": "Engines used for AI upscaling and outpainting. The curated list is edited in Settings.",
     "confirmDelete": "Delete this engine from disk?",
     "kind": {
       "realesrgan": "Real-ESRGAN",
       "sd_x4": "SD x4 upscaler",
       "inpaint": "Inpaint (outpaint)"
-    },
-    "browser": {
-      "title": "Add an upscale / outpaint engine",
-      "repoId": "HuggingFace repo id",
-      "repoIdHint": "owner/name — e.g. a Real-ESRGAN weights repo or a diffusers upscaler/inpaint repo.",
-      "kind": "Engine type",
-      "resolve": "Resolve",
-      "weightFile": "Weight file",
-      "incompatible": "No usable weights found in this repo for the selected engine type.",
-      "add": "Add & download",
-      "close": "Close"
     }
   },
   "common": {

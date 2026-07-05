@@ -50,3 +50,13 @@ def get_dtype():
     import torch
 
     return torch.float16 if get_torch_device() == "cuda" else torch.float32
+
+
+def get_compute_dtype():
+    """bfloat16 on GPU, float32 on CPU — the compute dtype for GGUF FLUX.
+
+    FLUX is trained in bfloat16 and diffusers' GGUF dequantization expects a bf16
+    compute dtype, so the GGUF load path uses this instead of :func:`get_dtype`."""
+    import torch
+
+    return torch.bfloat16 if get_torch_device() == "cuda" else torch.float32

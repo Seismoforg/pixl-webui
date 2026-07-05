@@ -13,13 +13,14 @@ WebSocket pusher.
 """
 from __future__ import annotations
 
+import random
 import threading
 import time
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from .. import live, messages
+from .. import live, messages, samplers
 from ..services import (
     downloader,
     gallery,
@@ -32,6 +33,8 @@ from .upscale import UpscaleProgress
 
 router = APIRouter(prefix="/api/reframe", tags=["reframe"])
 
+_SEED_MAX = 2**32 - 1
+
 
 class ReframeRequest(BaseModel):
     image_id: str | None = None   # source: an existing gallery image
@@ -41,12 +44,43 @@ class ReframeRequest(BaseModel):
     target_ratio: str
     reframe: str = "cover"  # "cover" | "contain" | "edge" | "outpaint"
     outpaint_prompt: str = ""  # describes the scene generated in the outpainted area
+    # Per-run negative prompt for outpaint; appended to the configurable Settings
+    # default (Settings.outpaint_negative).
+    outpaint_negative: str = ""
     # Inpaint engine (slug) used for reframe=outpaint; None → the curated default.
     outpaint_engine: str | None = None
+    # Seam-blend tuning for reframe=outpaint (0..1; 0.5 = tuned default). Scale the
+    # outpaint mask gradient band, the composite-back seam fade, and the reflected-
+    # seed blur. Ignored by cover/contain/edge.
+    mask_softness: float = Field(default=0.5, ge=0.0, le=1.0)
+    seam_softness: float = Field(default=0.5, ge=0.0, le=1.0)
+    seed_softness: float = Field(default=0.5, ge=0.0, le=1.0)
+    # Source placement within the extended canvas (0..1; 0.5 = centred). Applies to
+    # the area-adding strategies (outpaint/contain/edge); cover ignores it.
+    pos_x: float = Field(default=0.5, ge=0.0, le=1.0)
+    pos_y: float = Field(default=0.5, ge=0.0, le=1.0)
+    # Generation parameters for reframe=outpaint (ignored by cover/contain/edge):
+    # composition/refinement step counts, CFG scale, scheduler id, RNG seed
+    # (None → random), and how many variants to generate (incrementing seeds).
+    outpaint_steps: int = Field(default=30, ge=1, le=150)
+    outpaint_refine_steps: int = Field(default=24, ge=1, le=150)
+    outpaint_guidance: float = Field(default=7.5, ge=0.0, le=30.0)
+    outpaint_sampler: str | None = None
+    outpaint_seed: int | None = None
+    outpaint_batch: int = Field(default=1, ge=1, le=8)
 
 
 class ReframeStarted(BaseModel):
     job_id: str
+
+
+class ReframeProgress(UpscaleProgress):
+    """Reframe job progress = the shared upscale shape plus batch fields (a superset,
+    so the frontend's upscale-based live-stats UI keeps working unchanged)."""
+
+    batch_index: int = 0
+    batch_size: int = 1
+    image_ids: list[str] = []
 
 
 class _Job:
@@ -62,6 +96,10 @@ class _Job:
         self.engine_name = engine_name
         self.started_at = time.perf_counter()
         self.image_id: str | None = None
+        # Batch state (outpaint can produce several variants; 1 for the PIL strategies).
+        self.batch_index = 0
+        self.batch_size = 1
+        self.image_ids: list[str] = []
         self.error: str | None = None
 
     def elapsed(self) -> float:
@@ -95,11 +133,9 @@ def _resolve_source(req: ReframeRequest):
 
 def _run(
     job: _Job,
+    req: ReframeRequest,
     image,
     ratio: tuple[float, float],
-    target_ratio: str,
-    strategy: str,
-    outpaint_prompt: str,
     outpaint_engine: UpscalerInfo | None,
 ) -> None:
     # Wakes the WebSocket pusher after each state change (no-op with no subscriber).
@@ -111,39 +147,21 @@ def _run(
                 setattr(job, key, value)
         live.publish(pub_key)
 
+    strategy = req.reframe
+    is_outpaint = strategy == "outpaint" and outpaint_engine is not None
+
     try:
-        if strategy == "outpaint" and outpaint_engine is not None:
-            # Generate the new border in one coherent pass; the source is composited
-            # back pixel-exact at full resolution. No upscaler runs afterwards.
-            result = outpaint_svc.reframe_image(
-                image, ratio, outpaint_prompt, on_progress, outpaint_engine
-            )
-            outpaint_svc.unload()  # free the inpaint pipe
-            model_slug, model_name = outpaint_engine.slug, outpaint_engine.name
+        if is_outpaint:
+            _run_outpaint(job, req, image, ratio, outpaint_engine, on_progress, pub_key)
         else:
             # cover / contain / edge are cheap PIL ops — no engine, near-instant.
-            result = reframe_svc.apply(image.convert("RGB"), ratio, strategy)
-            model_slug, model_name = "reframe", "Reframe"
+            result = reframe_svc.apply(image.convert("RGB"), ratio, strategy, req.pos_x, req.pos_y)
+            with _lock:
+                job.phase = "finalizing"
+            live.publish(pub_key)
+            _save_result(job, req, result, "reframe", "Reframe", steps=0, guidance=0.0, seed=0,
+                         sampler="reframe")
         with _lock:
-            job.phase = "finalizing"
-        live.publish(pub_key)
-        meta = gallery.save(
-            result,
-            {
-                "model_slug": model_slug,
-                "model_name": model_name,
-                "prompt": f"Reframed · {target_ratio} · {strategy}",
-                "negative_prompt": None,
-                "steps": 0,
-                "guidance_scale": 0.0,
-                "width": result.width,
-                "height": result.height,
-                "seed": 0,
-                "sampler": "reframe",
-            },
-        )
-        with _lock:
-            job.image_id = meta.id
             job.status = "done"
         live.publish(pub_key)
     except Exception as exc:  # noqa: BLE001 - surfaced to the UI via job state
@@ -151,6 +169,68 @@ def _run(
             job.status = "error"
             job.error = messages.REFRAME_FAILED.format(detail=str(exc))
         live.publish(pub_key)
+
+
+def _run_outpaint(job, req, image, ratio, engine, on_progress, pub_key) -> None:
+    """Generate ``batch`` outpaint variants with incrementing seeds; each is
+    composited back pixel-exact and saved. The inpaint pipe is loaded once (cached
+    across the batch) and freed afterwards. No upscaler runs."""
+    base_seed = req.outpaint_seed if req.outpaint_seed is not None else random.randint(0, _SEED_MAX)
+    sampler = req.outpaint_sampler or samplers.DEFAULT_SAMPLER
+    with _lock:
+        job.batch_size = req.outpaint_batch
+    try:
+        for i in range(req.outpaint_batch):
+            seed_i = (base_seed + i) % (_SEED_MAX + 1)
+            with _lock:
+                job.batch_index = i + 1
+            result = outpaint_svc.reframe_image(
+                image, ratio, req.outpaint_prompt, on_progress, engine,
+                mask_softness=req.mask_softness,
+                seam_softness=req.seam_softness,
+                seed_softness=req.seed_softness,
+                pos_x=req.pos_x, pos_y=req.pos_y,
+                negative=req.outpaint_negative,
+                steps=req.outpaint_steps,
+                refine_steps=req.outpaint_refine_steps,
+                guidance=req.outpaint_guidance,
+                sampler=req.outpaint_sampler,
+                seed=seed_i,
+            )
+            with _lock:
+                job.phase = "finalizing"
+            live.publish(pub_key)
+            _save_result(
+                job, req, result, engine.slug, engine.name,
+                steps=req.outpaint_steps, guidance=req.outpaint_guidance,
+                seed=seed_i, sampler=sampler,
+            )
+    finally:
+        outpaint_svc.unload()  # free the inpaint pipe
+
+
+def _save_result(job, req, result, model_slug, model_name, *, steps, guidance, seed, sampler) -> None:
+    """Persist one reframe result to the gallery and record it on the job (the first
+    image also fills ``image_id`` for single-image compatibility)."""
+    meta = gallery.save(
+        result,
+        {
+            "model_slug": model_slug,
+            "model_name": model_name,
+            "prompt": f"Reframed · {req.target_ratio} · {req.reframe}",
+            "negative_prompt": req.outpaint_negative or None,
+            "steps": steps,
+            "guidance_scale": guidance,
+            "width": result.width,
+            "height": result.height,
+            "seed": seed,
+            "sampler": sampler,
+        },
+    )
+    with _lock:
+        if job.image_id is None:
+            job.image_id = meta.id
+        job.image_ids.append(meta.id)
 
 
 @router.post("", response_model=ReframeStarted)
@@ -184,23 +264,20 @@ def start_reframe(req: ReframeRequest) -> ReframeStarted:
 
     thread = threading.Thread(
         target=_run,
-        args=(
-            job, image, ratio, req.target_ratio, req.reframe,
-            req.outpaint_prompt, outpaint_engine,
-        ),
+        args=(job, req, image, ratio, outpaint_engine),
         daemon=True,
     )
     thread.start()
     return ReframeStarted(job_id=job.job_id)
 
 
-@router.get("/{job_id}", response_model=UpscaleProgress)
-def reframe_progress(job_id: str) -> UpscaleProgress:
+@router.get("/{job_id}", response_model=ReframeProgress)
+def reframe_progress(job_id: str) -> ReframeProgress:
     with _lock:
         job = _jobs.get(job_id)
         if job is None:
             raise HTTPException(404, messages.JOB_NOT_FOUND.format(job_id=job_id))
-        return UpscaleProgress(
+        return ReframeProgress(
             job_id=job.job_id,
             status=job.status,
             phase=job.phase,
@@ -213,4 +290,7 @@ def reframe_progress(job_id: str) -> UpscaleProgress:
             engine_name=job.engine_name,
             image_id=job.image_id,
             error=job.error,
+            batch_index=job.batch_index,
+            batch_size=job.batch_size,
+            image_ids=list(job.image_ids),
         )

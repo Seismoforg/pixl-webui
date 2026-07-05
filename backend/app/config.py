@@ -38,6 +38,12 @@ os.environ.setdefault("MIOPEN_USER_DB_PATH", str(MIOPEN_DIR))
 os.environ.setdefault("MIOPEN_CUSTOM_CACHE_DIR", str(MIOPEN_DIR))
 os.environ.setdefault("MIOPEN_FIND_MODE", "2")  # FAST: prefer find-db over long search
 
+# ROCm TunableOp tunes GEMM kernels to the actual GPU (enabled at runtime for ROCm
+# in the pipeline). Pin its results file into the project so the one-time tuning —
+# like the MIOpen warmup above — persists and is reused across restarts. Harmless
+# off ROCm: the file is only written when TunableOp is enabled.
+os.environ.setdefault("PYTORCH_TUNABLEOP_FILENAME", str(DATA_DIR / "tunableop_results.csv"))
+
 # Backend host/port (kept here so install/start scripts and code agree).
 BACKEND_HOST = os.environ.get("PIXL_BACKEND_HOST", "127.0.0.1")
 BACKEND_PORT = int(os.environ.get("PIXL_BACKEND_PORT", "8000"))
@@ -52,10 +58,28 @@ class Settings(BaseModel):
     vae_tiling: bool = True
     vae_slicing: bool = True
     xformers: bool = True
+    # Compile the denoising module (transformer/UNet) with torch.compile on load for
+    # faster iterations. Default off: the first run after enabling pays a long
+    # compile cost, and support is uneven on ROCm. Best-effort — a failed compile
+    # falls back to eager (see optimizations.apply_compile).
+    torch_compile: bool = False
     # Denoising steps for the SD x4 diffusion upscaler. The diffusers default is 75;
     # 30–50 are visually near-identical for this upscaler and much faster (the cost
     # multiplies across tiles). Read per-run, so changes take effect without reload.
     sd_x4_steps: int = 50
+    # Built-in negative prompt base for AI outpainting; fights the common failure
+    # modes (stock watermarks/text and duplicated subjects). A run's per-run outpaint
+    # negative is appended to this. Read per-run, so edits take effect without reload.
+    outpaint_negative: str = (
+        "watermark, text, signature, caption, frame, border, collage, grid, "
+        "multiple animals, duplicate, extra subject, blurry, distorted, low quality"
+    )
+    # Preferred default selections for the model / upscaler / outpaint-engine
+    # dropdowns (slugs). Each is used only when set AND currently downloaded; else
+    # the UI falls back to the first downloaded entry of that kind.
+    default_model: str | None = None
+    default_upscaler: str | None = None
+    default_outpaint_engine: str | None = None
 
 
 def ensure_dirs() -> None:

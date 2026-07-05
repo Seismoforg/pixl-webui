@@ -10,7 +10,7 @@ import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { InfoTip } from "@/components/molecules/InfoTip";
@@ -29,6 +29,16 @@ interface UpscalePanelProps {
   reloadToken: number;
   initialImageId?: string | null;
 }
+
+// Reset-styled fieldset that locks (and dims) the form's controls while running.
+const formLockStyle = (locked: boolean): CSSProperties => ({
+  border: 0,
+  margin: 0,
+  padding: 0,
+  minInlineSize: 0,
+  opacity: locked ? 0.6 : 1,
+  pointerEvents: locked ? "none" : "auto",
+});
 
 export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps) => {
   const t = useTranslations();
@@ -62,6 +72,9 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
   const [sourceMeta, setSourceMeta] = useState<GalleryImage | null>(null);
   const [uploadDims, setUploadDims] = useState<{ w: number; h: number } | null>(null);
   const [enginesLoading, setEnginesLoading] = useState(true);
+  // Preferred default upscaler from Settings (applied only when downloaded).
+  const [defaultUpscaler, setDefaultUpscaler] = useState<string | null>(null);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   const reloadEngines = useCallback(() => {
     api
@@ -83,10 +96,27 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
     reloadSnippets();
   }, [reloadEngines, reloadSnippets]);
 
-  // Default to the first engine once loaded.
+  // Load the preferred default upscaler from Settings (best-effort).
   useEffect(() => {
-    if (engineSlug === "" && engines.length > 0) setEngineSlug(engines[0].slug);
-  }, [engines, engineSlug]);
+    api
+      .getSettings()
+      .then((s) => setDefaultUpscaler(s.default_upscaler))
+      .catch(() => setDefaultUpscaler(null))
+      .finally(() => setSettingsLoaded(true));
+  }, []);
+
+  // Default the engine once loaded: the Settings default when downloaded, else the
+  // first downloaded selectable engine (else the first selectable so the dropdown
+  // isn't empty and its download prompt shows). Waits for Settings so it wins.
+  useEffect(() => {
+    if (engineSlug !== "" || !settingsLoaded) return;
+    const selectable = engines.filter((e) => e.kind !== "inpaint");
+    if (selectable.length === 0) return;
+    const downloaded = selectable.filter((e) => e.downloaded);
+    const target =
+      downloaded.find((e) => e.slug === defaultUpscaler) ?? downloaded[0] ?? selectable[0];
+    setEngineSlug(target.slug);
+  }, [engines, engineSlug, defaultUpscaler, settingsLoaded, setEngineSlug]);
 
   // Preselect a gallery image passed via the deep-link (?image=<id>).
   useEffect(() => {
@@ -194,6 +224,9 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
 
       <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, alignItems: "start" }}>
         <Stack spacing={3}>
+          {/* Lock the controls while a job runs (see formLockStyle). */}
+          <fieldset disabled={running} style={formLockStyle(running)}>
+            <Stack spacing={3}>
           <EnginePicker
             engine={engine}
             engines={selectableEngines}
@@ -260,6 +293,8 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
               <ToggleButton value="off">{t("upscale.tiling.off")}</ToggleButton>
             </ToggleButtonGroup>
           </Box>
+            </Stack>
+          </fieldset>
 
           <Stack direction="row" spacing={1}>
             <Button

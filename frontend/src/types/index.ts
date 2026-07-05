@@ -31,34 +31,8 @@ export interface FitInfo {
   ram_total_gb: number | null;
 }
 
-export interface ModelEntry {
-  slug: string;
-  repo_id: string;
-  name: string;
-  family: string;
-  pipeline_tag: string;
-  description: string;
-  gated: boolean;
-  approx_size_gb: number;
-  min_vram_gb: number;
-  defaults: GenerationDefaults;
-  downloaded: boolean;
-  status: DownloadStatus;
-  curated: boolean;
-  fit: FitInfo;
-}
-
-export interface HfSearchResult {
-  repo_id: string;
-  likes: number;
-  downloads: number;
-  gated: boolean;
-  family: string;
-  pipeline_tag: string | null;
-  last_modified: string | null;
-}
-
-export interface ResolvedModel {
+// The editable catalog shape for a generation model (mirrors backend ModelInfo).
+export interface ModelCatalogEntry {
   slug: string;
   repo_id: string;
   name: string;
@@ -69,8 +43,18 @@ export interface ResolvedModel {
   approx_size_gb: number;
   min_vram_gb: number;
   variant: string | null;
+  use_safetensors: boolean;
+  // GGUF-quantized variant: the transformer's source (FLUX only). Present only for
+  // quantized catalog entries; drives the "GGUF" tag in the model list.
+  gguf_repo_id: string | null;
+  gguf_filename: string | null;
   defaults: GenerationDefaults;
-  compatible: boolean;
+}
+
+// A catalog model plus its on-disk state + GPU-fit verdict (the /api/models list).
+export interface ModelEntry extends ModelCatalogEntry {
+  downloaded: boolean;
+  status: DownloadStatus;
   fit: FitInfo;
 }
 
@@ -88,7 +72,14 @@ export interface AppSettings {
   vae_tiling: boolean;
   vae_slicing: boolean;
   xformers: boolean;
+  torch_compile: boolean;
   sd_x4_steps: number;
+  outpaint_negative: string; // built-in negative base for AI outpainting
+  // Preferred default dropdown selections (slugs); used only when downloaded, else
+  // the UI falls back to the first downloaded entry of that kind.
+  default_model: string | null;
+  default_upscaler: string | null;
+  default_outpaint_engine: string | null;
 }
 
 export interface ResourceStats {
@@ -102,7 +93,7 @@ export interface ResourceStats {
   gpu_percent: number | null;
 }
 
-export type PromptKind = "positive" | "negative" | "upscale";
+export type PromptKind = "positive" | "negative" | "upscale" | "outpaint" | "outpaint_negative";
 
 export interface PromptSnippet {
   id: string;
@@ -170,6 +161,31 @@ export type UpscalerKind = "realesrgan" | "sd_x4" | "inpaint";
 
 export type ReframeStrategy = "cover" | "contain" | "edge" | "outpaint";
 
+export interface EngineDefaults {
+  steps: number; // denoising / composition steps
+  guidance_scale: number; // CFG scale (0 for prompt-free / GAN engines)
+  refine_steps: number; // hires refinement pass steps (outpaint); 0 when unused
+}
+
+// The editable catalog shape for an engine (mirrors backend UpscalerInfo).
+export interface EngineCatalogEntry {
+  slug: string;
+  kind: UpscalerKind;
+  name: string;
+  description: string;
+  repo_id: string;
+  filename: string | null; // single weight file for realesrgan; null for diffusers
+  scale: number;
+  approx_size_gb: number;
+  min_vram_gb: number; // recommended VRAM — drives the GPU-fit badge
+  prompt_capable: boolean;
+  variant: string | null;
+  use_safetensors: boolean;
+  gguf_repo_id: string | null; // GGUF FLUX Fill outpaint transformer source
+  gguf_filename: string | null;
+  defaults: EngineDefaults;
+}
+
 export interface UpscalerEngine {
   slug: string;
   kind: UpscalerKind;
@@ -179,25 +195,12 @@ export interface UpscalerEngine {
   family: string; // "Upscaler" | "Outpaint" (derived from kind)
   scale: number;
   approx_size_gb: number;
+  min_vram_gb: number; // recommended VRAM — drives the per-row VRAM badge
   prompt_capable: boolean;
-  curated: boolean;
+  is_gguf: boolean; // GGUF-quantized FLUX Fill outpaint engine (flow-matching)
   downloaded: boolean;
   status: DownloadStatus;
-}
-
-export interface EngineWeight {
-  filename: string;
-  approx_size_gb: number;
-}
-
-export interface EngineResolve {
-  repo_id: string;
-  kind: UpscalerKind;
-  approx_size_gb: number;
-  compatible: boolean;
-  variant: string | null;
-  use_safetensors: boolean;
-  weights: EngineWeight[]; // Real-ESRGAN weight candidates (empty for diffusers)
+  fit: FitInfo; // GPU-fit verdict, like the model catalog entries
 }
 
 export interface UpscaleRequest {
@@ -220,7 +223,34 @@ export interface ReframeRequest {
   target_ratio: string; // "16:9" | "4:3" | … (never "original")
   reframe: ReframeStrategy;
   outpaint_prompt: string; // describes the scene generated in the outpainted area
+  outpaint_negative?: string; // per-run negative, appended to the Settings default
   outpaint_engine?: string | null; // inpaint engine slug; null → curated default
+  // Seam-blend tuning for reframe=outpaint (0..1; 0.5 = tuned default): mask
+  // gradient band / composite-back seam fade / reflected-seed blur.
+  mask_softness?: number;
+  seam_softness?: number;
+  seed_softness?: number;
+  // Source placement in the extended canvas (0..1; 0.5 = centred). Area-adding
+  // strategies (outpaint/contain/edge); cover ignores it.
+  pos_x?: number;
+  pos_y?: number;
+  // Generation parameters for reframe=outpaint (ignored by cover/contain/edge):
+  // composition/refinement steps, CFG scale, scheduler id, seed (null → random),
+  // and how many variants to generate (incrementing seeds).
+  outpaint_steps?: number;
+  outpaint_refine_steps?: number;
+  outpaint_guidance?: number;
+  outpaint_sampler?: string | null;
+  outpaint_seed?: number | null;
+  outpaint_batch?: number;
+}
+
+/** Reframe job progress = the upscale progress shape plus batch fields (a superset,
+ *  so the shared upscale live-stats UI keeps working). */
+export interface ReframeProgress extends UpscaleProgress {
+  batch_index: number;
+  batch_size: number;
+  image_ids: string[];
 }
 
 export type UpscalePhase = "loading" | "upscaling" | "outpainting" | "finalizing";

@@ -46,39 +46,52 @@ def extend_size(w: int, h: int, rw: float, rh: float) -> tuple[int, int]:
     return w, max(h, round(w / target))
 
 
-def cover(img, rw: float, rh: float):
-    """Centre-crop ``img`` to the target ratio (drops the overflowing edges)."""
+def cover(img, rw: float, rh: float, pos_x: float = 0.5, pos_y: float = 0.5):
+    """Crop ``img`` to the target ratio (drops the overflowing edges). ``pos_x``/
+    ``pos_y`` (0..1, 0.5 = centred) pan which part is kept along the cropped axis."""
     w, h = img.size
     target = rw / rh
     if w / h > target:  # too wide → crop width
         nw, nh = round(h * target), h
     else:  # too tall → crop height
         nw, nh = w, round(w / target)
-    left, top = (w - nw) // 2, (h - nh) // 2
+    left, top = place_offset(w, h, nw, nh, pos_x, pos_y)
     return img.crop((left, top, left + nw, top + nh))
 
 
-def contain(img, rw: float, rh: float):
-    """Centre ``img`` on a target-ratio canvas; backdrop = a blurred, cover-scaled
-    copy of the image so there are no hard bars."""
+def place_offset(cw: int, ch: int, w: int, h: int, pos_x: float = 0.5, pos_y: float = 0.5) -> tuple[int, int]:
+    """Top-left offset for placing a ``w×h`` image in a ``cw×ch`` canvas at the
+    normalized position ``pos_x``/``pos_y`` (0..1; 0.5 = centered = the old ``//2``).
+    Clamped so the image stays inside the canvas. Along an axis with no spare room
+    (``cw == w``) the position has no effect, which is correct for the single-axis
+    extend geometry."""
+    ox = round(max(0, cw - w) * min(1.0, max(0.0, pos_x)))
+    oy = round(max(0, ch - h) * min(1.0, max(0.0, pos_y)))
+    return ox, oy
+
+
+def contain(img, rw: float, rh: float, pos_x: float = 0.5, pos_y: float = 0.5):
+    """Place ``img`` on a target-ratio canvas at ``pos_x``/``pos_y`` (0.5 = centre);
+    backdrop = a blurred, cover-scaled copy of the image so there are no hard bars."""
     from PIL import ImageFilter
 
     w, h = img.size
     cw, ch = extend_size(w, h, rw, rh)
     radius = max(8, max(cw, ch) // 24)
     backdrop = img.resize((cw, ch)).filter(ImageFilter.GaussianBlur(radius)).convert("RGB")
-    backdrop.paste(img, ((cw - w) // 2, (ch - h) // 2))
+    backdrop.paste(img, place_offset(cw, ch, w, h, pos_x, pos_y))
     return backdrop
 
 
-def edge_extend(img, rw: float, rh: float):
-    """Fill the new area by mirroring/replicating the border pixels."""
+def edge_extend(img, rw: float, rh: float, pos_x: float = 0.5, pos_y: float = 0.5):
+    """Fill the new area by mirroring/replicating the border pixels, with the source
+    placed at ``pos_x``/``pos_y`` (0.5 = centre)."""
     import numpy as np
     from PIL import Image
 
     w, h = img.size
     cw, ch = extend_size(w, h, rw, rh)
-    left, top = (cw - w) // 2, (ch - h) // 2
+    left, top = place_offset(cw, ch, w, h, pos_x, pos_y)
     right, bottom = cw - w - left, ch - h - top
     arr = np.asarray(img.convert("RGB"))
     pad = ((top, bottom), (left, right), (0, 0))
@@ -89,40 +102,96 @@ def edge_extend(img, rw: float, rh: float):
     return Image.fromarray(out)
 
 
-def apply(img, ratio: tuple[float, float] | None, strategy: str):
+def reflect_fill(src, canvas_size: tuple[int, int], offset: tuple[int, int]):
+    """Seed a ``canvas_size`` RGB image by reflecting ``src`` outward from
+    ``offset`` (x, y) into the new border — a boundary-consistent starting point
+    for outpainting (the role Telea inpainting plays in differential-diffusion
+    outpainting), so the seam begins from content that matches the edge rather than
+    an unrelated blurred copy. Falls back to edge replication when a side is wider
+    than the source (reflect requires pad < dimension)."""
+    import numpy as np
+    from PIL import Image
+
+    cw, ch = canvas_size
+    ox, oy = offset
+    sw, sh = src.size
+    arr = np.asarray(src.convert("RGB"))
+    pad = ((oy, ch - sh - oy), (ox, cw - sw - ox), (0, 0))
+    try:
+        out = np.pad(arr, pad, mode="reflect")
+    except ValueError:  # a side exceeds the source dimension → replicate instead
+        out = np.pad(arr, pad, mode="edge")
+    return Image.fromarray(out)
+
+
+def apply(img, ratio: tuple[float, float] | None, strategy: str,
+          pos_x: float = 0.5, pos_y: float = 0.5):
     """Reframe ``img`` to ``ratio`` with a non-AI ``strategy`` (cover/contain/edge).
-    ``ratio`` None → returns ``img`` unchanged. Outpaint is handled elsewhere."""
+    ``ratio`` None → returns ``img`` unchanged. ``pos_x``/``pos_y`` position the
+    source: contain/edge place it in the extended canvas, cover pans the kept crop.
+    Outpaint is handled elsewhere."""
     if ratio is None:
         return img
     rw, rh = ratio
     if strategy == "contain":
-        return contain(img, rw, rh)
+        return contain(img, rw, rh, pos_x, pos_y)
     if strategy == "edge":
-        return edge_extend(img, rw, rh)
-    return cover(img, rw, rh)
+        return edge_extend(img, rw, rh, pos_x, pos_y)
+    return cover(img, rw, rh, pos_x, pos_y)
 
 
-def build_mask(canvas_size: tuple[int, int], region: tuple[int, int, int, int], feather: int = 24):
-    """White (=fill) everywhere except ``region`` (=keep), with a feathered edge so
-    the outpaint blends into the kept content. ``region`` is (x0, y0, w, h)."""
+def default_mask_feather(cw: int, ch: int) -> int:
+    """Canvas-relative default width of the outpaint mask gradient band."""
+    return max(24, min(cw, ch) // 12)
+
+
+def default_keep_feather(w: int, h: int) -> int:
+    """Source-relative default width of the composite-back seam fade."""
+    return max(32, min(w, h) // 14)
+
+
+def default_seed_blur(cw: int, ch: int) -> int:
+    """Canvas-relative default blur radius for the reflected border seed."""
+    return max(8, max(cw, ch) // 20)
+
+
+def scale_softness(default: int, softness: float) -> int:
+    """Map a normalized ``softness`` in [0, 1] onto ``default``: 0.5 → the default,
+    1.0 → 2× (softer/wider), 0.0 → off/hard. Used to make the seam feathers and the
+    seed blur user-adjustable while keeping the tuned defaults at the 0.5 midpoint."""
+    return max(0, round(default * softness * 2))
+
+
+def build_mask(canvas_size: tuple[int, int], region: tuple[int, int, int, int], feather: int | None = None):
+    """White (=fill) everywhere except ``region`` (=keep), with a wide feathered
+    edge so the outpaint blends into the kept content over a broad gradient (the
+    standard-inpaint analog of a differential-diffusion change map) instead of a
+    hard step. ``region`` is (x0, y0, w, h). ``feather`` defaults to a
+    canvas-relative band; the ``//4`` clamp keeps small regions valid."""
     from PIL import Image, ImageDraw, ImageFilter
 
     cw, ch = canvas_size
     x0, y0, rw, rh = region
+    if feather is None:
+        feather = default_mask_feather(cw, ch)
     f = max(0, min(feather, rw // 4, rh // 4))
     mask = Image.new("L", (cw, ch), 255)
     ImageDraw.Draw(mask).rectangle([x0 + f, y0 + f, x0 + rw - f, y0 + rh - f], fill=0)
     return mask.filter(ImageFilter.GaussianBlur(max(1, f // 2)))
 
 
-def feathered_keep_mask(size: tuple[int, int], feather: int = 32):
+def feathered_keep_mask(size: tuple[int, int], feather: int | None = None):
     """Alpha mask (mode ``L``) the size of the source: 255 (fully keep the source)
-    in the interior, fading to 0 over a ``feather``-px inset border. Used to
-    composite a pristine full-res source back over generated content so only the
-    seam blends and no hard edge shows. ``size`` is (w, h)."""
+    in the interior, fading to 0 over an inset border. Used to composite a pristine
+    full-res source back over generated content so only the seam blends and no hard
+    edge shows. A wide, canvas-relative fade makes the exact source hand off to the
+    AI border gradually. ``size`` is (w, h); the ``//4`` clamp keeps it valid on
+    small sources."""
     from PIL import Image, ImageDraw, ImageFilter
 
     w, h = size
+    if feather is None:
+        feather = default_keep_feather(w, h)
     f = max(1, min(feather, w // 4, h // 4))
     mask = Image.new("L", (w, h), 0)
     ImageDraw.Draw(mask).rectangle([f, f, w - f - 1, h - f - 1], fill=255)

@@ -12,9 +12,10 @@ import {
 import { useActivity } from "@/providers/ActivityProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import { clearJob, loadJob, saveJob } from "@/lib/jobPersistence";
 import { useJobTracker } from "@/lib/ws";
 import { upscaleStatsView } from "@/lib/stats";
-import type { ReframeRequest, ReframeStrategy, UpscaleProgress } from "@/types";
+import type { ReframeProgress, ReframeRequest, ReframeStrategy, Sampler } from "@/types";
 import type { UpscaleSource } from "@/providers/UpscaleProvider";
 
 /**
@@ -30,15 +31,44 @@ interface ReframeContextValue {
   targetRatio: string;
   reframe: ReframeStrategy;
   outpaintPrompt: string;
+  outpaintNegative: string;
   outpaintEngine: string;
+  // Outpaint seam-blend tuning as 0–100 percent (50 = tuned default).
+  maskFeather: number;
+  seamFeather: number;
+  seedBlur: number;
+  // Source placement as 0–100 percent (50 = centred).
+  posX: number;
+  posY: number;
+  // Outpaint generation parameters (only used by reframe=outpaint).
+  outpaintSteps: number;
+  outpaintRefineSteps: number;
+  outpaintGuidance: number;
+  outpaintSampler: string;
+  outpaintSeed: string; // free text: empty = random, else a number
+  outpaintBatch: number;
+  samplers: Sampler[];
   setSource: (v: UpscaleSource | null) => void;
   setTargetRatio: (v: string) => void;
   setReframe: (v: ReframeStrategy) => void;
   setOutpaintPrompt: (v: string) => void;
+  setOutpaintNegative: (v: string) => void;
   setOutpaintEngine: (v: string) => void;
+  setMaskFeather: (v: number) => void;
+  setSeamFeather: (v: number) => void;
+  setSeedBlur: (v: number) => void;
+  setPosX: (v: number) => void;
+  setPosY: (v: number) => void;
+  setOutpaintSteps: (v: number) => void;
+  setOutpaintRefineSteps: (v: number) => void;
+  setOutpaintGuidance: (v: number) => void;
+  setOutpaintSampler: (v: string) => void;
+  setOutpaintSeed: (v: string) => void;
+  setOutpaintBatch: (v: number) => void;
   // job
-  progress: UpscaleProgress | null;
+  progress: ReframeProgress | null;
   resultId: string | null;
+  resultIds: string[]; // all batch result image ids (in order), for the result grid
   error: string | null;
   running: boolean;
   start: (req: ReframeRequest) => Promise<void>;
@@ -68,36 +98,89 @@ export const ReframeProvider = ({ onReframed, children }: ReframeProviderProps) 
   const [targetRatio, setTargetRatio] = useState("16:9");
   const [reframe, setReframe] = useState<ReframeStrategy>("cover");
   const [outpaintPrompt, setOutpaintPrompt] = useState("");
+  const [outpaintNegative, setOutpaintNegative] = useState("");
   const [outpaintEngine, setOutpaintEngine] = useState("");
+  // 50 % = the tuned defaults from the gradient-seam-blending feature.
+  const [maskFeather, setMaskFeather] = useState(50);
+  const [seamFeather, setSeamFeather] = useState(50);
+  const [seedBlur, setSeedBlur] = useState(50);
+  // 50 % = centred (matches the backend's old //2 placement).
+  const [posX, setPosX] = useState(50);
+  const [posY, setPosY] = useState(50);
+  // Outpaint generation parameters, defaulting to the backend constants.
+  const [outpaintSteps, setOutpaintSteps] = useState(30);
+  const [outpaintRefineSteps, setOutpaintRefineSteps] = useState(24);
+  const [outpaintGuidance, setOutpaintGuidance] = useState(7.5);
+  const [outpaintSampler, setOutpaintSampler] = useState("");
+  const [outpaintSeed, setOutpaintSeed] = useState("");
+  const [outpaintBatch, setOutpaintBatch] = useState(1);
+  const [samplers, setSamplers] = useState<Sampler[]>([]);
 
   const [jobId, setJobId] = useState<string | null>(null);
-  const [progress, setProgress] = useState<UpscaleProgress | null>(null);
+  const [progress, setProgress] = useState<ReframeProgress | null>(null);
   const [resultId, setResultId] = useState<string | null>(null);
+  const [resultIds, setResultIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Load the sampler list once; seed the default into the (empty) selection so the
+  // outpaint sampler dropdown starts on the same default as generation.
+  useEffect(() => {
+    api
+      .getSamplers()
+      .then((list) => {
+        setSamplers(list.samplers);
+        setOutpaintSampler((cur) => cur || list.default);
+      })
+      .catch(() => setSamplers([]));
+  }, []);
 
   const running = jobId !== null;
 
-  useJobTracker<UpscaleProgress>(
+  useJobTracker<ReframeProgress>(
     jobId,
     "reframe",
     (id) => api.getReframeProgress(id),
     (p) => {
       setProgress(p);
+      // Fill the result grid live as each batch variant finishes.
+      setResultIds(p.image_ids);
       if (p.status === "done") {
-        setResultId(p.image_id);
+        setResultId(p.image_id ?? p.image_ids[0] ?? null);
         setJobId(null);
+        clearJob("reframe");
         onReframed();
       } else if (p.status === "error") {
         setError(p.error ?? t("common.error"));
         setJobId(null);
+        clearJob("reframe");
       }
     },
     (message) => {
       setError(message);
       setJobId(null);
+      clearJob("reframe");
     },
     POLL_MS,
   );
+
+  // Re-attach to a job that was still running when the page reloaded (see the
+  // generation provider for the rationale).
+  useEffect(() => {
+    const saved = loadJob("reframe");
+    if (!saved) return undefined;
+    let active = true;
+    api
+      .getReframeProgress(saved)
+      .then((p) => {
+        if (!active) return;
+        if (p.status === "running") setJobId(saved);
+        else clearJob("reframe");
+      })
+      .catch(() => active && clearJob("reframe"));
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Publish the running job to the shared activity store for the off-route bubble.
   const { set: setActivity } = useActivity();
@@ -120,10 +203,12 @@ export const ReframeProvider = ({ onReframed, children }: ReframeProviderProps) 
   const start = useCallback(async (req: ReframeRequest) => {
     setError(null);
     setResultId(null);
+    setResultIds([]);
     setProgress(null);
     try {
       const { job_id } = await api.reframe(req);
       setJobId(job_id);
+      saveJob("reframe", job_id);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -131,6 +216,7 @@ export const ReframeProvider = ({ onReframed, children }: ReframeProviderProps) 
 
   const reset = useCallback(() => {
     setResultId(null);
+    setResultIds([]);
     setError(null);
     setProgress(null);
   }, []);
@@ -140,14 +226,40 @@ export const ReframeProvider = ({ onReframed, children }: ReframeProviderProps) 
     targetRatio,
     reframe,
     outpaintPrompt,
+    outpaintNegative,
     outpaintEngine,
+    maskFeather,
+    seamFeather,
+    seedBlur,
+    posX,
+    posY,
+    outpaintSteps,
+    outpaintRefineSteps,
+    outpaintGuidance,
+    outpaintSampler,
+    outpaintSeed,
+    outpaintBatch,
+    samplers,
     setSource,
     setTargetRatio,
     setReframe,
     setOutpaintPrompt,
+    setOutpaintNegative,
     setOutpaintEngine,
+    setMaskFeather,
+    setSeamFeather,
+    setSeedBlur,
+    setPosX,
+    setPosY,
+    setOutpaintSteps,
+    setOutpaintRefineSteps,
+    setOutpaintGuidance,
+    setOutpaintSampler,
+    setOutpaintSeed,
+    setOutpaintBatch,
     progress,
     resultId,
+    resultIds,
     error,
     running,
     start,

@@ -3,22 +3,21 @@
 import type {
   AppSettings,
   DownloadProgress,
+  EngineCatalogEntry,
   GalleryImage,
   GenerateRequest,
   GenerateResponse,
   GenerationProgress,
-  HfSearchResult,
+  ModelCatalogEntry,
   ModelEntry,
   PromptKind,
   PromptSnippet,
-  ResolvedModel,
   ResourceStats,
   SamplerList,
   SystemInfo,
-  EngineResolve,
+  ReframeProgress,
   ReframeRequest,
   UpscalerEngine,
-  UpscalerKind,
   UpscaleProgress,
   UpscaleRequest,
   UpscaleStarted,
@@ -48,28 +47,17 @@ export const api = {
 
   getModels: () => request<ModelEntry[]>("/api/models"),
 
-  searchModels: (
-    query: string,
-    sort: string,
-    family = "",
-    pipelines: string[] = ["text-to-image"],
-    limit = 30,
-  ) =>
-    request<HfSearchResult[]>(
-      `/api/models/search?query=${encodeURIComponent(query)}&sort=${sort}` +
-        `&family=${encodeURIComponent(family)}` +
-        pipelines.map((p) => `&pipelines=${encodeURIComponent(p)}`).join("") +
-        `&limit=${limit}`,
-    ),
+  // Curated model-catalog editing (Settings).
+  getModelsCatalog: () => request<ModelCatalogEntry[]>("/api/models/catalog"),
 
-  resolveModel: (repoId: string) =>
-    request<ResolvedModel>(`/api/models/resolve?repo_id=${encodeURIComponent(repoId)}`),
-
-  addModel: (repoId: string) =>
-    request<{ slug: string; message: string }>("/api/models", {
-      method: "POST",
-      body: JSON.stringify({ repo_id: repoId }),
+  saveModelsCatalog: (entries: ModelCatalogEntry[]) =>
+    request<ModelCatalogEntry[]>("/api/models/catalog", {
+      method: "PUT",
+      body: JSON.stringify(entries),
     }),
+
+  resetModelsCatalog: () =>
+    request<ModelCatalogEntry[]>("/api/models/catalog/reset", { method: "POST" }),
 
   downloadModel: (slug: string) =>
     request<{ slug: string; message: string }>(`/api/models/${slug}/download`, {
@@ -124,16 +112,17 @@ export const api = {
 
   getUpscalers: () => request<UpscalerEngine[]>("/api/upscale/engines"),
 
-  resolveUpscaler: (repoId: string, kind: UpscalerKind) =>
-    request<EngineResolve>(
-      `/api/upscale/engines/resolve?repo_id=${encodeURIComponent(repoId)}&kind=${kind}`,
-    ),
+  // Curated engine-catalog editing (Settings).
+  getEnginesCatalog: () => request<EngineCatalogEntry[]>("/api/upscale/engines/catalog"),
 
-  addUpscaler: (repoId: string, kind: UpscalerKind, filename?: string | null) =>
-    request<{ slug: string; message: string }>("/api/upscale/engines", {
-      method: "POST",
-      body: JSON.stringify({ repo_id: repoId, kind, filename: filename ?? null }),
+  saveEnginesCatalog: (entries: EngineCatalogEntry[]) =>
+    request<EngineCatalogEntry[]>("/api/upscale/engines/catalog", {
+      method: "PUT",
+      body: JSON.stringify(entries),
     }),
+
+  resetEnginesCatalog: () =>
+    request<EngineCatalogEntry[]>("/api/upscale/engines/catalog/reset", { method: "POST" }),
 
   deleteUpscaler: (slug: string) =>
     request<{ slug: string; status: string }>(`/api/upscale/engines/${slug}`, {
@@ -164,7 +153,7 @@ export const api = {
     }),
 
   getReframeProgress: (jobId: string) =>
-    request<UpscaleProgress>(`/api/reframe/${jobId}`),
+    request<ReframeProgress>(`/api/reframe/${jobId}`),
 
   getImages: () => request<GalleryImage[]>("/api/images"),
 

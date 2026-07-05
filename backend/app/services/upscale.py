@@ -41,7 +41,11 @@ _sd_x4_slug: str | None = None
 
 
 def to_model_info(engine: UpscalerInfo) -> ModelInfo:
-    """Wrap a diffusers-based engine as a ``ModelInfo`` for the downloader."""
+    """Wrap a diffusers-based engine as a ``ModelInfo`` for the downloader.
+
+    GGUF engines (FLUX Fill) forward their ``gguf_*`` fields so the downloader's
+    existing GGUF branch fetches the base repo without the transformer weights plus
+    the single ``.gguf``."""
     return ModelInfo(
         slug=engine.slug,
         repo_id=engine.repo_id,
@@ -51,9 +55,11 @@ def to_model_info(engine: UpscalerInfo) -> ModelInfo:
         description=engine.description,
         gated=False,
         approx_size_gb=engine.approx_size_gb,
-        min_vram_gb=4.0,
+        min_vram_gb=engine.min_vram_gb,
         variant=engine.variant,
         use_safetensors=engine.use_safetensors,
+        gguf_repo_id=engine.gguf_repo_id,
+        gguf_filename=engine.gguf_filename,
         defaults=GenerationDefaults(steps=0, guidance_scale=0.0, width=0, height=0),
     )
 

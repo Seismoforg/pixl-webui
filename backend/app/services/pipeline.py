@@ -14,14 +14,14 @@ from typing import Callable
 from .. import config, messages, samplers
 from ..catalog import ModelInfo
 from ..config import load_settings
-from ..device import get_dtype, get_torch_device
+from ..device import get_compute_dtype, get_device_info, get_dtype, get_torch_device
 from . import callbacks
 from . import preview as preview_svc
 from . import prompt_embeds
 from . import vram
 from .downloader import is_downloaded
 from .fit import assess
-from .optimizations import apply_perf
+from .optimizations import apply_compile, apply_perf
 
 # Minimum wall-clock gap between decoded previews, so high step counts don't spam
 # the (relatively) expensive decode + JPEG encode.
@@ -67,51 +67,105 @@ def _load(model: ModelInfo):
         return _pipeline
 
     import torch
-    from diffusers import AutoPipelineForText2Image
 
     # Allow TF32 on Ampere+ matmul/cudnn — a free speedup for the fp32 ops with no
     # visible quality impact. Idempotent; a no-op on CPU/older GPUs.
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
 
+    # ROCm: tune GEMM kernels to this GPU (results persistently cached, see config).
+    # Gated to ROCm — NVIDIA's cuBLAS is already tuned, so TunableOp's warmup isn't
+    # worth it there. Idempotent + process-global, so upscale/outpaint benefit too.
+    if get_device_info().backend == "rocm":
+        try:
+            torch.cuda.tunable.enable(True)
+        except Exception:  # noqa: BLE001 - optional optimisation; never fatal
+            pass
+
     _pipeline = None  # free the previous pipeline before loading a new one
     _reset_aux_state()
     vram.release()  # return the previous model's VRAM before loading the next
-    pipe = AutoPipelineForText2Image.from_pretrained(
-        str(config.model_dir(model.slug)),
-        torch_dtype=get_dtype(),
-        variant=model.variant,
-        use_safetensors=model.use_safetensors,
-    )
 
-    # Place the model per the fit verdict so the UI badge matches reality: models
-    # that fit go fully on the GPU; larger ones stream weights via CPU offloading.
-    device = get_torch_device()
-    fits_gpu = device == "cuda" and assess(model).verdict == "fits_gpu"
-    if device == "cpu" or fits_gpu:
-        pipe = pipe.to(device)
+    if model.is_gguf:
+        # GGUF loads a quantized transformer and always CPU-offloads (below), so no
+        # separate fit-based placement / attention slicing is applied.
+        pipe = _load_gguf(model)
+        _attention_slicing = False
     else:
-        pipe.enable_model_cpu_offload()
-    # Attention slicing saves VRAM but costs speed; only needed under memory
-    # pressure. When the model fully fits the GPU, skip it — SDPA is memory-
-    # efficient on its own — so full-GPU runs stay fast.
-    _attention_slicing = not fits_gpu
-    if _attention_slicing:
-        pipe.enable_attention_slicing()
-    # channels_last is a free speedup for the conv-heavy UNet on Ampere+; skip it
-    # for transformer families (SD3/FLUX expose `.transformer`, not `.unet`).
-    # Best-effort: never fatal to a load.
-    unet = getattr(pipe, "unet", None)
-    if unet is not None:
-        try:
-            unet.to(memory_format=torch.channels_last)
-        except Exception:  # noqa: BLE001 - optional optimisation; never fatal
-            pass
-    # User-configurable optimisations (VAE tiling/slicing, xformers) — best-effort.
-    apply_perf(pipe, load_settings())
+        from diffusers import AutoPipelineForText2Image
+
+        pipe = AutoPipelineForText2Image.from_pretrained(
+            str(config.model_dir(model.slug)),
+            torch_dtype=get_dtype(),
+            variant=model.variant,
+            use_safetensors=model.use_safetensors,
+        )
+
+        # Place the model per the fit verdict so the UI badge matches reality: models
+        # that fit go fully on the GPU; larger ones stream weights via CPU offloading.
+        device = get_torch_device()
+        fits_gpu = device == "cuda" and assess(model).verdict == "fits_gpu"
+        if device == "cpu" or fits_gpu:
+            pipe = pipe.to(device)
+        else:
+            pipe.enable_model_cpu_offload()
+        # Attention slicing saves VRAM but costs speed; only needed under memory
+        # pressure. When the model fully fits the GPU, skip it — SDPA is memory-
+        # efficient on its own — so full-GPU runs stay fast.
+        _attention_slicing = not fits_gpu
+        if _attention_slicing:
+            pipe.enable_attention_slicing()
+        # channels_last is a free speedup for the conv-heavy UNet on Ampere+; skip it
+        # for transformer families (SD3/FLUX expose `.transformer`, not `.unet`).
+        # Best-effort: never fatal to a load.
+        unet = getattr(pipe, "unet", None)
+        if unet is not None:
+            try:
+                unet.to(memory_format=torch.channels_last)
+            except Exception:  # noqa: BLE001 - optional optimisation; never fatal
+                pass
+
+    # User-configurable optimisations (VAE tiling/slicing, xformers, torch.compile)
+    # — all best-effort.
+    settings = load_settings()
+    apply_perf(pipe, settings)
+    apply_compile(pipe, settings)
 
     _current_slug = model.slug
     _pipeline = pipe
+    return pipe
+
+
+def _load_gguf(model: ModelInfo):
+    """Build a FLUX pipeline whose transformer is loaded from the model's GGUF file.
+
+    Only the transformer is quantized (and dequantized on the fly during forward);
+    the VAE, text encoders, tokenizers and scheduler come from the base repo. Always
+    uses CPU offloading so the large T5 text encoder streams off the GPU during
+    denoising, keeping peak VRAM low enough to fit ~16 GB.
+    """
+    if model.family != "FLUX":
+        raise ValueError(messages.GGUF_UNSUPPORTED_FAMILY.format(family=model.family))
+
+    from diffusers import FluxPipeline, FluxTransformer2DModel, GGUFQuantizationConfig
+
+    model_path = config.model_dir(model.slug)
+    dtype = get_compute_dtype()
+    transformer = FluxTransformer2DModel.from_single_file(
+        str(model_path / model.gguf_filename),
+        config=str(model_path / "transformer"),
+        quantization_config=GGUFQuantizationConfig(compute_dtype=dtype),
+        torch_dtype=dtype,
+    )
+    pipe = FluxPipeline.from_pretrained(
+        str(model_path),
+        transformer=transformer,
+        torch_dtype=dtype,
+    )
+    if get_torch_device() == "cpu":
+        pipe = pipe.to("cpu")
+    else:
+        pipe.enable_model_cpu_offload()
     return pipe
 
 

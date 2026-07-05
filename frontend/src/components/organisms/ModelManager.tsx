@@ -1,9 +1,7 @@
 "use client";
 
-import AddIcon from "@mui/icons-material/Add";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
 import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
@@ -14,9 +12,9 @@ import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { ConfirmDialog } from "@/components/molecules/ConfirmDialog";
 import { ModelListItem } from "@/components/molecules/ModelListItem";
 import { SkeletonList } from "@/components/molecules/SkeletonList";
-import { AddModelDialog } from "@/components/organisms/AddModelDialog";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import { fitBucket, fitRank } from "@/lib/fit";
 import type { DownloadProgress, ModelEntry } from "@/types";
 
 interface ModelManagerProps {
@@ -44,7 +42,6 @@ export const ModelManager = ({ models, loading, onChanged }: ModelManagerProps) 
   const downloads = useDownloads();
   const [errors, setErrors] = useState<Record<string, DownloadProgress>>({});
   const progressFor = (slug: string) => errors[slug] ?? downloads.progress[slug];
-  const [addOpen, setAddOpen] = useState(false);
   const [pendingSlug, setPendingSlug] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [familyFilter, setFamilyFilter] = useState("");
@@ -73,14 +70,18 @@ export const ModelManager = ({ models, loading, onChanged }: ModelManagerProps) 
   }, [models, query, familyFilter, pipelineFilter]);
 
   const installed = useMemo(() => filtered.filter((m) => m.downloaded), [filtered]);
-  const available = useMemo(
-    () => filtered.filter((m) => !m.downloaded && m.curated),
-    [filtered],
-  );
-  const custom = useMemo(
-    () => filtered.filter((m) => !m.downloaded && !m.curated),
-    [filtered],
-  );
+  // Not-yet-downloaded models, split into fit buckets (best fit first) so oversized
+  // ones sink into their own labelled sections.
+  const byBucket = useMemo(() => {
+    const rest = filtered
+      .filter((m) => !m.downloaded)
+      .sort((a, b) => fitRank[a.fit.verdict] - fitRank[b.fit.verdict]);
+    return {
+      available: rest.filter((m) => fitBucket(m.fit.verdict) === "available"),
+      offload: rest.filter((m) => fitBucket(m.fit.verdict) === "offload"),
+      tooLarge: rest.filter((m) => fitBucket(m.fit.verdict) === "tooLarge"),
+    };
+  }, [filtered]);
 
   const handleDelete = async (slug: string) => {
     setPendingSlug(null);
@@ -104,6 +105,7 @@ export const ModelManager = ({ models, loading, onChanged }: ModelManagerProps) 
       downloads.track(slug, {
         title: model?.name ?? slug,
         route: "/models",
+        kind: "model",
         fetch: () => api.getProgress(slug),
         retry: () => api.downloadModel(slug),
       });
@@ -140,21 +142,9 @@ export const ModelManager = ({ models, loading, onChanged }: ModelManagerProps) 
 
   return (
     <Box>
-      <Stack
-        direction="row"
-        alignItems="center"
-        justifyContent="space-between"
-        sx={{ mb: 2 }}
-      >
-        <SectionHeading level={2}>{t("models.title")}</SectionHeading>
-        <Button
-          variant="outlined"
-          startIcon={<AddIcon />}
-          onClick={() => setAddOpen(true)}
-        >
-          {t("models.browser.add")}
-        </Button>
-      </Stack>
+      <SectionHeading level={2} sx={{ mb: 2 }}>
+        {t("models.title")}
+      </SectionHeading>
 
       <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mb: 3 }}>
         <TextField
@@ -200,16 +190,11 @@ export const ModelManager = ({ models, loading, onChanged }: ModelManagerProps) 
       ) : (
         <Stack spacing={3}>
           {section("models.installed", installed)}
-          {section("models.available", available)}
-          {section("models.custom", custom)}
+          {section("models.available", byBucket.available)}
+          {section("models.availableOffload", byBucket.offload)}
+          {section("models.availableTooLarge", byBucket.tooLarge)}
         </Stack>
       )}
-
-      <AddModelDialog
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        onAdded={onChanged}
-      />
 
       <ConfirmDialog
         open={pendingSlug !== null}

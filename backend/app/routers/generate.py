@@ -16,8 +16,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .. import live, messages, samplers
+from ..catalog import get_model
 from ..services import gallery, pipeline
-from ..services.custom_models import resolve_model
 
 router = APIRouter(prefix="/api", tags=["generate"])
 
@@ -214,7 +214,7 @@ def list_samplers() -> SamplerList:
 
 @router.post("/generate", response_model=GenerateStarted)
 def start_generation(req: GenerateRequest) -> GenerateStarted:
-    model = resolve_model(req.slug)
+    model = get_model(req.slug)
     if model is None:
         raise HTTPException(404, messages.MODEL_NOT_FOUND.format(slug=req.slug))
 

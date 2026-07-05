@@ -8,7 +8,7 @@ from ..services import pipeline, upscale
 
 router = APIRouter(prefix="/api", tags=["settings"])
 
-_PERF_FIELDS = ("vae_tiling", "vae_slicing", "xformers")
+_PERF_FIELDS = ("vae_tiling", "vae_slicing", "xformers", "torch_compile")
 
 
 @router.get("/settings", response_model=Settings)

@@ -10,7 +10,15 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { InfoTip } from "@/components/molecules/InfoTip";
@@ -28,6 +36,16 @@ interface GenerationFormProps {
 
 const appendPrompt = (current: string, addition: string): string =>
   current.trim() === "" ? addition : `${current.trim()}, ${addition}`;
+
+// Reset-styled fieldset that locks (and dims) a form's controls while a job runs.
+const formLockStyle = (locked: boolean): CSSProperties => ({
+  border: 0,
+  margin: 0,
+  padding: 0,
+  minInlineSize: 0,
+  opacity: locked ? 0.6 : 1,
+  pointerEvents: locked ? "none" : "auto",
+});
 
 /** One labelled group of controls in the generation form. */
 const FormSection = ({ title, children }: { title: string; children: ReactNode }) => {
@@ -68,6 +86,13 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
     return fam === "SD 1.5" || fam === "SDXL";
   }, [downloaded, gen.slug]);
 
+  // Flow-matching families (FLUX / SD 3.x) keep their native scheduler, so the
+  // sampler selection has no effect — hide the control for them.
+  const samplerSupported = useMemo(() => {
+    const fam = downloaded.find((m) => m.slug === gen.slug)?.family;
+    return fam !== "FLUX" && fam !== "SD 3.x";
+  }, [downloaded, gen.slug]);
+
   const canSubmit = !gen.running && gen.prompt.trim() !== "";
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -77,6 +102,11 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
   return (
     <Paper variant="outlined" sx={{ p: 2.5 }}>
       <Stack spacing={3} component="form" onSubmit={handleSubmit}>
+        {/* Lock every control while a job runs so params can't change mid-run.
+            fieldset[disabled] blocks native inputs + keyboard; pointer-events
+            also locks the (span-driven) MUI sliders. */}
+        <fieldset disabled={gen.running} style={formLockStyle(gen.running)}>
+          <Stack spacing={3}>
         <FormSection title={t("generate.sections.model")}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
             <TextField
@@ -153,23 +183,25 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
         <Divider />
 
         <FormSection title={t("generate.sections.parameters")}>
-          <Box sx={{ display: "flex", alignItems: "flex-start", gap: 0.5 }}>
-            <TextField
-              select
-              label={t("generate.sampler")}
-              value={gen.sampler}
-              onChange={(e) => gen.setSampler(e.target.value)}
-              helperText={t("generate.samplerHint")}
-              sx={{ flexGrow: 1 }}
-            >
-              {gen.samplers.map((s) => (
-                <MenuItem key={s.id} value={s.id}>
-                  {s.label}
-                </MenuItem>
-              ))}
-            </TextField>
-            <InfoTip text={t("generate.info.sampler")} sx={{ mt: 1.5 }} />
-          </Box>
+          {samplerSupported && (
+            <Box sx={{ display: "flex", alignItems: "flex-start", gap: 0.5 }}>
+              <TextField
+                select
+                label={t("generate.sampler")}
+                value={gen.sampler}
+                onChange={(e) => gen.setSampler(e.target.value)}
+                helperText={t("generate.samplerHint")}
+                sx={{ flexGrow: 1 }}
+              >
+                {gen.samplers.map((s) => (
+                  <MenuItem key={s.id} value={s.id}>
+                    {s.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <InfoTip text={t("generate.info.sampler")} sx={{ mt: 1.5 }} />
+            </Box>
+          )}
 
           <LabeledSlider
             label={t("generate.steps")}
@@ -251,6 +283,8 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
             }
           />
         </FormSection>
+          </Stack>
+        </fieldset>
 
         <Button
           type="submit"
