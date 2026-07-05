@@ -122,7 +122,8 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            composition pass at a model-family working cap (SD 1.x 768 /
                            SDXL 1024 / FLUX 1024) — the full
                            canvas directly when it fits, else generated at the cap and
-                           upscaled, then a short low-strength hires refinement pass
+                           upscaled, then (only when the `refine` flag is set, off by
+                           default) a short low-strength hires refinement pass
                            re-adds full-res border detail. The pristine full-res source
                            is composited back over its region (feathered seam) so the
                            source stays pixel-exact and only the border is AI; VRAM-
@@ -205,7 +206,9 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            outpaint_negative + outpaint_engine + outpaint seam-blend
                            softness mask/seam/seed_softness + source position
                            pos_x/pos_y + outpaint generation params
-                           outpaint_steps/refine_steps/guidance/sampler/seed/batch)
+                           outpaint_steps/refine_steps/guidance/sampler/seed/batch +
+                           an outpaint_refine flag gating the slow full-res hires
+                           refinement pass, off by default)
                            as a background job that reframes the
                            image to a target aspect ratio WITHOUT upscaling
                            (cover/contain/edge = pure PIL; outpaint = the outpaint

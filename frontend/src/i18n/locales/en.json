@@ -248,6 +248,8 @@
       "samplerHelp": "Scheduler used for the outpaint denoising. Applied when the inpaint model supports it.",
       "steps": "Steps",
       "stepsHelp": "Denoising steps for the composition pass that invents the new border. More = more detail, slower.",
+      "refine": "Hires refine pass",
+      "refineHelp": "Runs a second, full-resolution inpaint over the new border to add detail on large canvases. Off by default: it is much slower per step (especially with FLUX). The source stays pixel-exact either way.",
       "refineSteps": "Refine steps",
       "refineStepsHelp": "Denoising steps for the hires refinement pass that restores full-resolution detail along the border.",
       "guidance": "Guidance scale",

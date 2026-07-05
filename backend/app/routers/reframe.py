@@ -64,6 +64,9 @@ class ReframeRequest(BaseModel):
     # (None → random), and how many variants to generate (incrementing seeds).
     outpaint_steps: int = Field(default=30, ge=1, le=150)
     outpaint_refine_steps: int = Field(default=24, ge=1, le=150)
+    # Whether to run the (slow, full-resolution) hires refinement pass on large
+    # canvases. Off by default — see outpaint._reframe_single.
+    outpaint_refine: bool = False
     outpaint_guidance: float = Field(default=7.5, ge=0.0, le=30.0)
     outpaint_sampler: str | None = None
     outpaint_seed: int | None = None
@@ -193,6 +196,7 @@ def _run_outpaint(job, req, image, ratio, engine, on_progress, pub_key) -> None:
                 negative=req.outpaint_negative,
                 steps=req.outpaint_steps,
                 refine_steps=req.outpaint_refine_steps,
+                refine=req.outpaint_refine,
                 guidance=req.outpaint_guidance,
                 sampler=req.outpaint_sampler,
                 seed=seed_i,

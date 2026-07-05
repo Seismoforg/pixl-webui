@@ -212,7 +212,7 @@ def reframe_image(
     *, mask_softness: float = 0.5, seam_softness: float = 0.5, seed_softness: float = 0.5,
     pos_x: float = 0.5, pos_y: float = 0.5, negative: str = "",
     steps: int = _STEPS, refine_steps: int = _REFINE_STEPS, guidance: float = _GUIDANCE,
-    sampler: str | None = None, seed: int | None = None,
+    sampler: str | None = None, seed: int | None = None, refine: bool = False,
 ):
     """Reframe ``image`` to ``ratio`` by outpainting the new area in a single
     whole-canvas pass with the ``engine`` inpaint model. ``report`` gets the same
@@ -223,7 +223,9 @@ def reframe_image(
     outpaint negative prompt, appended to the configurable Settings default.
     ``steps``/``refine_steps`` are the composition and hires-refinement step counts,
     ``guidance`` the CFG scale, ``sampler`` an optional scheduler id (applied when
-    supported), and ``seed`` an optional generator seed for a reproducible border."""
+    supported), and ``seed`` an optional generator seed for a reproducible border.
+    ``refine`` gates the (slow, full-resolution) hires refinement pass on large
+    canvases; when false the upscaled composition is used directly."""
     report({"phase": "loading"})
     pipe = _load(engine)
     is_flux = type(pipe).__name__.startswith("Flux")
@@ -236,7 +238,7 @@ def reframe_image(
     return _reframe_single(
         pipe, image.convert("RGB"), ratio, prompt, _effective_negative(negative), report, cap,
         mask_softness, seam_softness, seed_softness, pos_x, pos_y,
-        steps, refine_steps, guidance, _make_generator(seed), is_flux,
+        steps, refine_steps, guidance, _make_generator(seed), is_flux, refine,
     )
 
 
@@ -244,7 +246,7 @@ def _reframe_single(pipe, img, ratio, prompt, negative, report, cap,
                     mask_softness=0.5, seam_softness=0.5, seed_softness=0.5,
                     pos_x=0.5, pos_y=0.5,
                     steps=_STEPS, refine_steps=_REFINE_STEPS, guidance=_GUIDANCE,
-                    generator=None, is_flux=False):
+                    generator=None, is_flux=False, refine=False):
     from PIL import Image, ImageFilter
 
     rw, rh = ratio
@@ -282,7 +284,9 @@ def _reframe_single(pipe, img, ratio, prompt, negative, report, cap,
         (cw, ch), (ox, oy, nw, nh),
         feather=reframe.scale_softness(reframe.default_mask_feather(cw, ch), mask_softness),
     )
-    gen = _inpaint(pipe, canvas, mask, prompt, negative, report, 1, 2 if two_pass else 1,
+    # Report two passes only when a refinement pass will actually follow.
+    pass_total = 2 if (two_pass and refine) else 1
+    gen = _inpaint(pipe, canvas, mask, prompt, negative, report, 1, pass_total,
                    steps=steps, guidance=guidance, generator=generator, is_flux=is_flux)
 
     keep = reframe.feathered_keep_mask(
@@ -295,18 +299,20 @@ def _reframe_single(pipe, img, ratio, prompt, negative, report, cap,
         gen.paste(img, (ox_full, oy_full), keep)
         return gen
 
-    # Upscale the low-res composition to full canvas (soft), then a low-strength
-    # inpaint over the same border re-adds full-resolution detail before the
-    # pristine full-res source is composited back pixel-exact.
+    # Upscale the low-res composition to the full canvas (soft). When refinement is
+    # enabled, a low-strength inpaint over the same border re-adds full-resolution
+    # detail (slow, full-res pass); otherwise the upscaled border is used directly.
+    # Either way the pristine full-res source is composited back pixel-exact.
     result = gen.resize((cw_full, ch_full), Image.LANCZOS)
-    full_mask = reframe.build_mask(
-        (cw_full, ch_full), (ox_full, oy_full, sw, sh),
-        feather=reframe.scale_softness(reframe.default_mask_feather(cw_full, ch_full), mask_softness),
-    )
-    result = _inpaint(
-        pipe, result, full_mask, prompt, negative, report, 2, 2,
-        steps=refine_steps, strength=_REFINE_STRENGTH,
-        guidance=guidance, generator=generator, is_flux=is_flux,
-    )
+    if refine:
+        full_mask = reframe.build_mask(
+            (cw_full, ch_full), (ox_full, oy_full, sw, sh),
+            feather=reframe.scale_softness(reframe.default_mask_feather(cw_full, ch_full), mask_softness),
+        )
+        result = _inpaint(
+            pipe, result, full_mask, prompt, negative, report, 2, 2,
+            steps=refine_steps, strength=_REFINE_STRENGTH,
+            guidance=guidance, generator=generator, is_flux=is_flux,
+        )
     result.paste(img, (ox_full, oy_full), keep)
     return result

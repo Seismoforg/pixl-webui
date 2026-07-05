@@ -170,8 +170,9 @@ and download models, configure settings, and generate images.
                     strategies; place the source, or pan the crop for cover; 50 =
                     centred). For outpaint, a Generation-parameters section
                     (sampler dropdown / steps / refine steps / guidance / seed /
-                    batch) whose sampler/steps/guidance auto-fill from a gallery
-                    source's original metadata. Runs the
+                    batch + a "hires refine pass" toggle, off by default, gating the
+                    slow full-res refinement) whose sampler/steps/guidance auto-fill
+                    from a gallery source's original metadata. Runs the
                     job via ReframeProvider and shows the saved result(s) with live
                     stats; reuses SourcePicker/GalleryPicker/UpscaleStats. Passes the
                     source preview + dims to ReframeResult (which now hosts the layout

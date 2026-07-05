@@ -43,6 +43,7 @@ interface ReframeContextValue {
   // Outpaint generation parameters (only used by reframe=outpaint).
   outpaintSteps: number;
   outpaintRefineSteps: number;
+  outpaintRefine: boolean; // run the slow full-res hires refine pass (default off)
   outpaintGuidance: number;
   outpaintSampler: string;
   outpaintSeed: string; // free text: empty = random, else a number
@@ -61,6 +62,7 @@ interface ReframeContextValue {
   setPosY: (v: number) => void;
   setOutpaintSteps: (v: number) => void;
   setOutpaintRefineSteps: (v: number) => void;
+  setOutpaintRefine: (v: boolean) => void;
   setOutpaintGuidance: (v: number) => void;
   setOutpaintSampler: (v: string) => void;
   setOutpaintSeed: (v: string) => void;
@@ -110,6 +112,8 @@ export const ReframeProvider = ({ onReframed, children }: ReframeProviderProps) 
   // Outpaint generation parameters, defaulting to the backend constants.
   const [outpaintSteps, setOutpaintSteps] = useState(30);
   const [outpaintRefineSteps, setOutpaintRefineSteps] = useState(24);
+  // Off by default: the refine pass is a slow full-resolution second inpaint.
+  const [outpaintRefine, setOutpaintRefine] = useState(false);
   const [outpaintGuidance, setOutpaintGuidance] = useState(7.5);
   const [outpaintSampler, setOutpaintSampler] = useState("");
   const [outpaintSeed, setOutpaintSeed] = useState("");
@@ -235,6 +239,7 @@ export const ReframeProvider = ({ onReframed, children }: ReframeProviderProps) 
     posY,
     outpaintSteps,
     outpaintRefineSteps,
+    outpaintRefine,
     outpaintGuidance,
     outpaintSampler,
     outpaintSeed,
@@ -253,6 +258,7 @@ export const ReframeProvider = ({ onReframed, children }: ReframeProviderProps) 
     setPosY,
     setOutpaintSteps,
     setOutpaintRefineSteps,
+    setOutpaintRefine,
     setOutpaintGuidance,
     setOutpaintSampler,
     setOutpaintSeed,

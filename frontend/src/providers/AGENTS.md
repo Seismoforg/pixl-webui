@@ -27,7 +27,9 @@ navigation-surviving state or wraps the tree in a context lives here.
                            maskFeather/seamFeather/seedBlur +
                            source position posX/posY, all 0–100 % + outpaint
                            generation params: sampler/steps/refineSteps/guidance/
-                           seed/batch, with the sampler list fetched once) + job +
+                           seed/batch + a refine flag (off by default) gating the
+                           slow full-res hires refine pass, with the sampler list
+                           fetched once) + job +
                            live tracking; `useReframe`. Reframing changes aspect ratio
                            WITHOUT upscaling; tracks the job via the `ReframeProgress`
                            shape (the upscale shape + batch fields) and exposes

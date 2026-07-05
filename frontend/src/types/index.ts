@@ -239,6 +239,7 @@ export interface ReframeRequest {
   // and how many variants to generate (incrementing seeds).
   outpaint_steps?: number;
   outpaint_refine_steps?: number;
+  outpaint_refine?: boolean; // run the slow full-res hires refine pass (default off)
   outpaint_guidance?: number;
   outpaint_sampler?: string | null;
   outpaint_seed?: number | null;

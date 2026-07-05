@@ -7,8 +7,10 @@ import DownloadIcon from "@mui/icons-material/Download";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import LinearProgress from "@mui/material/LinearProgress";
 import MenuItem from "@mui/material/MenuItem";
+import Switch from "@mui/material/Switch";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
@@ -74,6 +76,7 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
     posY,
     outpaintSteps,
     outpaintRefineSteps,
+    outpaintRefine,
     outpaintGuidance,
     outpaintSampler,
     outpaintSeed,
@@ -92,6 +95,7 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
     setPosY,
     setOutpaintSteps,
     setOutpaintRefineSteps,
+    setOutpaintRefine,
     setOutpaintGuidance,
     setOutpaintSampler,
     setOutpaintSeed,
@@ -254,6 +258,7 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
       pos_y: posY / 100,
       outpaint_steps: outpaintSteps,
       outpaint_refine_steps: outpaintRefineSteps,
+      outpaint_refine: outpaintRefine,
       outpaint_guidance: outpaintGuidance,
       outpaint_sampler: outpaintSampler || null,
       outpaint_seed: outpaintSeed.trim() === "" ? null : Number(outpaintSeed),
@@ -533,14 +538,32 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
                   max={150}
                   onChange={setOutpaintSteps}
                 />
-                <LabeledSlider
-                  label={t("reframe.params.refineSteps")}
-                  info={t("reframe.params.refineStepsHelp")}
-                  value={outpaintRefineSteps}
-                  min={1}
-                  max={150}
-                  onChange={setOutpaintRefineSteps}
-                />
+                <Box>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={outpaintRefine}
+                        onChange={(e) => setOutpaintRefine(e.target.checked)}
+                      />
+                    }
+                    label={
+                      <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
+                        {t("reframe.params.refine")}
+                        <InfoTip text={t("reframe.params.refineHelp")} sx={{ fontSize: 16 }} />
+                      </Box>
+                    }
+                  />
+                </Box>
+                {outpaintRefine && (
+                  <LabeledSlider
+                    label={t("reframe.params.refineSteps")}
+                    info={t("reframe.params.refineStepsHelp")}
+                    value={outpaintRefineSteps}
+                    min={1}
+                    max={150}
+                    onChange={setOutpaintRefineSteps}
+                  />
+                )}
                 <LabeledSlider
                   label={t("reframe.params.guidance")}
                   info={t("reframe.params.guidanceHelp")}
