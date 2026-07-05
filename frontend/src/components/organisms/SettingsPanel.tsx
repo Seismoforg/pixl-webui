@@ -13,6 +13,7 @@ import Typography from "@mui/material/Typography";
 import { useEffect, useState } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
+import { LoadingIndicator } from "@/components/molecules/LoadingIndicator";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import type { AppSettings, SystemInfo } from "@/types";
@@ -62,9 +63,11 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
   const t = useTranslations();
   const [token, setToken] = useState("");
   const [perf, setPerf] = useState({ vae_tiling: true, vae_slicing: true, xformers: true });
+  const [sdX4Steps, setSdX4Steps] = useState(50);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api
@@ -72,8 +75,10 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
       .then((s) => {
         setToken(s.hf_token ?? "");
         setPerf({ vae_tiling: s.vae_tiling, vae_slicing: s.vae_slicing, xformers: s.xformers });
+        setSdX4Steps(s.sd_x4_steps);
       })
-      .catch(() => setError(true));
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
   }, []);
 
   const handleSave = async () => {
@@ -83,6 +88,7 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
       const payload: AppSettings = {
         hf_token: token.trim() === "" ? null : token.trim(),
         ...perf,
+        sd_x4_steps: Math.max(1, Math.round(sdX4Steps) || 1),
       };
       await api.saveSettings(payload);
       setSaved(true);
@@ -105,6 +111,9 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
       <SectionHeading level={2} sx={{ mb: 2 }}>
         {t("settings.title")}
       </SectionHeading>
+      {loading ? (
+        <LoadingIndicator label={t("loading.settings")} />
+      ) : (
       <Stack spacing={3}>
         <TextField
           label={t("settings.hfToken")}
@@ -143,6 +152,18 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
               checked={perf.xformers}
               onChange={setFlag("xformers")}
             />
+            <TextField
+              label={t("settings.performance.sdX4Steps")}
+              helperText={t("settings.performance.sdX4StepsHelp")}
+              type="number"
+              value={sdX4Steps}
+              onChange={(e) => {
+                setSdX4Steps(Number(e.target.value));
+                setSaved(false);
+              }}
+              inputProps={{ min: 1, max: 150, step: 1 }}
+              sx={{ mt: 2, maxWidth: 220 }}
+            />
           </Stack>
         </Box>
 
@@ -173,6 +194,7 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
           </Stack>
         </Box>
       </Stack>
+      )}
     </Paper>
   );
 }

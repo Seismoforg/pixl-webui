@@ -1,6 +1,7 @@
 "use client";
 
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import AspectRatioIcon from "@mui/icons-material/AspectRatio";
 import CollectionsIcon from "@mui/icons-material/Collections";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
@@ -32,6 +33,7 @@ import { SystemStatusBar } from "@/components/organisms/SystemStatusBar";
 const NAV = [
   { href: "/generate", key: "nav.generate", icon: AutoAwesomeIcon },
   { href: "/upscale", key: "nav.upscale", icon: PhotoSizeSelectLargeIcon },
+  { href: "/reframe", key: "nav.reframe", icon: AspectRatioIcon },
   { href: "/models", key: "nav.models", icon: ViewInArIcon },
   { href: "/gallery", key: "nav.gallery", icon: CollectionsIcon },
 ] as const;

@@ -88,6 +88,7 @@ export interface AppSettings {
   vae_tiling: boolean;
   vae_slicing: boolean;
   xformers: boolean;
+  sd_x4_steps: number;
 }
 
 export interface ResourceStats {
@@ -204,15 +205,22 @@ export interface UpscaleRequest {
   image_id?: string | null;
   image_data?: string | null; // uploaded image as a data URL
   prompt: string; // guides the diffusion upscaler (SD x4) toward detail
-  outpaint_prompt: string; // describes the scene generated in the outpainted area
   tile: boolean; // auto-split large images into tiles and stitch
-  target_ratio: string; // "original" | "16:9" | "4:3" | …
-  reframe: ReframeStrategy;
-  outpaint_engine?: string | null; // inpaint engine slug; null → curated default
+  sd_x4_steps?: number | null; // per-run SD x4 steps; null → the persisted setting
 }
 
 export interface UpscaleStarted {
   job_id: string;
+}
+
+/** Reframe (aspect-ratio change, no upscaling) request. */
+export interface ReframeRequest {
+  image_id?: string | null;
+  image_data?: string | null; // uploaded image as a data URL
+  target_ratio: string; // "16:9" | "4:3" | … (never "original")
+  reframe: ReframeStrategy;
+  outpaint_prompt: string; // describes the scene generated in the outpainted area
+  outpaint_engine?: string | null; // inpaint engine slug; null → curated default
 }
 
 export type UpscalePhase = "loading" | "upscaling" | "outpainting" | "finalizing";

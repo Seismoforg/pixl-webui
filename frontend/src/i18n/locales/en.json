@@ -7,11 +7,21 @@
     "tapToView": "Tap to view",
     "generation": "Generating",
     "upscale": "Upscaling",
+    "reframe": "Reframing",
     "download": "Downloading {name}",
     "downloadPercent": "{value}%",
     "downloadFailed": "Download failed",
     "retry": "Retry",
     "dismiss": "Dismiss"
+  },
+  "loading": {
+    "default": "Loading…",
+    "gallery": "Loading gallery…",
+    "models": "Loading models…",
+    "engines": "Loading engines…",
+    "settings": "Loading settings…",
+    "searching": "Searching…",
+    "resolving": "Resolving…"
   },
   "connection": {
     "live": "Live",
@@ -24,6 +34,7 @@
     "generate": "Generate",
     "models": "Models",
     "upscale": "Upscale",
+    "reframe": "Reframe",
     "gallery": "Gallery",
     "settings": "Settings",
     "toggleTheme": "Toggle light/dark mode"
@@ -150,37 +161,15 @@
       "label": "Upscaler prompt (optional)",
       "help": "Guides the diffusion upscaler toward more detail. Leave empty for a faithful enlargement."
     },
+    "steps": {
+      "label": "Steps",
+      "help": "Denoising steps for this run. Fewer is faster; 30–50 look near-identical to the default of 75. Defaults to the value set in Settings."
+    },
     "tiling": {
       "label": "Tiled upscaling",
       "auto": "Auto",
       "off": "Off",
       "help": "Splits large images into tiles and stitches the result — bounds VRAM and speeds up inference. Auto only tiles when the image exceeds the tile size."
-    },
-    "format": {
-      "title": "Target format",
-      "help": "Reframe the result to a target aspect ratio. The strategy decides how the extra area is handled.",
-      "ratio": "Aspect ratio",
-      "original": "Original",
-      "strategy": "Reframe"
-    },
-    "reframe": {
-      "cover": "Cover (crop)",
-      "coverHelp": "Crop to the target ratio — loses the overflowing edges.",
-      "contain": "Contain (pad)",
-      "containHelp": "Fit the image and fill the rest with a blurred backdrop.",
-      "edge": "Edge extend",
-      "edgeHelp": "Extend the border pixels to fill the new area.",
-      "outpaint": "Outpaint (AI)",
-      "outpaintHelp": "Generate new content in the added area with an inpaint model. Tip: describe the background/scene, not the subject."
-    },
-    "outpaint": {
-      "needsModel": "Outpainting needs an inpaint model (≈ {size} GB).",
-      "download": "Download outpaint model",
-      "model": "Outpaint model",
-      "modelHelp": "The inpaint model used to generate the new area. Manage models on the Models page.",
-      "notInstalled": "not installed",
-      "promptLabel": "Outpaint prompt (optional)",
-      "promptHelp": "Describes the scene generated in the added area. Tip: describe the background/scene, not the subject."
     },
     "run": "Upscale",
     "running": "Upscaling…",
@@ -205,6 +194,44 @@
     "picker": {
       "title": "Choose an image from the gallery",
       "empty": "No images in the gallery yet."
+    }
+  },
+  "reframe": {
+    "title": "Reframe",
+    "error": "Reframing failed.",
+    "format": {
+      "title": "Target format",
+      "help": "Change the image to a target aspect ratio. The strategy decides how the extra area is handled. This only reframes — it does not upscale.",
+      "ratio": "Aspect ratio",
+      "strategy": "Strategy"
+    },
+    "strategy": {
+      "cover": "Cover (crop)",
+      "coverHelp": "Crop to the target ratio — loses the overflowing edges.",
+      "contain": "Contain (pad)",
+      "containHelp": "Fit the image and fill the rest with a blurred backdrop.",
+      "edge": "Edge extend",
+      "edgeHelp": "Extend the border pixels to fill the new area.",
+      "outpaint": "Outpaint (AI)",
+      "outpaintHelp": "Generate new content in the added area with an inpaint model. Tip: describe the background/scene, not the subject."
+    },
+    "outpaint": {
+      "needsModel": "Outpainting needs an inpaint model (≈ {size} GB).",
+      "download": "Download outpaint model",
+      "downloading": "Downloading…",
+      "model": "Outpaint model",
+      "modelHelp": "The inpaint model used to generate the new area. Manage models on the Models page.",
+      "notInstalled": "not installed",
+      "promptLabel": "Outpaint prompt (optional)",
+      "promptHelp": "Describes the scene generated in the added area. Tip: describe the background/scene, not the subject."
+    },
+    "run": "Reframe",
+    "running": "Reframing…",
+    "clear": "Clear",
+    "result": {
+      "title": "Result",
+      "open": "Open full size",
+      "empty": "Your reframed image will appear here."
     }
   },
   "models": {
@@ -300,6 +327,8 @@
       "vaeSlicingHelp": "Decode images one at a time — saves memory on batches.",
       "xformers": "xformers attention",
       "xformersHelp": "Faster, memory-efficient attention (only if xformers is installed; otherwise ignored).",
+      "sdX4Steps": "SD x4 upscaler steps",
+      "sdX4StepsHelp": "Default denoising steps for the SD x4 diffusion upscaler (adjustable per run on the Upscale page). Fewer is faster; 30–50 look near-identical to the default of 75.",
       "note": "Applies to generation and upscaling. Takes effect on the next run."
     },
     "snippets": {

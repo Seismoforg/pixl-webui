@@ -13,9 +13,13 @@ Backend-communication infrastructure and small pure helpers shared across the UI
               subscribes a channel and falls back to REST polling while the socket
               is down. Used for generation/upscale progress, system stats, downloads.
               `useJobTracker` wraps subscribe + poll-fallback for a single running
-              job (shared by the generation & upscale providers)
+              job (shared by the generation, upscale & reframe providers)
 - fit.ts    — maps a GPU-fit verdict to a chip color + locale keys
-- stats.ts  — derives the upscale status line + percent shared by the frame/overlay
+- stats.ts  — derives the upscale/reframe status line + percent (same progress
+              shape) shared by the frame/overlay
+- useAsyncData.ts — hook wrapping a mount/deps-driven fetch into
+              `{ data, loading, error, reload }` (last-request-wins, no state set
+              after unmount); the shared loading/error lifecycle for read-only fetches
 
 # Key Components
 - api — the single typed entry point for all REST calls

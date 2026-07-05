@@ -20,7 +20,6 @@ from ..services import (
     gallery,
     hf_browse,
     outpaint as outpaint_svc,
-    reframe as reframe_svc,
     upscale as upscale_svc,
     upscalers,
 )
@@ -68,17 +67,11 @@ class UpscaleRequest(BaseModel):
     image_id: str | None = None   # source: an existing gallery image
     image_data: str | None = None  # source: an uploaded image as a data URL
     prompt: str = ""  # guides the diffusion upscaler (SD x4) toward detail
-    outpaint_prompt: str = ""  # describes the scene generated in the outpainted area
     # Auto-split large images into tiles and stitch the result (bounds VRAM,
-    # speeds up inference). Off = single pass / capped input. Also drives tiled vs.
-    # single-pass outpaint.
+    # speeds up inference). Off = single pass / capped input.
     tile: bool = True
-    # Reframe to a target aspect ratio (e.g. "16:9"); "original" = keep the source
-    # ratio. `reframe` chooses how the extra area is handled.
-    target_ratio: str = "original"
-    reframe: str = "cover"  # "cover" | "contain" | "edge" | "outpaint"
-    # Inpaint engine (slug) used for reframe=outpaint; None → the curated default.
-    outpaint_engine: str | None = None
+    # Per-run SD x4 denoising steps; None → the persisted `sd_x4_steps` setting.
+    sd_x4_steps: int | None = None
 
 
 class UpscaleStarted(BaseModel):
@@ -149,11 +142,8 @@ def _run(
     engine: upscalers.UpscalerInfo,
     image,
     prompt: str,
-    outpaint_prompt: str,
     tile: bool,
-    target_ratio: str,
-    reframe: str,
-    outpaint_engine: UpscalerInfo | None,
+    sd_x4_steps: int | None,
 ) -> None:
     # Wakes the WebSocket pusher after each state change (no-op with no subscriber).
     pub_key = f"upscale:{job.job_id}"
@@ -165,19 +155,9 @@ def _run(
         live.publish(pub_key)
 
     try:
-        ratio = reframe_svc.parse_ratio(target_ratio)
-        if ratio and reframe == "outpaint" and outpaint_engine is not None:
-            # Outpaint the whole canvas in one coherent pass, then upscale to full
-            # resolution (the `tile` flag controls that upscale step).
-            reframed = outpaint_svc.reframe_image(
-                image, ratio, outpaint_prompt, on_progress, outpaint_engine
-            )
-            outpaint_svc.unload()  # free the inpaint pipe before upscaling
-            result = upscale_svc.upscale(engine, reframed, prompt, tile, on_progress=on_progress)
-        else:
-            upscaled = upscale_svc.upscale(engine, image, prompt, tile, on_progress=on_progress)
-            # cover / contain / edge are cheap PIL ops; ratio None → unchanged.
-            result = reframe_svc.apply(upscaled, ratio, reframe)
+        result = upscale_svc.upscale(
+            engine, image, prompt, tile, on_progress=on_progress, sd_x4_steps=sd_x4_steps
+        )
         with _lock:
             job.phase = "finalizing"
         live.publish(pub_key)
@@ -330,17 +310,6 @@ def start_upscale(req: UpscaleRequest) -> UpscaleStarted:
     if not downloader.is_downloaded(engine.slug):
         raise HTTPException(409, messages.MODEL_NOT_DOWNLOADED.format(slug=engine.slug))
 
-    # Outpaint needs the selected inpaint model on disk.
-    outpaint_engine: UpscalerInfo | None = None
-    if req.reframe == "outpaint" and reframe_svc.parse_ratio(req.target_ratio):
-        outpaint_engine = upscalers.get(req.outpaint_engine or upscalers.INPAINT_SLUG)
-        if outpaint_engine is None or outpaint_engine.kind != "inpaint":
-            raise HTTPException(
-                404, messages.OUTPAINT_ENGINE_INVALID.format(slug=req.outpaint_engine)
-            )
-        if not downloader.is_downloaded(outpaint_engine.slug):
-            raise HTTPException(409, messages.OUTPAINT_MODEL_MISSING)
-
     try:
         image = _resolve_source(req)
     except ValueError as exc:
@@ -354,10 +323,7 @@ def start_upscale(req: UpscaleRequest) -> UpscaleStarted:
 
     thread = threading.Thread(
         target=_run,
-        args=(
-            job, engine, image, req.prompt, req.outpaint_prompt, req.tile,
-            req.target_ratio, req.reframe, outpaint_engine,
-        ),
+        args=(job, engine, image, req.prompt, req.tile, req.sd_x4_steps),
         daemon=True,
     )
     thread.start()

@@ -11,8 +11,8 @@ and download models, configure settings, and generate images.
 # File Structure
 - app/layout.tsx            — providers (MUI cache, ColorMode, i18n) + AppChrome
 - app/page.tsx              — redirects `/` → `/generate`
-- app/generate|models|upscale|gallery|settings/page.tsx — one route per screen
-                             (thin clients reading AppData/Generation context)
+- app/generate|models|upscale|reframe|gallery|settings/page.tsx — one route per
+                             screen (thin clients reading AppData/Generation context)
 - src/app-shell/AppChrome.tsx — shared VISUAL chrome above all routes: AppBar,
                              link-based tabs (active from usePathname), status bar,
                              activity overlay. Shared data + feature providers now
@@ -20,9 +20,9 @@ and download models, configure settings, and generate images.
 - src/providers/            — all app-level context providers (see providers/AGENTS.md):
                              AppDataProvider (shared models/system + `useAppData`;
                              hosts the feature providers), ColorModeProvider,
-                             GenerationProvider, UpscaleProvider, ActivityProvider,
-                             DownloadProvider. Grouped here so navigation-surviving
-                             state has one home
+                             GenerationProvider, UpscaleProvider, ReframeProvider,
+                             ActivityProvider, DownloadProvider. Grouped here so
+                             navigation-surviving state has one home
 - src/theme/theme.ts        — theme tokens only: Inter font (loaded by next/font in
                              app/layout.tsx, read via the `--font-inter` CSS var),
                              a cohesive light/dark palette (background/paper/divider/
@@ -47,7 +47,11 @@ and download models, configure settings, and generate images.
                              downscaled variant; shared by the gallery/picker/batch
                              grids), SourceInfo (compact source-image facts —
                              full-res size + gallery seed/prompt/model; used by the
-                             upscale source preview + picker tiles)
+                             upscale source preview + picker tiles), LoadingIndicator
+                             (inline centered spinner + caption for a parent frame
+                             waiting on data — not a global overlay), SkeletonCardGrid
+                             / SkeletonList (skeleton placeholders that mirror the
+                             card-grid / list layouts to avoid reflow on load)
 - src/components/organisms/ — GenerationPanel (thin two-column host) + GenerationForm
                              + GenerationResult, ModelManager, EngineManager,
                              AddEngineDialog, GalleryPanel, GalleryPicker, SettingsPanel,
@@ -55,14 +59,15 @@ and download models, configure settings, and generate images.
                              ReferenceImage, PromptSnippets, PromptSnippetManager,
                              SnippetPromptField (snippet control + prompt field),
                              UpscalePanel (host) + EnginePicker + SourcePicker +
-                             UpscaleResult
+                             UpscaleResult, ReframePanel (host) + ReframeResult
 
 # Key Components
 - AppDataProvider — mounted in the root layout, wraps AppChrome. Loads models +
                     system into an AppData context (`useAppData`) and hosts the
                     always-mounted feature providers (activity, downloads,
-                    generation, upscale), so client-side navigation keeps a running
-                    generation/upscale alive. Loads once on mount; model changes are
+                    generation, upscale, reframe), so client-side navigation keeps a
+                    running generation/upscale/reframe alive. Loads once on mount;
+                    model changes are
                     pushed via `reloadModels()` from the relevant handlers (no
                     per-navigation refetch).
 - AppChrome       — the VISUAL chrome inside AppDataProvider: renders the nav (Next
@@ -125,16 +130,23 @@ and download models, configure settings, and generate images.
                     upscale action deep-links to /upscale?image=<id>
 - UpscalePanel    — the /upscale screen: pick an engine (Real-ESRGAN / SD x4 +
                     any custom upscaler), choose a source (gallery picker or upload),
-                    a target aspect ratio + reframe strategy (cover/contain/edge/
-                    outpaint); for outpaint pick the inpaint model (dropdown, curated
-                    or custom, downloaded on demand); separate upscaler prompt and
-                    outpaint prompt (each with an upscale snippet control) and a
+                    an upscaler prompt (with an upscale snippet control), a per-run
+                    SD x4 step count (seeded from the global default) and a
                     tiling toggle, run the job (via UpscaleProvider) and view/open
                     the saved result; the result frame shows live stats
-                    (phase incl. outpainting / tile+step progress / elapsed)
+                    (tile+step progress / elapsed). Upscaling only — reframing lives
+                    on its own /reframe screen
+- ReframePanel    — the /reframe screen: change an image's aspect ratio WITHOUT
+                    upscaling. Choose a source (gallery picker or upload), a target
+                    aspect ratio + strategy (cover/contain/edge/outpaint); for
+                    outpaint pick the inpaint model (dropdown, curated or custom,
+                    downloaded on demand) + an outpaint prompt (upscale snippet
+                    control). Runs the job via ReframeProvider and shows the saved
+                    result with live stats; reuses SourcePicker/GalleryPicker/
+                    UpscaleStats. ReframeResult is the result column
 - SettingsPanel   — HF token + performance toggles (VAE tiling/slicing, xformers)
-                    + system info; the /settings page also renders the
-                    PromptSnippetManager below it
+                    + SD x4 upscaler step count (number input) + system info; the
+                    /settings page also renders the PromptSnippetManager below it
 
 # Conventions
 - MUI standard components with minimal component-level overrides
@@ -145,6 +157,10 @@ and download models, configure settings, and generate images.
   (`images.remotePatterns`, derived from `NEXT_PUBLIC_API_BASE`). Full-res is kept
   only for detail/large views; `data:` URLs bypass the optimizer
 - No hard-coded UI text — everything goes through `useTranslations` + locale files
+- Data loads show inline feedback where the load happens (never a global overlay):
+  a `SkeletonCardGrid` / `SkeletonList` when a grid/list layout exists, else a
+  centered `LoadingIndicator` with a short caption; wired via the `useAsyncData`
+  hook or a local `loading` flag, gated so the skeleton shows only before first data
 - Accessibility first: labels/aria, focus visibility, keyboard, WCAG AA contrast
 - Heading hierarchy is semantic: one `h1` (app title in AppChrome), page/section
   titles are `h2` and sub-sections `h3` — always via the `SectionHeading` atom,

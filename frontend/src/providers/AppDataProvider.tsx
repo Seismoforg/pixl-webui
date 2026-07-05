@@ -15,11 +15,15 @@ import type { ModelEntry, SystemInfo } from "@/types";
 import { ActivityProvider } from "@/providers/ActivityProvider";
 import { DownloadProvider } from "@/providers/DownloadProvider";
 import { GenerationProvider } from "@/providers/GenerationProvider";
+import { ReframeProvider } from "@/providers/ReframeProvider";
 import { UpscaleProvider } from "@/providers/UpscaleProvider";
 
 /** App-wide data (models + system info) shared across every route. */
 interface AppData {
   models: ModelEntry[];
+  // True until the first models load resolves (drives the Models list skeleton);
+  // later reloads don't flip it back, so there's no skeleton flicker.
+  modelsLoading: boolean;
   system: SystemInfo | null;
   reloadModels: () => void;
   // Bumped whenever the gallery should refetch (e.g. a finished generation).
@@ -37,16 +41,21 @@ export const useAppData = () => {
 
 /**
  * Owns the shared models/system state and hosts the always-mounted feature
- * providers (activity, downloads, generation, upscale). Lives above the routes
- * so long-running jobs and this data survive client-side navigation.
+ * providers (activity, downloads, generation, upscale, reframe). Lives above the
+ * routes so long-running jobs and this data survive client-side navigation.
  */
 export const AppDataProvider = ({ children }: { children: ReactNode }) => {
   const [models, setModels] = useState<ModelEntry[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(true);
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [galleryToken, setGalleryToken] = useState(0);
 
   const reloadModels = useCallback(() => {
-    api.getModels().then(setModels).catch(() => setModels([]));
+    api
+      .getModels()
+      .then(setModels)
+      .catch(() => setModels([]))
+      .finally(() => setModelsLoading(false));
   }, []);
 
   const refreshGallery = useCallback(() => setGalleryToken((v) => v + 1), []);
@@ -68,11 +77,13 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
   }, [reloadModels]);
 
   return (
-    <AppDataContext.Provider value={{ models, system, reloadModels, galleryToken }}>
+    <AppDataContext.Provider value={{ models, modelsLoading, system, reloadModels, galleryToken }}>
       <ActivityProvider>
         <DownloadProvider onFinished={reloadModels}>
           <GenerationProvider models={models} onGenerated={handleGenerated}>
-            <UpscaleProvider onUpscaled={refreshGallery}>{children}</UpscaleProvider>
+            <UpscaleProvider onUpscaled={refreshGallery}>
+              <ReframeProvider onReframed={refreshGallery}>{children}</ReframeProvider>
+            </UpscaleProvider>
           </GenerationProvider>
         </DownloadProvider>
       </ActivityProvider>

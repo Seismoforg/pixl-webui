@@ -52,6 +52,10 @@ class Settings(BaseModel):
     vae_tiling: bool = True
     vae_slicing: bool = True
     xformers: bool = True
+    # Denoising steps for the SD x4 diffusion upscaler. The diffusers default is 75;
+    # 30–50 are visually near-identical for this upscaler and much faster (the cost
+    # multiplies across tiles). Read per-run, so changes take effect without reload.
+    sd_x4_steps: int = 50
 
 
 def ensure_dirs() -> None:

@@ -83,7 +83,8 @@ def unload(keep_slug: str | None = None) -> None:
     vram.release()
 
 
-def upscale(engine: UpscalerInfo, image, prompt: str = "", tile: bool = True, on_progress=None):
+def upscale(engine: UpscalerInfo, image, prompt: str = "", tile: bool = True, on_progress=None,
+            sd_x4_steps: int | None = None):
     """Upscale a PIL ``image`` with ``engine``; returns a new PIL image.
 
     With ``tile`` set, large images are split into overlapping tiles and stitched
@@ -91,6 +92,9 @@ def upscale(engine: UpscalerInfo, image, prompt: str = "", tile: bool = True, on
     inputs upscale at full resolution instead of being downscaled first. With
     ``tile`` off the image is processed in a single pass (Real-ESRGAN) or capped to
     a safe input size (SD x4).
+
+    ``sd_x4_steps`` overrides the denoising step count for the SD x4 engine for
+    this run; ``None`` falls back to the persisted ``sd_x4_steps`` setting.
 
     ``on_progress(update: dict)`` is called (if given) as work proceeds with a
     partial stats update (``phase`` / ``current_tile`` / ``total_tiles`` /
@@ -115,7 +119,7 @@ def upscale(engine: UpscalerInfo, image, prompt: str = "", tile: bool = True, on
     if engine.kind == "realesrgan":
         return _upscale_realesrgan(engine, img, tile, report)
     if engine.kind == "sd_x4":
-        return _upscale_sd_x4(engine, img, prompt, tile, report)
+        return _upscale_sd_x4(engine, img, prompt, tile, report, sd_x4_steps)
     raise ValueError(messages.UPSCALER_NOT_FOUND.format(slug=engine.slug))
 
 
@@ -140,9 +144,24 @@ def _load_spandrel(engine: UpscalerInfo):
     weight = config.model_dir(engine.slug) / (engine.filename or "")
     model = ModelLoader().load_from_file(str(weight))
     model.to(get_torch_device()).eval()
+    # fp16 roughly halves the forward pass's runtime and VRAM on CUDA; only enable
+    # it when spandrel reports the architecture supports half precision, so an
+    # fp16-unsafe net keeps running in fp32.
+    if get_torch_device() == "cuda" and getattr(model, "supports_half", False):
+        model.half()
     with _lock:
         _realesrgan_cache[engine.slug] = model
     return model
+
+
+def _model_dtype(model):
+    """The torch dtype of a spandrel model's parameters (fp16 when half is on)."""
+    import torch
+
+    try:
+        return next(model.model.parameters()).dtype
+    except (StopIteration, AttributeError):
+        return torch.float32
 
 
 def _tiled_infer(model, tensor, tile: int, scale: int, report):
@@ -198,20 +217,21 @@ def _upscale_realesrgan(engine: UpscalerInfo, img, tile: bool, report):
 
     arr = np.asarray(img).astype("float32") / 255.0  # H, W, C
     tensor = torch.from_numpy(arr).permute(2, 0, 1).unsqueeze(0).to(device)
+    # Match the model's precision (fp16 when enabled at load) so the forward pass
+    # runs in the faster dtype; bring the result back to fp32 for the PIL convert.
+    tensor = tensor.to(_model_dtype(model))
     # tile=0 → single pass; otherwise tile only when the image exceeds _TILE.
     out = _tiled_infer(model, tensor, _TILE if tile else 0, scale, report)
-    out = out.clamp(0.0, 1.0).squeeze(0).permute(1, 2, 0).cpu().numpy()
+    out = out.float().clamp(0.0, 1.0).squeeze(0).permute(1, 2, 0).cpu().numpy()
     return Image.fromarray((out * 255.0).round().astype("uint8"))
 
 
 # --- Stable Diffusion x4 upscaler (diffusers) ---------------------------------
 
-# The SD x4 upscaler's diffusers default; passed explicitly so total steps are known.
-_SD_X4_STEPS = 75
-
-
-def _run_sd(pipe, image, prompt: str, report, tile_index: int, tile_total: int):
+def _run_sd(pipe, image, prompt: str, report, tile_index: int, tile_total: int, steps: int):
     """Run one SD x4 pass, reporting live diffusion-step progress for this tile.
+
+    ``steps`` is the denoising step count (from the ``sd_x4_steps`` setting).
 
     After the last denoising step the pipeline runs a heavy VAE decode of the 4×
     latents (often slower than the steps themselves); flag that tail as
@@ -221,15 +241,15 @@ def _run_sd(pipe, image, prompt: str, report, tile_index: int, tile_total: int):
     timer = callbacks.StepTimer()
 
     def on_step(done: int) -> None:
-        completed = min(done, _SD_X4_STEPS)
+        completed = min(done, steps)
         report({
             # The VAE decode runs after the final step callback; show it as the
-            # finalizing tail instead of a stuck "step 75/75".
-            "phase": "finalizing" if completed >= _SD_X4_STEPS else "upscaling",
+            # finalizing tail instead of a stuck "step N/N".
+            "phase": "finalizing" if completed >= steps else "upscaling",
             "current_tile": tile_index,
             "total_tiles": tile_total,
             "current_step": completed,
-            "total_steps": _SD_X4_STEPS,
+            "total_steps": steps,
             "its": timer.its(completed),
         })
 
@@ -237,7 +257,7 @@ def _run_sd(pipe, image, prompt: str, report, tile_index: int, tile_total: int):
     on_step(0)
     kwargs = callbacks.step_kwargs(pipe, on_step)
     result = pipe(
-        prompt=prompt or "", image=image, num_inference_steps=_SD_X4_STEPS, **kwargs
+        prompt=prompt or "", image=image, num_inference_steps=steps, **kwargs
     )
     return result.images[0]
 
@@ -279,7 +299,7 @@ def _load_sd_x4(engine: UpscalerInfo):
         return _sd_x4_pipe
 
 
-def _tiled_sd_x4(pipe, img, prompt: str, scale: int, tile: int, report, overlap: int = 32):
+def _tiled_sd_x4(pipe, img, prompt: str, scale: int, tile: int, report, steps: int, overlap: int = 32):
     """Upscale ``img`` tile-by-tile with the SD x4 pipe, stitching the 4× output.
 
     Each source tile (plus overlap) is upscaled independently; the overlap margin
@@ -291,7 +311,7 @@ def _tiled_sd_x4(pipe, img, prompt: str, scale: int, tile: int, report, overlap:
     w, h = img.size
     total = _tile_count(w, h, tile)
     if w <= tile and h <= tile:
-        return _run_sd(pipe, img, prompt, report, 1, total)
+        return _run_sd(pipe, img, prompt, report, 1, total, steps)
 
     out = Image.new("RGB", (w * scale, h * scale))
     done = 0
@@ -299,7 +319,7 @@ def _tiled_sd_x4(pipe, img, prompt: str, scale: int, tile: int, report, overlap:
         for x in range(0, w, tile):
             x0, y0 = max(0, x - overlap), max(0, y - overlap)
             x1, y1 = min(w, x + tile + overlap), min(h, y + tile + overlap)
-            sr = _run_sd(pipe, img.crop((x0, y0, x1, y1)), prompt, report, done + 1, total)
+            sr = _run_sd(pipe, img.crop((x0, y0, x1, y1)), prompt, report, done + 1, total, steps)
             left, top = (x - x0) * scale, (y - y0) * scale
             tw, th = min(tile, w - x) * scale, min(tile, h - y) * scale
             out.paste(sr.crop((left, top, left + tw, top + th)), (x * scale, y * scale))
@@ -307,12 +327,15 @@ def _tiled_sd_x4(pipe, img, prompt: str, scale: int, tile: int, report, overlap:
     return out
 
 
-def _upscale_sd_x4(engine: UpscalerInfo, img, prompt: str, tile: bool, report):
+def _upscale_sd_x4(engine: UpscalerInfo, img, prompt: str, tile: bool, report,
+                   sd_x4_steps: int | None = None):
     report({"phase": "loading"})
     pipe = _load_sd_x4(engine)
     scale = engine.scale
+    # Per-run override wins; otherwise fall back to the persisted default.
+    steps = max(1, sd_x4_steps if sd_x4_steps else load_settings().sd_x4_steps)
     if tile:
         # Tile the full-resolution input so it upscales without downscaling first.
-        return _tiled_sd_x4(pipe, img, prompt, scale, _SD_X4_MAX_INPUT, report)
+        return _tiled_sd_x4(pipe, img, prompt, scale, _SD_X4_MAX_INPUT, report, steps)
     # Untiled: cap the input so a single 4× pass fits in memory.
-    return _run_sd(pipe, _cap_input(img, _SD_X4_MAX_INPUT), prompt, report, 1, 1)
+    return _run_sd(pipe, _cap_input(img, _SD_X4_MAX_INPUT), prompt, report, 1, 1, steps)

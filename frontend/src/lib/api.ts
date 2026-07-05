@@ -16,6 +16,7 @@ import type {
   SamplerList,
   SystemInfo,
   EngineResolve,
+  ReframeRequest,
   UpscalerEngine,
   UpscalerKind,
   UpscaleProgress,
@@ -155,6 +156,15 @@ export const api = {
 
   getUpscaleProgress: (jobId: string) =>
     request<UpscaleProgress>(`/api/upscale/${jobId}`),
+
+  reframe: (req: ReframeRequest) =>
+    request<UpscaleStarted>("/api/reframe", {
+      method: "POST",
+      body: JSON.stringify(req),
+    }),
+
+  getReframeProgress: (jobId: string) =>
+    request<UpscaleProgress>(`/api/reframe/${jobId}`),
 
   getImages: () => request<GalleryImage[]>("/api/images"),
 

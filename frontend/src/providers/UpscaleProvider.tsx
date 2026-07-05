@@ -14,7 +14,7 @@ import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { useJobTracker } from "@/lib/ws";
 import { upscaleStatsView } from "@/lib/stats";
-import type { ReframeStrategy, UpscaleProgress, UpscaleRequest } from "@/types";
+import type { UpscaleProgress, UpscaleRequest } from "@/types";
 
 /** Chosen source image: an existing gallery image, or an uploaded data URL. */
 export type UpscaleSource =
@@ -34,19 +34,13 @@ interface UpscaleContextValue {
   engineSlug: string;
   source: UpscaleSource | null;
   prompt: string;
-  outpaintPrompt: string;
-  outpaintEngine: string;
   tile: boolean;
-  targetRatio: string;
-  reframe: ReframeStrategy;
+  sdX4Steps: number; // per-run SD x4 steps; seeded from the global default
   setEngineSlug: (v: string) => void;
   setSource: (v: UpscaleSource | null) => void;
   setPrompt: (v: string) => void;
-  setOutpaintPrompt: (v: string) => void;
-  setOutpaintEngine: (v: string) => void;
   setTile: (v: boolean) => void;
-  setTargetRatio: (v: string) => void;
-  setReframe: (v: ReframeStrategy) => void;
+  setSdX4Steps: (v: number) => void;
   // job
   progress: UpscaleProgress | null;
   resultId: string | null;
@@ -77,11 +71,14 @@ export const UpscaleProvider = ({ onUpscaled, children }: UpscaleProviderProps) 
   const [engineSlug, setEngineSlug] = useState("");
   const [source, setSource] = useState<UpscaleSource | null>(null);
   const [prompt, setPrompt] = useState("");
-  const [outpaintPrompt, setOutpaintPrompt] = useState("");
-  const [outpaintEngine, setOutpaintEngine] = useState("");
   const [tile, setTile] = useState(true);
-  const [targetRatio, setTargetRatio] = useState("original");
-  const [reframe, setReframe] = useState<ReframeStrategy>("cover");
+  const [sdX4Steps, setSdX4Steps] = useState(50);
+
+  // Seed the per-run SD x4 step count from the global default once. The provider
+  // never unmounts, so this runs a single time and later per-run edits persist.
+  useEffect(() => {
+    api.getSettings().then((s) => setSdX4Steps(s.sd_x4_steps)).catch(() => undefined);
+  }, []);
 
   const [jobId, setJobId] = useState<string | null>(null);
   const [progress, setProgress] = useState<UpscaleProgress | null>(null);
@@ -154,19 +151,13 @@ export const UpscaleProvider = ({ onUpscaled, children }: UpscaleProviderProps) 
     engineSlug,
     source,
     prompt,
-    outpaintPrompt,
-    outpaintEngine,
     tile,
-    targetRatio,
-    reframe,
+    sdX4Steps,
     setEngineSlug,
     setSource,
     setPrompt,
-    setOutpaintPrompt,
-    setOutpaintEngine,
     setTile,
-    setTargetRatio,
-    setReframe,
+    setSdX4Steps,
     progress,
     resultId,
     error,
