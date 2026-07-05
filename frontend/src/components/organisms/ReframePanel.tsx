@@ -1,6 +1,7 @@
 "use client";
 
 import AspectRatioIcon from "@mui/icons-material/AspectRatio";
+import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
 import ClearIcon from "@mui/icons-material/Clear";
 import DownloadIcon from "@mui/icons-material/Download";
 import Alert from "@mui/material/Alert";
@@ -16,6 +17,7 @@ import { useCallback, useEffect, useState } from "react";
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { InfoTip } from "@/components/molecules/InfoTip";
 import { LoadingIndicator } from "@/components/molecules/LoadingIndicator";
+import { ReframePreview } from "@/components/molecules/ReframePreview";
 import { GalleryPicker } from "@/components/organisms/GalleryPicker";
 import { ReframeResult } from "@/components/organisms/ReframeResult";
 import { SnippetPromptField } from "@/components/organisms/SnippetPromptField";
@@ -129,6 +131,9 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
   }, [source]);
 
   const outpaint = strategy === "outpaint";
+  // Auto-fill source: a gallery image carries its original generation prompt in
+  // metadata (uploads carry none).
+  const sourcePrompt = source?.kind === "gallery" ? sourceMeta?.prompt?.trim() || null : null;
   const inpaintDl = inpaintEngine ? downloads.progress[inpaintEngine.slug] : undefined;
   const needInpaintDownload = outpaint && !!inpaintEngine && !inpaintEngine.downloaded;
 
@@ -293,20 +298,44 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
             )}
           </Box>
 
+          {/* Pre-generation layout preview: the target frame + the new/cropped area. */}
+          <ReframePreview
+            preview={sourcePreview}
+            dims={sourceDims}
+            targetRatio={targetRatio}
+            strategy={strategy}
+          />
+
           {/* Outpaint prompt — describes the scene generated in the new area. */}
           {outpaint && (
-            <SnippetPromptField
-              kind="upscale"
-              snippets={snippets}
-              value={outpaintPrompt}
-              onChange={setOutpaintPrompt}
-              onAppend={(text) =>
-                setOutpaintPrompt(outpaintPrompt ? `${outpaintPrompt}, ${text}` : text)
-              }
-              onSnippetsChanged={reloadSnippets}
-              label={t("reframe.outpaint.promptLabel")}
-              helperText={t("reframe.outpaint.promptHelp")}
-            />
+            <Box>
+              <SnippetPromptField
+                kind="upscale"
+                snippets={snippets}
+                value={outpaintPrompt}
+                onChange={setOutpaintPrompt}
+                onAppend={(text) =>
+                  setOutpaintPrompt(outpaintPrompt ? `${outpaintPrompt}, ${text}` : text)
+                }
+                onSnippetsChanged={reloadSnippets}
+                label={t("reframe.outpaint.promptLabel")}
+                helperText={t("reframe.outpaint.promptHelp")}
+              />
+              {sourcePrompt ? (
+                <Button
+                  size="small"
+                  startIcon={<AutoFixHighIcon />}
+                  onClick={() => setOutpaintPrompt(sourcePrompt)}
+                  sx={{ mt: 1 }}
+                >
+                  {t("reframe.outpaint.autofill")}
+                </Button>
+              ) : source?.kind === "upload" ? (
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                  {t("reframe.outpaint.autofillHint")}
+                </Typography>
+              ) : null}
+            </Box>
           )}
 
           <Stack direction="row" spacing={1}>

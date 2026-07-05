@@ -4,7 +4,8 @@ Backend-communication infrastructure and small pure helpers shared across the UI
 # Responsibilities
 - Expose a typed REST client for the FastAPI backend
 - Expose a reconnecting, multiplexed WebSocket client + `useLive` hook
-- Provide small pure view helpers (GPU-fit mapping, upscale status derivation)
+- Provide small pure view helpers (GPU-fit mapping, upscale status derivation,
+  reframe geometry)
 
 # File Structure
 - api.ts    — typed backend client (REST); one `request<T>` core + per-endpoint
@@ -15,6 +16,9 @@ Backend-communication infrastructure and small pure helpers shared across the UI
               `useJobTracker` wraps subscribe + poll-fallback for a single running
               job (shared by the generation, upscale & reframe providers)
 - fit.ts    — maps a GPU-fit verdict to a chip color + locale keys
+- reframe.ts— pure reframe geometry mirroring the backend (parseRatio / extendSize
+              / coverRect); drives the client-side ReframePreview so it matches the
+              server without a generation run
 - stats.ts  — derives the upscale/reframe status line + percent (same progress
               shape) shared by the frame/overlay
 - useAsyncData.ts — hook wrapping a mount/deps-driven fetch into

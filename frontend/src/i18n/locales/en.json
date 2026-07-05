@@ -223,7 +223,18 @@
       "modelHelp": "The inpaint model used to generate the new area. Manage models on the Models page.",
       "notInstalled": "not installed",
       "promptLabel": "Outpaint prompt (optional)",
-      "promptHelp": "Describes the scene generated in the added area. Tip: describe the background/scene, not the subject."
+      "promptHelp": "Describes the scene generated in the added area. Tip: describe the background/scene, not the subject.",
+      "autofill": "Auto-fill from source",
+      "autofillHint": "Auto-fill needs a gallery source — uploads carry no prompt."
+    },
+    "preview": {
+      "label": "Preview",
+      "none": "Pick a source to preview how the frame will look.",
+      "alt": "Reframe layout preview",
+      "hintOutpaint": "Tinted border = area the AI will generate. Dashed line = blend seam.",
+      "hintFill": "Tinted border = area filled from the existing image.",
+      "hintCover": "Dimmed area = cropped away.",
+      "approx": "Approximate layout — the final render may differ."
     },
     "run": "Reframe",
     "running": "Reframing…",

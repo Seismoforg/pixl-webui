@@ -51,7 +51,11 @@ and download models, configure settings, and generate images.
                              (inline centered spinner + caption for a parent frame
                              waiting on data — not a global overlay), SkeletonCardGrid
                              / SkeletonList (skeleton placeholders that mirror the
-                             card-grid / list layouts to avoid reflow on load)
+                             card-grid / list layouts to avoid reflow on load),
+                             ReframePreview (static canvas preview of a reframe's
+                             layout — target-ratio frame + source placement + the
+                             new/generated or cropped region; client-side geometry
+                             from src/lib/reframe, no generation run)
 - src/components/organisms/ — GenerationPanel (thin two-column host) + GenerationForm
                              + GenerationResult, ModelManager, EngineManager,
                              AddEngineDialog, GalleryPanel, GalleryPicker, SettingsPanel,
@@ -141,9 +145,12 @@ and download models, configure settings, and generate images.
                     aspect ratio + strategy (cover/contain/edge/outpaint); for
                     outpaint pick the inpaint model (dropdown, curated or custom,
                     downloaded on demand) + an outpaint prompt (upscale snippet
-                    control). Runs the job via ReframeProvider and shows the saved
-                    result with live stats; reuses SourcePicker/GalleryPicker/
-                    UpscaleStats. ReframeResult is the result column
+                    control, with an "auto-fill from source" action that reuses a
+                    gallery source's own original prompt). Shows a pre-generation
+                    ReframePreview of the target frame + new/cropped area. Runs the
+                    job via ReframeProvider and shows the saved result with live
+                    stats; reuses SourcePicker/GalleryPicker/UpscaleStats.
+                    ReframeResult is the result column
 - SettingsPanel   — HF token + performance toggles (VAE tiling/slicing, xformers)
                     + SD x4 upscaler step count (number input) + system info; the
                     /settings page also renders the PromptSnippetManager below it
