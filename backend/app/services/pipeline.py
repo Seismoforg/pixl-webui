@@ -98,6 +98,15 @@ def _load(model: ModelInfo):
     _attention_slicing = not fits_gpu
     if _attention_slicing:
         pipe.enable_attention_slicing()
+    # channels_last is a free speedup for the conv-heavy UNet on Ampere+; skip it
+    # for transformer families (SD3/FLUX expose `.transformer`, not `.unet`).
+    # Best-effort: never fatal to a load.
+    unet = getattr(pipe, "unet", None)
+    if unet is not None:
+        try:
+            unet.to(memory_format=torch.channels_last)
+        except Exception:  # noqa: BLE001 - optional optimisation; never fatal
+            pass
     # User-configurable optimisations (VAE tiling/slicing, xformers) — best-effort.
     apply_perf(pipe, load_settings())
 

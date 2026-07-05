@@ -46,6 +46,7 @@ def build(pipe, family: str, prompt: str, negative_prompt: str | None) -> dict |
     try:
         import contextlib
         import io
+        import logging
 
         from compel import Compel, ReturnedEmbeddingsType
     except Exception:  # noqa: BLE001 - optional dependency; fall back to plain prompt
@@ -53,8 +54,15 @@ def build(pipe, family: str, prompt: str, negative_prompt: str | None) -> dict |
 
     neg = negative_prompt or ""
     try:
-        # compel prints a stdout deprecation notice when handed SDXL's two encoders;
-        # swallow it so generation stays quiet (errors are exceptions, not prints).
+        # compel intentionally tokenizes the full prompt without truncation (that's how
+        # it chunks past 77 tokens), which makes the transformers tokenizer log a
+        # misleading "Token indices sequence length is longer than 77 ... indexing
+        # errors" warning even though nothing is dropped. Mute that logger for the
+        # encode. The redirect_stdout additionally swallows compel's own SDXL
+        # dual-encoder deprecation print (errors are exceptions, not prints).
+        hf_tok_log = logging.getLogger("transformers.tokenization_utils_base")
+        prev_level = hf_tok_log.level
+        hf_tok_log.setLevel(logging.ERROR)
         with contextlib.redirect_stdout(io.StringIO()):
             if family == "SDXL":
                 compel = Compel(
@@ -89,3 +97,5 @@ def build(pipe, family: str, prompt: str, negative_prompt: str | None) -> dict |
             }
     except Exception:  # noqa: BLE001 - never break generation; fall back to prompt
         return None
+    finally:
+        hf_tok_log.setLevel(prev_level)
