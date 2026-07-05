@@ -65,6 +65,16 @@
   `CompelForSDXL` convenience wrapper (or upstream fix) once it handles differing
   pos/neg lengths, and drop the manual padding.
 
+## Outpaint hires refinement pass is un-tiled  (added 2026-07-05)
+- Problem: `services/outpaint.py`'s hires refinement pass runs a single full-canvas
+  inpaint (no tiling/OOM fallback) when the reframe canvas exceeds the family cap.
+  Unlike `services/upscale.py`, it does not tile large inputs.
+- Impact: Very large reframes (e.g. a 2K+ source to an ultrawide ratio) can spike
+  VRAM in the refinement pass on constrained GPUs; only cpu-offload + attention
+  slicing bound it. Not yet verified on low-VRAM hardware.
+- Proposed Resolution: Cap the refinement resolution, or tile the refinement pass
+  like the upscaler, if OOM shows up in practice.
+
 ## AMD gfx-arch mapping is static  (added 2026-07-03)
 - Problem: The AMD GPU → gfx architecture mapping in `install.ps1` is hardcoded
   from the current rocm-torch-windows support list.

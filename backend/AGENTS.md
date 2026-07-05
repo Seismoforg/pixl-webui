@@ -8,7 +8,8 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 - Browse/resolve arbitrary HuggingFace diffusers models and add them as custom models
 - Assess whether a model fits the current GPU (full / CPU-offload / too large)
 - Persist user settings (HuggingFace token + performance toggles: VAE tiling/
-  slicing, xformers — applied to generation and upscale pipelines on load)
+  slicing, xformers — applied to generation and upscale pipelines on load; plus
+  the SD x4 upscaler step count, read per-run)
 - Run text-to-image generation as a background job with live step progress
 - Encode long/weighted prompts (>77 CLIP tokens, A1111 `(word:1.2)` weighting)
   via compel for SD 1.5 / SDXL; other families keep the native prompt path
@@ -21,8 +22,9 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 - Upscale an image (from the gallery or an upload) with a selectable AI upscaler
   (Real-ESRGAN via spandrel, or the SD x4 diffusion upscaler), downloading the
   engine on demand and optionally tiling large inputs
-- Reframe/outpaint with a selectable inpaint model (separate outpaint prompt from
-  the upscaler prompt)
+- Reframe an image to a target aspect ratio WITHOUT upscaling (cover/contain/edge,
+  or AI outpaint with a selectable inpaint model + its own outpaint prompt) — a
+  standalone job/endpoint, separate from upscaling
 - Browse/add custom upscale & outpaint engines (custom Real-ESRGAN weight, SD x4
   or inpaint diffusers repo), managed like generation models (curated + custom)
 - Persist reusable positive/negative/upscale prompt snippets (prompt templates)
@@ -39,7 +41,7 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 - app/live.py           — in-process pub/sub hub: producer threads publish(key) to
                           wake the WebSocket pusher event-driven (thread→async bridge)
 - app/routers/          — HTTP controllers: system, settings, models, generate,
-                          images, templates, upscale, ws
+                          images, templates, upscale, reframe, ws
 - app/services/         — business logic: downloader (download orchestration +
                           progress), hf_browse (HF search + repo/engine resolve),
                           pipeline, prompt_embeds (long-prompt CLIP embeds),
@@ -84,11 +86,14 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            canvas/mask geometry for outpainting
 - services/outpaint.py   — extend an image to a target ratio by generating the new
                            area with a selectable SD inpaint pipe (engine passed in;
-                           reloads on slug change); single whole-canvas pass at a
-                           working resolution, then the pristine full-res source is
-                           composited back over its region (feathered seam) so the
+                           reloads on slug change); whole-canvas composition pass at a
+                           model-family working cap (SD 1.x 768 / SDXL 1024) — the full
+                           canvas directly when it fits, else generated at the cap and
+                           upscaled, then a short low-strength hires refinement pass
+                           re-adds full-res border detail. The pristine full-res source
+                           is composited back over its region (feathered seam) so the
                            source stays pixel-exact and only the border is AI; VRAM-
-                           coordinated. Used by the upscale job for reframe=outpaint
+                           coordinated. Used by the reframe job for reframe=outpaint
 - services/fit.py        — assess(model): fits_gpu / fits_offload / too_large / cpu_only
                            against live VRAM+RAM; drives both the UI badge and the
                            pipeline's device placement (offload) so they never disagree
@@ -141,20 +146,29 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            download/progress); add/resolve/delete custom engines
                            (GET /engines/resolve, POST /engines, DELETE /engines/{slug});
                            POST /api/upscale (engine + gallery-id or uploaded data URL
-                           + upscaler prompt + separate outpaint_prompt + tile flag +
-                           target_ratio/reframe + outpaint_engine) as a background job,
-                           GET /api/upscale/{job_id} (phase incl.
-                           "outpainting"/tiles/steps/elapsed/engine); reframes
-                           (cover/contain/edge/outpaint) and saves to the gallery
+                           + upscaler prompt + tile flag + per-run sd_x4_steps
+                           override) as a background job,
+                           GET /api/upscale/{job_id} (phase/tiles/steps/elapsed/
+                           engine); upscales and saves to the gallery. Reframing is
+                           now a separate router (below)
+- routers/reframe.py     — POST /api/reframe (gallery-id or uploaded data URL +
+                           target_ratio + reframe strategy + outpaint_prompt +
+                           outpaint_engine) as a background job that reframes the
+                           image to a target aspect ratio WITHOUT upscaling
+                           (cover/contain/edge = pure PIL; outpaint = the outpaint
+                           service) and saves to the gallery; GET /api/reframe/{job_id}
+                           reuses the upscale `UpscaleProgress` shape (phase incl.
+                           "outpainting"/steps/elapsed). Mirrors the upscale job
+                           store; publishes the `reframe` WS channel
 - routers/templates.py   — CRUD for prompt snippets under /api/prompt-templates
 - routers/models.py      — catalog (curated+custom, each with a fit verdict) +
                            GET /search, GET /resolve, POST /api/models (add by repo_id) +
                            download/progress + DELETE /api/models/{slug} (remove from disk)
 - routers/system.py      — GET /api/system (device) + GET /api/system/stats (live resources)
 - routers/ws.py          — multiplexed WebSocket at /ws: subscribe channels
-                           (system/generation/upscale/download), server pushes the
+                           (system/generation/upscale/reframe/download), server pushes the
                            same models the REST endpoints return, send-on-change;
-                           generation/upscale (and download status) are event-driven
+                           generation/upscale/reframe (and download status) are event-driven
                            via app/live.py publish; system stats + download bytes stay
                            on a ~1s tick (sampled). REST endpoints remain the fallback
 

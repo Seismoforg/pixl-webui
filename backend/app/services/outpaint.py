@@ -1,15 +1,18 @@
 """Outpainting service — extends an image to a target aspect ratio by generating
 plausible content in the newly-added regions with a Stable Diffusion inpaint pipe.
 
-**Single-pass, whole-canvas — source preserved at full resolution.** Generation
-resolution and source preservation are decoupled: the inpaint pass runs at a
-moderate working resolution (whole canvas in ONE pass, so the model continues the
+**Whole-canvas composition — source preserved at full resolution.** Generation
+resolution and source preservation are decoupled: the composition inpaint runs at
+a model-family working cap (whole canvas in ONE pass, so the model continues the
 image coherently without duplicating the subject), but only to invent the new
-border. The pristine full-res source is then composited back over its region with
-a feathered seam, so the source never round-trips at low resolution and its pixels
-stay pixel-exact; the caller upscales the whole result afterwards. (Independent
-per-tile outpainting was tried and removed — each tile hallucinated its own
-subject instead of extending the background.)
+border. When the full canvas already fits under the cap it is generated directly
+(no upscale). Otherwise the composition is upscaled to the full canvas and a short,
+low-strength **hires refinement pass** re-adds full-resolution detail over the same
+border, so the AI border isn't merely interpolated up. The pristine full-res source
+is then composited back over its region with a feathered seam, so the source never
+round-trips at low resolution and its pixels stay pixel-exact. (Independent per-tile
+outpainting was tried and removed — each tile hallucinated its own subject instead
+of extending the background.)
 
 Coordinates with the VRAM manager: loading the inpaint pipe first frees the
 generation + upscaler models.
@@ -27,9 +30,16 @@ from .upscalers import UpscalerInfo
 
 _STEPS = 30
 _GUIDANCE = 7.5
-# Canvas long-side for the single outpaint pass. Kept near SD's native range so the
-# model doesn't duplicate the subject; the upscaler restores final resolution.
-_WORK = 768
+# Working long-side for the composition pass, per model family: SD 1.x duplicates
+# the subject much above ~768, while SDXL is native at 1024. The full canvas is
+# generated directly when it fits under the cap; larger canvases are generated at
+# the cap and then hires-refined (below) so the border isn't just interpolated up.
+_SD_WORK = 768
+_SDXL_WORK = 1024
+# Hires refinement pass: a short, low-strength second inpaint at full canvas
+# resolution that restores detail the upscaled composition border loses.
+_REFINE_STEPS = 24
+_REFINE_STRENGTH = 0.35
 _DEFAULT_PROMPT = "seamless natural background continuation, high detail"
 # Fights the common failure modes: stock watermarks/text and duplicated subjects.
 _NEGATIVE = (
@@ -103,29 +113,37 @@ def _load(engine: UpscalerInfo):
     return pipe
 
 
-def _inpaint(pipe, image, mask, prompt: str, report, tile_index: int, tile_total: int):
-    """Run one inpaint pass, reporting step progress under the 'outpainting' phase."""
+def _inpaint(
+    pipe, image, mask, prompt: str, report, tile_index: int, tile_total: int,
+    steps: int = _STEPS, strength: float | None = None,
+):
+    """Run one inpaint pass, reporting step progress under the 'outpainting' phase.
+    ``strength`` < 1 turns it into a hires refinement pass; diffusers then runs only
+    ``int(steps * strength)`` denoising steps, which the progress total reflects."""
     timer = callbacks.StepTimer()
+    total = steps if strength is None else max(1, int(steps * strength))
 
     def on_step(done: int) -> None:
-        completed = min(done, _STEPS)
+        completed = min(done, total)
         report({
             "phase": "outpainting",
             "current_tile": tile_index,
             "total_tiles": tile_total,
             "current_step": completed,
-            "total_steps": _STEPS,
+            "total_steps": total,
             "its": timer.its(completed),
         })
 
     on_step(0)
     kwargs = callbacks.step_kwargs(pipe, on_step)
+    if strength is not None:
+        kwargs["strength"] = strength
     result = pipe(
         prompt=prompt or _DEFAULT_PROMPT,
         negative_prompt=_NEGATIVE,
         image=image,
         mask_image=mask,
-        num_inference_steps=_STEPS,
+        num_inference_steps=steps,
         guidance_scale=_GUIDANCE,
         **kwargs,
     )
@@ -138,10 +156,11 @@ def reframe_image(image, ratio: tuple[float, float], prompt: str, report, engine
     progress dict shape as upscaling."""
     report({"phase": "loading"})
     pipe = _load(engine)
-    return _reframe_single(pipe, image.convert("RGB"), ratio, prompt, report)
+    cap = _SDXL_WORK if _is_sdxl(config.model_dir(engine.slug)) else _SD_WORK
+    return _reframe_single(pipe, image.convert("RGB"), ratio, prompt, report, cap)
 
 
-def _reframe_single(pipe, img, ratio, prompt, report):
+def _reframe_single(pipe, img, ratio, prompt, report, cap):
     from PIL import Image, ImageFilter
 
     rw, rh = ratio
@@ -153,9 +172,13 @@ def _reframe_single(pipe, img, ratio, prompt, report):
     cw_full, ch_full = reframe.round8(cw_full), reframe.round8(ch_full)
     ox_full, oy_full = (cw_full - sw) // 2, (ch_full - sh) // 2
 
-    # Work-resolution copy of that canvas for the inpaint pass, long side ~_WORK so
-    # the model sees the whole frame in its native range (avoids duplicate subject).
-    scale = _WORK / max(cw_full, ch_full)
+    # Composition pass at the family cap: the full canvas directly when it already
+    # fits (scale == 1 → no upscale, so the border stays sharp), else scaled down to
+    # the cap so the model still sees the whole frame in its native range (avoids a
+    # duplicate subject). Whatever is lost to that downscale is restored by the
+    # hires refinement pass below.
+    scale = min(1.0, cap / max(cw_full, ch_full))
+    two_pass = scale < 1.0
     cw, ch = reframe.round8(round(cw_full * scale)), reframe.round8(round(ch_full * scale))
     nw, nh = max(8, round(sw * scale)), max(8, round(sh * scale))
     ox, oy = (cw - nw) // 2, (ch - nh) // 2
@@ -167,10 +190,23 @@ def _reframe_single(pipe, img, ratio, prompt, report):
     canvas = canvas.convert("RGB")
     canvas.paste(src, (ox, oy))
     mask = reframe.build_mask((cw, ch), (ox, oy, nw, nh))
-    gen = _inpaint(pipe, canvas, mask, prompt, report, 1, 1)
+    gen = _inpaint(pipe, canvas, mask, prompt, report, 1, 2 if two_pass else 1)
 
-    # Upscale the generated border to full canvas size, then composite the pristine
-    # full-res source back with a feathered seam — only the border is AI content.
+    keep = reframe.feathered_keep_mask((sw, sh))
+    if not two_pass:
+        # Generated at full resolution already — just composite the pristine source
+        # back with a feathered seam so only the border is AI content.
+        gen.paste(img, (ox_full, oy_full), keep)
+        return gen
+
+    # Upscale the low-res composition to full canvas (soft), then a low-strength
+    # inpaint over the same border re-adds full-resolution detail before the
+    # pristine full-res source is composited back pixel-exact.
     result = gen.resize((cw_full, ch_full), Image.LANCZOS)
-    result.paste(img, (ox_full, oy_full), reframe.feathered_keep_mask((sw, sh)))
+    full_mask = reframe.build_mask((cw_full, ch_full), (ox_full, oy_full, sw, sh))
+    result = _inpaint(
+        pipe, result, full_mask, prompt, report, 2, 2,
+        steps=_REFINE_STEPS, strength=_REFINE_STRENGTH,
+    )
+    result.paste(img, (ox_full, oy_full), keep)
     return result
