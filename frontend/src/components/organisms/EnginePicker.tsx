@@ -12,12 +12,15 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
+import { LoadingIndicator } from "@/components/molecules/LoadingIndicator";
 import { useTranslations } from "@/i18n";
 import type { UpscalerEngine } from "@/types";
 
 interface EnginePickerProps {
   engine: UpscalerEngine | null;
   engines: UpscalerEngine[];
+  /** True while the engine list is still loading (shows a spinner, not an empty box). */
+  loading?: boolean;
   /** Live download percent for the selected engine, or null when not downloading. */
   downloadPercent: number | null;
   onSelect: (slug: string) => void;
@@ -29,11 +32,22 @@ interface EnginePickerProps {
 export const EnginePicker = ({
   engine,
   engines,
+  loading = false,
   downloadPercent,
   onSelect,
   onDownload,
 }: EnginePickerProps) => {
   const t = useTranslations();
+  if (loading && engines.length === 0) {
+    return (
+      <Box>
+        <SectionHeading level={3} sx={{ mb: 1.5 }}>
+          {t("upscale.engine.title")}
+        </SectionHeading>
+        <LoadingIndicator label={t("loading.engines")} minHeight={100} />
+      </Box>
+    );
+  }
   return (
     <Box>
       <SectionHeading level={3} sx={{ mb: 1.5 }}>

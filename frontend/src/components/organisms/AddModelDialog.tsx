@@ -21,6 +21,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useState } from "react";
 
+import { LoadingIndicator } from "@/components/molecules/LoadingIndicator";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { fitChipMeta } from "@/lib/fit";
@@ -215,6 +216,10 @@ export const AddModelDialog = ({ open, onClose, onAdded }: AddModelDialogProps) 
           </Box>
 
           {error && <Alert severity="error">{error}</Alert>}
+
+          {searching && results.length === 0 && (
+            <LoadingIndicator label={t("loading.searching")} minHeight={120} />
+          )}
 
           {results.length > 0 && (
             <List dense sx={{ maxHeight: 260, overflow: "auto" }}>

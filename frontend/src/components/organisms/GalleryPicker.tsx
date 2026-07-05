@@ -7,6 +7,7 @@ import DialogTitle from "@mui/material/DialogTitle";
 import Typography from "@mui/material/Typography";
 import { useEffect, useState } from "react";
 
+import { SkeletonCardGrid } from "@/components/molecules/SkeletonCardGrid";
 import { SourceInfo } from "@/components/molecules/SourceInfo";
 import { Thumbnail } from "@/components/molecules/Thumbnail";
 import { useTranslations } from "@/i18n";
@@ -24,19 +25,27 @@ interface GalleryPickerProps {
 export const GalleryPicker = ({ open, reloadToken, onClose, onPick }: GalleryPickerProps) => {
   const t = useTranslations();
   const [images, setImages] = useState<GalleryImage[]>([]);
+  const [loading, setLoading] = useState(false);
 
   // Refetch whenever the picker opens or the gallery changes (reloadToken bump),
   // so newly generated images show up instead of a stale first-open snapshot.
   useEffect(() => {
     if (!open) return;
-    api.getImages().then(setImages).catch(() => setImages([]));
+    setLoading(true);
+    api
+      .getImages()
+      .then(setImages)
+      .catch(() => setImages([]))
+      .finally(() => setLoading(false));
   }, [open, reloadToken]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>{t("upscale.picker.title")}</DialogTitle>
       <DialogContent dividers>
-        {images.length === 0 ? (
+        {loading && images.length === 0 ? (
+          <SkeletonCardGrid count={9} minWidth={140} gap={1.5} lines={1} />
+        ) : images.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
             {t("upscale.picker.empty")}
           </Typography>

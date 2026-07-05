@@ -13,6 +13,7 @@ import { useDownloads } from "@/providers/DownloadProvider";
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { ConfirmDialog } from "@/components/molecules/ConfirmDialog";
 import { ModelListItem } from "@/components/molecules/ModelListItem";
+import { SkeletonList } from "@/components/molecules/SkeletonList";
 import { AddModelDialog } from "@/components/organisms/AddModelDialog";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
@@ -20,6 +21,8 @@ import type { DownloadProgress, ModelEntry } from "@/types";
 
 interface ModelManagerProps {
   models: ModelEntry[];
+  // True while the initial models load is in flight (shows the skeleton list).
+  loading: boolean;
   onChanged: () => void;
 }
 
@@ -34,7 +37,7 @@ const errorProgress = (slug: string, err: unknown): DownloadProgress => {
   };
 }
 
-export const ModelManager = ({ models, onChanged }: ModelManagerProps) => {
+export const ModelManager = ({ models, loading, onChanged }: ModelManagerProps) => {
   const t = useTranslations();
   // Downloads are tracked app-level (survive navigation + feed the off-route
   // bubble); local `errors` only holds POST/delete failures for inline display.
@@ -190,7 +193,9 @@ export const ModelManager = ({ models, onChanged }: ModelManagerProps) => {
         </TextField>
       </Stack>
 
-      {filtered.length === 0 ? (
+      {loading && models.length === 0 ? (
+        <SkeletonList count={5} />
+      ) : filtered.length === 0 ? (
         <Alert severity="info">{t("models.noResults")}</Alert>
       ) : (
         <Stack spacing={3}>

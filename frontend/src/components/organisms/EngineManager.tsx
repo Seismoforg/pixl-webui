@@ -17,14 +17,16 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { trackUpscalerDownload, useDownloads } from "@/providers/DownloadProvider";
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { ConfirmDialog } from "@/components/molecules/ConfirmDialog";
+import { SkeletonList } from "@/components/molecules/SkeletonList";
 import { AddEngineDialog } from "@/components/organisms/AddEngineDialog";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import { useAsyncData } from "@/lib/useAsyncData";
 import type { DownloadProgress, UpscalerEngine } from "@/types";
 
 /**
@@ -36,18 +38,11 @@ import type { DownloadProgress, UpscalerEngine } from "@/types";
 export const EngineManager = () => {
   const t = useTranslations();
   const downloads = useDownloads();
-  const [engines, setEngines] = useState<UpscalerEngine[]>([]);
+  const { data, loading, reload } = useAsyncData(() => api.getUpscalers(), []);
+  const engines = useMemo<UpscalerEngine[]>(() => data ?? [], [data]);
   const [addOpen, setAddOpen] = useState(false);
   const [pendingSlug, setPendingSlug] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const reload = useCallback(() => {
-    api.getUpscalers().then(setEngines).catch(() => setEngines([]));
-  }, []);
-
-  useEffect(() => {
-    reload();
-  }, [reload]);
 
   // Refresh when a tracked engine download finishes (so `downloaded` flips).
   useEffect(() => {
@@ -125,11 +120,15 @@ export const EngineManager = () => {
         </Alert>
       )}
 
-      <Stack spacing={3}>
-        {section("models.installed", installed)}
-        {section("models.available", available)}
-        {section("engines.custom", custom)}
-      </Stack>
+      {loading && engines.length === 0 ? (
+        <SkeletonList count={3} />
+      ) : (
+        <Stack spacing={3}>
+          {section("models.installed", installed)}
+          {section("models.available", available)}
+          {section("engines.custom", custom)}
+        </Stack>
+      )}
 
       <AddEngineDialog open={addOpen} onClose={() => setAddOpen(false)} onAdded={reload} />
 

@@ -5,10 +5,10 @@ import { EngineManager } from "@/components/organisms/EngineManager";
 import { ModelManager } from "@/components/organisms/ModelManager";
 
 const ModelsPage = () => {
-  const { models, reloadModels } = useAppData();
+  const { models, modelsLoading, reloadModels } = useAppData();
   return (
     <>
-      <ModelManager models={models} onChanged={reloadModels} />
+      <ModelManager models={models} loading={modelsLoading} onChanged={reloadModels} />
       <EngineManager />
     </>
   );

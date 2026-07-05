@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState } from "react";
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { ConfirmDialog } from "@/components/molecules/ConfirmDialog";
 import { GalleryCard } from "@/components/molecules/GalleryCard";
+import { SkeletonCardGrid } from "@/components/molecules/SkeletonCardGrid";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import type { GalleryImage, Sampler } from "@/types";
@@ -40,9 +41,15 @@ export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPa
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [samplers, setSamplers] = useState<Sampler[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.getImages().then(setImages).catch(() => setImages([]));
+    setLoading(true);
+    api
+      .getImages()
+      .then(setImages)
+      .catch(() => setImages([]))
+      .finally(() => setLoading(false));
   }, [reloadToken]);
 
   useEffect(() => {
@@ -118,7 +125,9 @@ export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPa
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      {images.length === 0 ? (
+      {loading && images.length === 0 ? (
+        <SkeletonCardGrid count={8} lines={2} />
+      ) : images.length === 0 ? (
         <Alert severity="info">{t("gallery.empty")}</Alert>
       ) : filtered.length === 0 ? (
         <Alert severity="info">{t("gallery.noResults")}</Alert>
