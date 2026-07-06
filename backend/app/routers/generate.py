@@ -117,7 +117,7 @@ def _new_job_id() -> str:
     return f"gen-{_counter}"
 
 
-def _run(job: _Job, req: GenerateRequest, model) -> None:
+def _run(job: _Job, req: GenerateRequest, model, init_image) -> None:
     # Wakes the WebSocket pusher after each state change so progress is pushed with
     # no tick latency (a no-op when nobody is subscribed).
     key = f"generation:{job.job_id}"
@@ -141,11 +141,6 @@ def _run(job: _Job, req: GenerateRequest, model) -> None:
         live.publish(key)
 
     try:
-        init_image = (
-            gallery.decode_data_url(req.reference_image, messages.REFERENCE_DECODE_FAILED)
-            if req.reference_image
-            else None
-        )
         # Generate the batch sequentially, reusing the cached pipeline. Each image
         # uses an incrementing seed (base + index) so results vary yet stay
         # reproducible; per-image step/timing/preview state is reset each round.
@@ -220,6 +215,17 @@ def start_generation(req: GenerateRequest) -> GenerateStarted:
     if model is None:
         raise HTTPException(404, messages.MODEL_NOT_FOUND.format(slug=req.slug))
 
+    # Decode the optional reference here (like the other job routers resolve their
+    # source in the handler) so a bad image is a 400, not a started-then-failed job.
+    try:
+        init_image = (
+            gallery.decode_data_url(req.reference_image, messages.REFERENCE_DECODE_FAILED)
+            if req.reference_image
+            else None
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
     with _lock:
         seed = req.seed if req.seed is not None else random.randint(0, _SEED_MAX)
         job = _Job(
@@ -236,7 +242,7 @@ def start_generation(req: GenerateRequest) -> GenerateStarted:
     with _lock:
         _jobs[job.job_id] = job
 
-    thread = threading.Thread(target=_run, args=(job, req, model), daemon=True)
+    thread = threading.Thread(target=_run, args=(job, req, model, init_image), daemon=True)
     thread.start()
     return GenerateStarted(job_id=job.job_id)
 

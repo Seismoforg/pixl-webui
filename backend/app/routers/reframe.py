@@ -178,6 +178,8 @@ def _run(
             job.error = messages.REFRAME_FAILED.format(detail=str(exc))
         live.publish(pub_key)
     finally:
+        # No pipe unload here: only the outpaint path loads one, so its unload lives
+        # with the load in _run_outpaint's finally (cover/contain/edge are pure PIL).
         job_guard.release(job.job_id)
 
 
