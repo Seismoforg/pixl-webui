@@ -68,7 +68,7 @@ export const ModelListItem = ({ model, progress, onDownload, onDelete }: ModelLi
             )}
             {model.gguf_filename && (
               <Tooltip title={t("models.quantizedHint")}>
-                <Chip label={t("models.quantized")} size="small" color="info" variant="outlined" />
+                <Chip label={t("models.quantized")} size="small" variant="outlined" />
               </Tooltip>
             )}
             <Tooltip title={t("models.hfCard")}>
@@ -100,7 +100,7 @@ export const ModelListItem = ({ model, progress, onDownload, onDelete }: ModelLi
         {/* Metric chips */}
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, alignItems: "center" }}>
           <Chip label={model.family} size="small" color="primary" variant="outlined" />
-          <Chip label={model.pipeline_tag} size="small" color="secondary" variant="outlined" />
+          <Chip label={model.pipeline_tag} size="small" variant="outlined" />
           <Chip
             icon={<StorageIcon />}
             label={`${t("models.size")} ≈ ${model.approx_size_gb} GB`}

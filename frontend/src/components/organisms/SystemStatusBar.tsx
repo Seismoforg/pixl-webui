@@ -5,6 +5,7 @@ import LinearProgress from "@mui/material/LinearProgress";
 import Typography from "@mui/material/Typography";
 import { useState } from "react";
 
+import { MonoText } from "@/components/atoms/MonoText";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { useLive } from "@/lib/ws";
@@ -93,18 +94,28 @@ const Meter = ({
           minWidth: 0,
         }}
       >
-        <Typography variant="caption" color="text.secondary" noWrap>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          noWrap
+          sx={{ textTransform: "uppercase", letterSpacing: "0.04em" }}
+        >
           {label}
         </Typography>
-        <Typography variant="caption" fontWeight="medium" sx={{ whiteSpace: "nowrap" }}>
+        <MonoText variant="caption" fontWeight="medium" sx={{ whiteSpace: "nowrap" }}>
           {detail ?? shown}
-        </Typography>
+        </MonoText>
       </Box>
       <LinearProgress
         variant="determinate"
         value={percent != null ? Math.min(100, value) : 0}
         aria-label={label}
-        sx={{ height: 4, borderRadius: 2 }}
+        sx={{
+          height: 5,
+          borderRadius: 2.5,
+          bgcolor: "action.hover",
+          "& .MuiLinearProgress-bar": { borderRadius: 2.5 },
+        }}
       />
     </Box>
   );

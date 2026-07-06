@@ -25,11 +25,16 @@ and download models, configure settings, and generate images.
                              InpaintProvider, EditProvider, ActivityProvider,
                              DownloadProvider.
                              Grouped here so navigation-surviving state has one home
-- src/theme/theme.ts        — theme tokens only: Inter font (loaded by next/font in
-                             app/layout.tsx, read via the `--font-inter` CSS var),
-                             a cohesive light/dark palette (background/paper/divider/
-                             text, AA contrast), the type scale, `fontWeightMedium`
-                             emphasis token and `layout` size tokens (incl.
+- src/theme/theme.ts        — theme tokens only: Inter (body) + JetBrains Mono (numbers)
+                             fonts (loaded by next/font in app/layout.tsx, read via the
+                             `--font-inter` / `--font-mono` CSS vars; mono exposed as the
+                             `typography.fontFamilyMono` token, used by the `MonoText`
+                             atom), a cohesive light/dark palette (background/paper/
+                             divider/text, AA contrast; light-mode warning/error/info
+                             mains darkened so small outlined-chip labels clear AA), the
+                             type scale, `fontWeightMedium` emphasis token, tinted soft
+                             elevation shadows (levels 1-2), a tactile button `:active`
+                             press (reduced-motion gated), and `layout` size tokens (incl.
                              `contentMaxWidth`). ColorModeProvider now lives in providers/
 - src/i18n/                 — self-contained i18n module: minimal provider +
                              `useTranslations` + locales/en.json (all static UI text)

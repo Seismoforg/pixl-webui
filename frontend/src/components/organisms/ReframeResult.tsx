@@ -1,5 +1,6 @@
 "use client";
 
+import AspectRatioIcon from "@mui/icons-material/AspectRatio";
 import LayersIcon from "@mui/icons-material/Layers";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import Box from "@mui/material/Box";
@@ -13,6 +14,7 @@ import Typography from "@mui/material/Typography";
 import { useEffect, useState } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
+import { ResultPlaceholder } from "@/components/molecules/ResultPlaceholder";
 import { ReframePreview } from "@/components/molecules/ReframePreview";
 import { Thumbnail } from "@/components/molecules/Thumbnail";
 import { UpscaleStats } from "@/components/molecules/UpscaleStats";
@@ -204,9 +206,7 @@ export const ReframeResult = ({ preview, dims }: ReframeResultProps) => {
         </Stack>
       ) : (
         !running && (
-          <Typography variant="body2" color="text.secondary">
-            {t("reframe.result.empty")}
-          </Typography>
+          <ResultPlaceholder icon={AspectRatioIcon}>{t("reframe.result.empty")}</ResultPlaceholder>
         )
       )}
     </Paper>

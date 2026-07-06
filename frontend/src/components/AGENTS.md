@@ -13,6 +13,9 @@ Atomic-design React component library for the Pixl WebUI frontend: presentationa
 ## atoms/
 - SectionHeading — visual variant + correct semantic element (h2 titles, h3 sub)
 - Logo — app mark, mirrors app/icon.svg
+- MonoText — inline numeric readout in the tabular mono family
+  (`theme.typography.fontFamilyMono` + tabular-nums); for telemetry, seeds, sizes,
+  dimensions, percentages so numbers align and read as instrument values
 
 ## molecules/
 - LabeledSlider — labelled slider
@@ -32,6 +35,8 @@ Atomic-design React component library for the Pixl WebUI frontend: presentationa
 - Thumbnail — square next/image thumbnail (downscaled variant; gallery/picker/batch grids)
 - SourceInfo — compact source facts (full-res size + gallery seed/prompt/model)
 - LoadingIndicator — inline centered spinner + caption (not a global overlay)
+- ResultPlaceholder — composed idle/empty state for the result panels (soft icon +
+  short hint); shared by all 5 job-result organisms instead of a bare muted line
 - SkeletonCardGrid / SkeletonList — skeleton placeholders mirroring card-grid/list
   layouts (avoid reflow on load)
 - ReframePreview — static canvas preview of a reframe layout (target frame + source

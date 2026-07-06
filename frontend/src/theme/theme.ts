@@ -23,6 +23,13 @@ declare module "@mui/material/styles" {
       contentMaxWidth?: number;
     };
   }
+  // Tabular mono family for numeric readouts, read via `theme.typography.fontFamilyMono`.
+  interface TypographyVariants {
+    fontFamilyMono: string;
+  }
+  interface TypographyVariantsOptions {
+    fontFamilyMono?: string;
+  }
 }
 
 /**
@@ -38,16 +45,29 @@ export const createAppTheme = (mode: ColorMode): Theme => {
   // primary.main only reaches ~3.3:1 (fails AA) as an outlined-chip label.
   const primaryOnDark = lighten(primaryMain, 0.35);
 
-  return createTheme({
+  const base = createTheme({
     palette: {
       mode,
       primary: { main: primaryMain },
       secondary: { main: "#ec4899" },
+      // Light-mode semantic mains darkened so small outlined-chip labels (fit
+      // badges: offload/too-large/cpu) clear WCAG AA (4.5:1) on the near-white
+      // paper — MUI's defaults (#ed6c02 / #0288d1) fail at chip-label size. Dark
+      // mode keeps MUI defaults, which already pass on the dark paper.
+      ...(isDark
+        ? {}
+        : {
+            warning: { main: "#b45309" },
+            error: { main: "#c62828" },
+            info: { main: "#0277bd" },
+          }),
       // A cohesive surface + divider set per mode so panels, borders and the page
       // background read as one system rather than ad-hoc greys.
+      // Off-white paper in light mode (not pure #fff) so panels have depth against
+      // the page and shadows read; dark stays near-black layered surfaces.
       background: isDark
         ? { default: "#0a0b10", paper: "#14171f" }
-        : { default: "#f4f5f8", paper: "#ffffff" },
+        : { default: "#f4f5f8", paper: "#fcfcfd" },
       divider: isDark ? "rgba(255,255,255,0.10)" : "rgba(16,18,27,0.10)",
       text: isDark
         ? { primary: "#e7e9ee", secondary: "#a2a8b6" }
@@ -58,6 +78,9 @@ export const createAppTheme = (mode: ColorMode): Theme => {
     typography: {
       fontFamily:
         'var(--font-inter), system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+      // Tabular mono for numbers; tabular-nums is applied at the readout component.
+      fontFamilyMono:
+        'var(--font-mono), ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
       // Emphasis weight token; components use fontWeight="medium" instead of a
       // magic 600 so the emphasis weight is defined in exactly one place.
       fontWeightMedium: 600,
@@ -77,6 +100,18 @@ export const createAppTheme = (mode: ColorMode): Theme => {
     components: {
       MuiButton: {
         defaultProps: { disableElevation: true },
+        styleOverrides: {
+          // Tactile press: the button dips slightly when pressed for physical
+          // feedback. Motion is disabled under prefers-reduced-motion.
+          root: {
+            transition: "transform 120ms cubic-bezier(0.16, 1, 0.3, 1)",
+            "&:active": { transform: "scale(0.98)" },
+            "@media (prefers-reduced-motion: reduce)": {
+              transition: "none",
+              "&:active": { transform: "none" },
+            },
+          },
+        },
       },
       MuiTextField: {
         defaultProps: { size: "small", fullWidth: true },
@@ -101,4 +136,15 @@ export const createAppTheme = (mode: ColorMode): Theme => {
         : {},
     },
   });
+
+  // Tinted, soft elevation shadows (no pure black on light) so panels can lift off
+  // the page instead of relying only on 1px borders. Overrides just the low levels.
+  const shadows = [...base.shadows] as typeof base.shadows;
+  shadows[1] = isDark
+    ? "0 1px 2px rgba(0,0,0,0.5), 0 4px 14px rgba(0,0,0,0.35)"
+    : "0 1px 2px rgba(16,18,27,0.06), 0 4px 14px rgba(16,18,27,0.06)";
+  shadows[2] = isDark
+    ? "0 2px 6px rgba(0,0,0,0.55), 0 10px 28px rgba(0,0,0,0.4)"
+    : "0 2px 6px rgba(16,18,27,0.08), 0 10px 28px rgba(16,18,27,0.08)";
+  return createTheme(base, { shadows });
 }

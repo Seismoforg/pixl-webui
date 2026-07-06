@@ -19,7 +19,10 @@ navigation-surviving state or wraps the tree in a context lives here.
                            (true until the first models load resolves) for the Models
                            list skeleton
 - ColorModeProvider.tsx  — color mode state + `useColorMode`; builds the MUI
-                           theme from `@/theme/theme` and mounts ThemeProvider
+                           theme from `@/theme/theme` and mounts ThemeProvider. Boots
+                           to a stable "dark" default (SSR-safe), then on mount applies
+                           a stored choice (`pixl.colorMode` in localStorage) else the
+                           OS `prefers-color-scheme`; the toggle persists the choice
 - GenerationProvider.tsx — generation form + running job + polling; `useGeneration`
 - UpscaleProvider.tsx    — upscale form + job + polling; `useUpscale`
 - ReframeProvider.tsx    — reframe form (source/ratio [+ customWidth/customHeight for a

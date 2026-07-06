@@ -1,5 +1,6 @@
 "use client";
 
+import BrushIcon from "@mui/icons-material/Brush";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -10,6 +11,7 @@ import Typography from "@mui/material/Typography";
 import { useEffect, useState } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
+import { ResultPlaceholder } from "@/components/molecules/ResultPlaceholder";
 import { Thumbnail } from "@/components/molecules/Thumbnail";
 import { UpscaleStats } from "@/components/molecules/UpscaleStats";
 import { useTranslations } from "@/i18n";
@@ -40,7 +42,8 @@ export const InpaintResult = () => {
         position: "sticky",
         top: "calc(var(--app-header-h, 80px) + 8px)",
         alignSelf: "start",
-        order: { xs: -1, md: 0 },
+        // On mobile hoist above the form only while there's something to show.
+        order: { xs: running || selectedId ? -1 : 0, md: 0 },
         zIndex: 1,
       }}
     >
@@ -113,9 +116,7 @@ export const InpaintResult = () => {
         </Stack>
       ) : (
         !running && (
-          <Typography variant="body2" color="text.secondary">
-            {t("inpaint.result.empty")}
-          </Typography>
+          <ResultPlaceholder icon={BrushIcon}>{t("inpaint.result.empty")}</ResultPlaceholder>
         )
       )}
     </Paper>

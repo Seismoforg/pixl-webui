@@ -1,6 +1,6 @@
 import { AppRouterCacheProvider } from "@mui/material-nextjs/v14-appRouter";
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 
 import { AppChrome } from "@/app-shell/AppChrome";
@@ -17,6 +17,14 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
+// Tabular mono for numeric readouts (telemetry, seeds, dimensions, sizes) so numbers
+// read as instrument values and align in columns. Exposed as `--font-mono`.
+const jetBrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-mono",
+});
+
 // Sourced from the locale file (single source of UI copy); metadata is a
 // server-side export so it can't use the client `useTranslations` hook.
 export const metadata: Metadata = {
@@ -26,7 +34,7 @@ export const metadata: Metadata = {
 
 const RootLayout = ({ children }: { children: ReactNode }) => {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={`${inter.variable} ${jetBrainsMono.variable}`}>
       <body>
         <AppRouterCacheProvider>
           <ColorModeProvider>

@@ -5,6 +5,7 @@ import LinearProgress from "@mui/material/LinearProgress";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
+import { MonoText } from "@/components/atoms/MonoText";
 import { useTranslations } from "@/i18n";
 import { upscaleStatsView } from "@/lib/stats";
 import type { UpscaleProgress } from "@/types";
@@ -19,10 +20,10 @@ export const UpscaleStats = ({ progress }: { progress: UpscaleProgress | null })
       <Stack direction="row" justifyContent="space-between" alignItems="baseline" sx={{ mb: 0.5 }}>
         <Typography variant="body2" color="text.secondary">{view.label}</Typography>
         {progress && (
-          <Typography variant="caption" color="text.secondary">
+          <MonoText variant="caption" color="text.secondary">
             {view.speed ? `${view.speed} · ` : ""}
             {t("upscale.stats.elapsed", { value: progress.elapsed.toFixed(1) })}
-          </Typography>
+          </MonoText>
         )}
       </Stack>
       {view.percent === null ? (

@@ -11,6 +11,7 @@ import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
+import { MonoText } from "@/components/atoms/MonoText";
 import { Thumbnail } from "@/components/molecules/Thumbnail";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
@@ -62,8 +63,20 @@ export const GalleryCard = ({ image, onOpen, onRegenerate, onUpscale, onDelete }
         </Typography>
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
           <Chip label={image.model_name} size="small" variant="outlined" />
-          <Chip label={t("gallery.seed") + " " + image.seed} size="small" variant="outlined" />
-          <Chip label={`${image.width}×${image.height}`} size="small" variant="outlined" />
+          <Chip
+            label={
+              <>
+                {t("gallery.seed")} <MonoText>{image.seed}</MonoText>
+              </>
+            }
+            size="small"
+            variant="outlined"
+          />
+          <Chip
+            label={<MonoText>{`${image.width}×${image.height}`}</MonoText>}
+            size="small"
+            variant="outlined"
+          />
         </Box>
         <Stack direction="row" spacing={0.5} sx={{ mt: "auto", pt: 0.5 }}>
           <Tooltip title={t("gallery.regenerate")}>

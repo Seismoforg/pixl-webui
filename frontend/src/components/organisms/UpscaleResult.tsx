@@ -1,14 +1,15 @@
 "use client";
 
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import PhotoSizeSelectLargeIcon from "@mui/icons-material/PhotoSizeSelectLarge";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Link from "@mui/material/Link";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
-import Typography from "@mui/material/Typography";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
+import { ResultPlaceholder } from "@/components/molecules/ResultPlaceholder";
 import { UpscaleStats } from "@/components/molecules/UpscaleStats";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
@@ -63,9 +64,9 @@ export const UpscaleResult = () => {
         </Stack>
       ) : (
         !running && (
-          <Typography variant="body2" color="text.secondary">
+          <ResultPlaceholder icon={PhotoSizeSelectLargeIcon}>
             {t("upscale.result.empty")}
-          </Typography>
+          </ResultPlaceholder>
         )
       )}
     </Paper>

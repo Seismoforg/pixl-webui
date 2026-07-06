@@ -1,5 +1,6 @@
 "use client";
 
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import LinearProgress from "@mui/material/LinearProgress";
@@ -8,6 +9,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { useEffect, useState } from "react";
 
+import { ResultPlaceholder } from "@/components/molecules/ResultPlaceholder";
 import { Thumbnail } from "@/components/molecules/Thumbnail";
 import { useGeneration } from "@/providers/GenerationProvider";
 import { useTranslations } from "@/i18n";
@@ -48,12 +50,13 @@ export const GenerationResult = () => {
         alignItems: "center",
         justifyContent: "center",
         gap: 2,
-        // Sticky result: stays in view while the form scrolls; on mobile it moves
-        // to the top of the single-column layout (matches the reframe page).
+        // Sticky result: stays in view while the form scrolls. On mobile it hoists
+        // above the form ONLY while there's something to see (running or results);
+        // when idle/empty it stays below so the prompt is above the fold.
         position: "sticky",
         top: "calc(var(--app-header-h, 80px) + 8px)",
         alignSelf: "start",
-        order: { xs: -1, md: 0 },
+        order: { xs: running || images.length > 0 ? -1 : 0, md: 0 },
         // `order` also flips grid paint order; a z-index keeps the result above
         // the form so its labels don't bleed over the panel (still below AppBar).
         zIndex: 1,
@@ -179,7 +182,7 @@ export const GenerationResult = () => {
       )}
 
       {!running && !error && images.length === 0 && (
-        <Typography color="text.secondary">{t("generate.empty")}</Typography>
+        <ResultPlaceholder icon={AutoAwesomeIcon}>{t("generate.empty")}</ResultPlaceholder>
       )}
     </Paper>
   );
