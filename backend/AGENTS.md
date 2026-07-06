@@ -73,8 +73,8 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 - app/messages.py       — centralised English user-facing strings (i18n-ready)
 - app/live.py           — in-process pub/sub hub: producer threads publish(key) to
                           wake the WebSocket pusher event-driven (thread→async bridge)
-- app/routers/          — HTTP controllers: system, settings, models, generate,
-                          images, templates, upscale, reframe, inpaint, edit, ws
+- app/routers/          — HTTP controllers: system, settings, models, loras, generate,
+                          compare, images, templates, upscale, reframe, inpaint, edit, ws
 - app/services/         — business-logic layer (inference, VRAM, downloads, gallery,
                           shared job infra). One module per concern; see
                           app/services/AGENTS.md for the full list + per-service detail
@@ -87,6 +87,20 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                resources, gpu_win, vram, optimizations
 - app/samplers.py        — curated A1111-style sampler set → diffusers scheduler classes
                            + config flags; apply_sampler(pipe, id) returns the effective id
+- routers/loras.py       — LoRA adapter catalog + downloads: GET /api/loras (each with
+                           downloaded flag), catalog GET/PUT/reset, POST /{slug}/download
+                           (single .safetensors via downloader.start_file_download) +
+                           GET /{slug}/progress + DELETE /{slug}. LoRAs are applied at
+                           generation time (see pipeline + generate), not a job of their own
+- routers/compare.py     — XYZ-plot compare as a background job: POST /api/compare
+                           (base generate params + `axes` = 1–3 `{param, values}` sweeps
+                           over a whitelist steps/guidance_scale/sampler/seed; X=cols,
+                           Y=rows, Z=one sheet per value; capped at MAX_CELLS=64) loops
+                           pipeline.generate over the cartesian product (one model load)
+                           and composes labelled grid sheet(s) via services.grid, saved to
+                           the gallery; GET /api/compare/{job_id} returns the shared
+                           `BatchProgress` (cell index = batch index). Publishes the
+                           `compare` WS channel
 - routers/generate.py    — generation as a background job; POST starts (returns job_id),
                            GET /api/generate/{job_id} polls step/its/seed progress +
                            batch index and finished image_ids; a run can produce a
@@ -152,9 +166,9 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            DELETE /api/models/{slug} (remove from disk)
 - routers/system.py      — GET /api/system (device) + GET /api/system/stats (live resources)
 - routers/ws.py          — multiplexed WebSocket at /ws: subscribe channels
-                           (system/generation/upscale/reframe/inpaint/edit/download), server pushes the
+                           (system/generation/compare/upscale/reframe/inpaint/edit/download), server pushes the
                            same models the REST endpoints return, send-on-change;
-                           generation/upscale/reframe/inpaint/edit (and download status) are event-driven
+                           generation/compare/upscale/reframe/inpaint/edit (and download status) are event-driven
                            via app/live.py publish; system stats + download bytes stay
                            on a ~1s tick (sampled). REST endpoints remain the fallback
 

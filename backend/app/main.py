@@ -9,10 +9,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import config
 from .routers import (
+    compare,
     edit,
     generate,
     images,
     inpaint,
+    loras,
     models,
     reframe,
     settings,
@@ -37,7 +39,9 @@ app.add_middleware(
 app.include_router(system.router)
 app.include_router(settings.router)
 app.include_router(models.router)
+app.include_router(loras.router)
 app.include_router(generate.router)
+app.include_router(compare.router)
 app.include_router(images.router)
 app.include_router(templates.router)
 app.include_router(upscale.router)

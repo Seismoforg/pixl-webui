@@ -112,6 +112,30 @@ export interface SamplerList {
   default: string;
 }
 
+/** The editable catalog shape for a LoRA (mirrors backend LoraInfo). */
+export interface LoraCatalogEntry {
+  slug: string;
+  repo_id: string;
+  filename: string;
+  name: string;
+  family: string; // "SD 1.5" | "SDXL" | "FLUX" — must match the base model
+  description: string;
+  trigger: string | null;
+  approx_size_gb: number;
+}
+
+/** A catalog LoRA plus its on-disk state (the /api/loras list). */
+export interface LoraEntry extends LoraCatalogEntry {
+  downloaded: boolean;
+  status: DownloadStatus;
+}
+
+/** A LoRA selected for a generation run: its slug and blend weight. */
+export interface LoraRef {
+  slug: string;
+  weight: number;
+}
+
 export interface GenerateRequest {
   slug: string;
   prompt: string;
@@ -128,6 +152,7 @@ export interface GenerateRequest {
   reference_mode: ReferenceMode;
   strength: number;
   ip_adapter_scale: number;
+  loras: LoraRef[]; // LoRA adapters to blend into the run
 }
 
 export type ReferenceMode = "img2img" | "style";
@@ -298,6 +323,35 @@ export interface InpaintRequest {
 /** Inpaint job progress = the batch progress shape. */
 export interface InpaintProgress extends BatchProgress {}
 
+/** A generation parameter that an XYZ-plot axis can sweep. */
+export type CompareParam = "steps" | "guidance_scale" | "sampler" | "seed";
+
+/** One compare axis: a swept parameter and its list of values (numbers for
+ *  steps/guidance/seed, sampler ids for sampler). */
+export interface CompareAxis {
+  param: CompareParam;
+  values: Array<number | string>;
+}
+
+/** XYZ-plot compare request: base generation params + 1–3 sweep axes. */
+export interface CompareRequest {
+  slug: string;
+  prompt: string;
+  negative_prompt?: string | null;
+  width: number;
+  height: number;
+  // Base values for the parameters not being swept.
+  steps: number;
+  guidance_scale: number;
+  seed?: number | null;
+  sampler: string;
+  axes: CompareAxis[]; // X = columns, Y = rows, Z = one sheet per value
+}
+
+/** Compare job progress = the batch progress shape (cell index = batch index,
+ *  total cells = batch size; each finished sheet is a result image). */
+export interface CompareProgress extends BatchProgress {}
+
 /** Post-Processing (FLUX Kontext) prompt-based image-edit request. */
 export interface EditRequest {
   image_id?: string | null;
@@ -321,6 +375,7 @@ export type UpscalePhase =
   | "outpainting"
   | "inpainting"
   | "editing"
+  | "comparing"
   | "finalizing";
 
 export interface UpscaleProgress {
@@ -351,4 +406,5 @@ export interface GalleryImage {
   height: number;
   seed: number;
   sampler: string;
+  loras?: string[]; // applied LoRAs as "slug@weight"; absent on pre-LoRA images
 }

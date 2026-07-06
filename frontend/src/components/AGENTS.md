@@ -27,6 +27,10 @@ Atomic-design React component library for the Pixl WebUI frontend: presentationa
 - GenerationParams — shared sampler/steps/refine/guidance/batch/seed block;
   presentational, keyed by an i18n `keyPrefix`; reused by Reframe/Inpaint/Edit
   panels (optional sampler + refine controls hidden when omitted)
+- AxisEditor — one XYZ-plot sweep axis (param select + values): numeric params
+  (steps/guidance/seed) take a comma/space-separated field parsed to number chips;
+  the sampler param adds from a dropdown of unused samplers (removable chips).
+  Presentational — parsed axis pushed up via `onChange` (ComparePanel)
 - ModelListItem — one model as a compact list row (name + GGUF tag + chips + fit
   badge + HF link + download/delete + progress bar)
 - GalleryCard — gallery image card (inline regenerate/upscale/delete + detail dialog)
@@ -51,6 +55,15 @@ Atomic-design React component library for the Pixl WebUI frontend: presentationa
 
 ## organisms/
 - GenerationPanel (thin two-column host) + GenerationForm + GenerationResult
+- LoraPicker — generate-page LoRA section: lists LoRAs matching the selected model
+  family (from `/api/loras`), enable + blend-weight each (selection in
+  GenerationProvider `loras`), inline download (DownloadProvider `trackLoraDownload`)
+  for ones not on disk, one-tap trigger words into the prompt. Prunes incompatible
+  picks on model-family change
+- ComparePanel (host) + CompareResult — /compare XYZ-plot screen (model + prompt +
+  base params + 1–3 `AxisEditor` sweep axes; live cell-count + cap warning). Reads
+  `useCompare`; CompareResult is a thin BatchImageResult wrapper (one Z-slice sheet
+  per result image)
 - ModelManager — catalog list, filter bar (search + family + pipeline), grouped by
   install state then GPU fit; download/progress/delete. Read-only over the catalog
   (edited in Settings). Generation models only
@@ -61,8 +74,9 @@ Atomic-design React component library for the Pixl WebUI frontend: presentationa
 - GalleryPicker / SourcePicker — pick a gallery image / choose source (gallery or upload)
 - SettingsPanel — HF token + perf toggles + SD x4 steps + outpaint-negative default +
   Defaults section (default model/upscaler/outpaint engine) + system info
-- CatalogEditor (+ CuratedModelsEditor / CuratedEnginesEditor) — edit a curated JSON
-  catalog via a declarative `FieldSpec[]` dialog + reset; each change PUTs the whole list
+- CatalogEditor (+ CuratedModelsEditor / CuratedEnginesEditor / CuratedLorasEditor) —
+  edit a curated JSON catalog via a declarative `FieldSpec[]` dialog + reset; each
+  change PUTs the whole list
 - EnginePicker — shared engine picker (upscale/outpaint/inpaint/edit); defaults
   reproduce the Upscale look, compact callers override label/helperText/showDetails
 - BatchImageResult — shared sticky batch-image result panel (icon/keyPrefix/running/

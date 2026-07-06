@@ -23,7 +23,15 @@ navigation-surviving state or wraps the tree in a context lives here.
                            to a stable "dark" default (SSR-safe), then on mount applies
                            a stored choice (`pixl.colorMode` in localStorage) else the
                            OS `prefers-color-scheme`; the toggle persists the choice
-- GenerationProvider.tsx — generation form + running job + polling; `useGeneration`
+- GenerationProvider.tsx — generation form (incl. selected `loras: LoraRef[]`) +
+                           running job + polling; `useGeneration`
+- CompareProvider.tsx    — XYZ-plot compare form (model/prompt/negative/base
+                           steps·guidance·seed·sampler·width·height + `axes[]`, each
+                           an `{param, values}` sweep, 1–3 axes) + job + live tracking;
+                           `useCompare`. Sweeps a parameter over values into a labelled
+                           grid; tracks the job via `CompareProgress` (the `BatchProgress`
+                           shape, cell index = batch index) and exposes `resultIds` (one
+                           per Z-slice sheet) for the result grid
 - UpscaleProvider.tsx    — upscale form + job + polling; `useUpscale`
 - ReframeProvider.tsx    — reframe form (source/ratio [+ customWidth/customHeight for a
                            custom exact resolution]/strategy/outpaint prompt +
@@ -59,15 +67,16 @@ navigation-surviving state or wraps the tree in a context lives here.
                            batch grid; reuses the `UpscaleSource` type
 - ActivityProvider.tsx   — generic off-route status store; `useActivity`
 - DownloadProvider.tsx   — app-level download tracking; `useDownloads` +
-                           `trackUpscalerDownload` helper (start + track an engine
-                           download; shared by EngineManager + UpscalePanel)
+                           `trackUpscalerDownload` / `trackLoraDownload` helpers (start +
+                           track an engine/LoRA download; shared by EngineManager +
+                           UpscalePanel / LoraPicker)
 
 # Key Components
 - AppDataProvider — wraps AppChrome in the root layout; the top of the provider
   tree for shared data. Consumers read it via `useAppData`.
 
 # Dependencies
-react, @mui/material, @/lib (api, ws, jobHooks), @/theme, @/i18n. The 5 feature
+react, @mui/material, @/lib (api, ws, jobHooks), @/theme, @/i18n. The 6 feature
 providers share job-lifecycle logic via `@/lib/jobHooks` (useJobRehydrate /
 usePublishJobActivity) and memoize their context value. The `UpscaleSource` type now
 lives in `@/types` (UpscaleProvider re-exports it for back-compat).

@@ -6,6 +6,7 @@
   "activity": {
     "tapToView": "Tap to view",
     "generation": "Generating",
+    "compare": "Comparing",
     "upscale": "Upscaling",
     "reframe": "Reframing",
     "inpaint": "Inpainting",
@@ -34,6 +35,7 @@
   "nav": {
     "menu": "Menu",
     "generate": "Generate",
+    "compare": "Compare",
     "models": "Models",
     "upscale": "Upscale",
     "reframe": "Reframe",
@@ -50,6 +52,7 @@
     "sections": {
       "model": "Model",
       "prompt": "Prompt",
+      "loras": "LoRAs",
       "parameters": "Parameters",
       "output": "Output"
     },
@@ -129,6 +132,18 @@
       "close": "Close"
     }
   },
+  "lora": {
+    "loading": "Loading LoRAs…",
+    "loadError": "Couldn't load LoRAs.",
+    "emptyForFamily": "No LoRAs for {family} models. Add some in Settings → Curated LoRAs.",
+    "help": "Blend LoRA adapters into this run. Download one, enable it, then set its weight. Only LoRAs for the selected model's family are shown.",
+    "trigger": "Trigger: {trigger}",
+    "download": "Download ({size} GB)",
+    "downloading": "Downloading… {percent}%",
+    "weight": "Weight",
+    "weightInfo": "How strongly the LoRA is applied. 1.0 = full strength; lower blends it in more subtly, higher over-applies it.",
+    "activeCount": "{count} LoRA(s) active."
+  },
   "gallery": {
     "title": "Gallery",
     "search": "Search prompt",
@@ -150,6 +165,7 @@
     "guidance": "Guidance scale",
     "sampler": "Sampler",
     "size": "Size",
+    "loras": "LoRAs",
     "created": "Created",
     "upscale": "Upscale",
     "loadError": "Couldn't load the gallery."
@@ -194,6 +210,7 @@
       "outpainting": "Outpainting",
       "inpainting": "Inpainting",
       "editing": "Editing",
+      "comparing": "Rendering",
       "finalizing": "Finalizing…",
       "tile": "Tile {current}/{total}",
       "step": "Step {current}/{total}",
@@ -482,6 +499,10 @@
       "title": "Curated engines",
       "description": "The upscale and outpaint engines the app offers. Edit these to fix a repo id or add an engine."
     },
+    "lorasCatalog": {
+      "title": "Curated LoRAs",
+      "description": "The LoRA adapters the app offers on the Generate page. Edit these to fix a repo id/filename or add a LoRA. Each is scoped to one model family."
+    },
     "catalog": {
       "add": "Add",
       "edit": "Edit",
@@ -518,7 +539,8 @@
         "kind": "Engine type",
         "filename": "Weight filename (Real-ESRGAN)",
         "scale": "Scale (×)",
-        "promptCapable": "Prompt-capable"
+        "promptCapable": "Prompt-capable",
+        "trigger": "Trigger words (optional)"
       }
     },
     "snippets": {
@@ -592,6 +614,57 @@
       "empty": "Your edited image will appear here.",
       "imageOfBatch": "Image {current} of {total}",
       "thumbAlt": "Variant {index}"
+    }
+  },
+  "compare": {
+    "title": "Compare (XYZ plot)",
+    "model": "Model",
+    "prompt": "Prompt",
+    "negative": "Negative prompt (optional)",
+    "axes": {
+      "title": "Sweep axes",
+      "help": "Pick 1–3 parameters to vary. X becomes the columns, Y the rows, Z one sheet per value. Everything else stays at the base values below.",
+      "add": "Add axis"
+    },
+    "axis": {
+      "param": "Parameter",
+      "values": "Values",
+      "valuesHelp": "Comma or space separated (e.g. 10, 20, 30).",
+      "addSampler": "Add sampler…",
+      "remove": "Remove axis"
+    },
+    "param": {
+      "steps": "Steps",
+      "guidance_scale": "Guidance scale",
+      "sampler": "Sampler",
+      "seed": "Seed"
+    },
+    "placeholder": {
+      "steps": "10, 20, 30",
+      "guidance_scale": "3, 6, 9",
+      "seed": "1, 2, 3"
+    },
+    "base": {
+      "title": "Base parameters",
+      "help": "Used for every parameter that isn't being swept above.",
+      "sampler": "Sampler",
+      "steps": "Steps",
+      "guidance": "Guidance scale",
+      "width": "Width",
+      "height": "Height",
+      "seed": "Seed"
+    },
+    "cellCount": "{count} images in the grid.",
+    "tooMany": "{count} images — keep the grid to {max} or fewer (reduce the axis values).",
+    "run": "Run compare",
+    "running": "Rendering…",
+    "clear": "Clear",
+    "result": {
+      "title": "Grid",
+      "open": "Open full size",
+      "empty": "Your comparison grid will appear here.",
+      "imageOfBatch": "Image {current} of {total}",
+      "thumbAlt": "Grid sheet {index}"
     }
   },
   "engines": {

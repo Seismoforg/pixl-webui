@@ -14,6 +14,7 @@ event-driven, so stay on a short periodic tick: ``system`` (psutil sampling) and
 Channels:
 - ``system``     — resource stats (periodic ~1s tick)
 - ``generation`` — a generation job's progress (``job_id``, event-driven)
+- ``compare``    — an XYZ-plot compare job's progress (``job_id``, event-driven)
 - ``upscale``    — an upscale job's progress (``job_id``, event-driven)
 - ``reframe``    — a reframe job's progress (``job_id``, event-driven)
 - ``inpaint``    — an inpaint job's progress (``job_id``, event-driven)
@@ -30,7 +31,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from .. import live
 from ..services import downloader, resources
-from . import edit, generate, inpaint, reframe, upscale
+from . import compare, edit, generate, inpaint, reframe, upscale
 
 router = APIRouter()
 
@@ -39,7 +40,7 @@ _SYSTEM_EVERY = 2    # push system stats every N periodic passes (~1s)
 
 # Channels that get producer-published wakes via the pub/sub hub (system is purely
 # tick-driven and never published).
-_PUBLISHED = ("generation", "upscale", "reframe", "inpaint", "edit", "download")
+_PUBLISHED = ("generation", "compare", "upscale", "reframe", "inpaint", "edit", "download")
 # Channels whose payload changes without a producer event, so the periodic tick
 # must keep re-reading them (download = growing on-disk bytes; system = psutil).
 _SAMPLED = ("system", "download")
@@ -51,6 +52,8 @@ def _channel_data(desc: dict) -> dict | None:
     try:
         if channel == "generation":
             return generate.generation_progress(desc["job_id"]).model_dump()
+        if channel == "compare":
+            return compare.compare_progress(desc["job_id"]).model_dump()
         if channel == "upscale":
             return upscale.upscale_progress(desc["job_id"]).model_dump()
         if channel == "reframe":
@@ -71,7 +74,7 @@ def _key(msg: dict) -> tuple[str, dict] | None:
     channel = msg.get("channel")
     if channel == "system":
         return "system", {"channel": "system"}
-    if channel in ("generation", "upscale", "reframe", "inpaint", "edit"):
+    if channel in ("generation", "compare", "upscale", "reframe", "inpaint", "edit"):
         job_id = msg.get("job_id")
         if not job_id:
             return None

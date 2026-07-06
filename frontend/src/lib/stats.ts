@@ -42,11 +42,12 @@ export const upscaleStatsView = (
   if (stepped) {
     parts.push(t("upscale.stats.step", { current: progress.current_step, total: progress.total_steps }));
   }
-  // Outpaint/inpaint/edit prefix a task word; upscaling shows just the parts.
+  // Outpaint/inpaint/edit/compare prefix a task word; upscaling shows just the parts.
   const taskWord: Record<string, string> = {
     outpainting: "upscale.stats.outpainting",
     inpainting: "upscale.stats.inpainting",
     editing: "upscale.stats.editing",
+    comparing: "upscale.stats.comparing",
   };
   const filling = progress.phase in taskWord;
   const word = filling ? t(taskWord[progress.phase]) : t("upscale.stats.upscaling");

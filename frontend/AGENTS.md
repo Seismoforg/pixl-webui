@@ -11,9 +11,10 @@ and download models, configure settings, and generate images.
 # File Structure
 - app/layout.tsx            — providers (MUI cache, ColorMode, i18n) + AppChrome
 - app/page.tsx              — redirects `/` → `/generate`
-- app/generate|models|upscale|reframe|inpaint|edit|gallery|settings/page.tsx — one
+- app/generate|compare|models|upscale|reframe|inpaint|edit|gallery|settings/page.tsx — one
                              route per screen (thin clients reading AppData/Generation
-                             context); `/edit` is the Post Processing (FLUX Kontext) page
+                             context); `/edit` is the Post Processing (FLUX Kontext) page;
+                             `/compare` is the XYZ-plot parameter-sweep grid page
 - src/app-shell/AppChrome.tsx — shared VISUAL chrome above all routes: AppBar,
                              link-based tabs (active from usePathname), status bar,
                              activity overlay. Shared data + feature providers now
@@ -21,9 +22,9 @@ and download models, configure settings, and generate images.
 - src/providers/            — all app-level context providers (see providers/AGENTS.md):
                              AppDataProvider (shared models/system + `useAppData`;
                              hosts the feature providers), ColorModeProvider,
-                             GenerationProvider, UpscaleProvider, ReframeProvider,
-                             InpaintProvider, EditProvider, ActivityProvider,
-                             DownloadProvider.
+                             GenerationProvider, CompareProvider, UpscaleProvider,
+                             ReframeProvider, InpaintProvider, EditProvider,
+                             ActivityProvider, DownloadProvider.
                              Grouped here so navigation-surviving state has one home
 - src/theme/theme.ts        — theme tokens only: Inter (body) + JetBrains Mono (numbers)
                              fonts (loaded by next/font in app/layout.tsx, read via the
@@ -53,8 +54,8 @@ and download models, configure settings, and generate images.
 - AppDataProvider — mounted in the root layout, wraps AppChrome. Loads models +
                     system into an AppData context (`useAppData`) and hosts the
                     always-mounted feature providers (activity, downloads,
-                    generation, upscale, reframe, inpaint, edit), so client-side
-                    navigation keeps a running generation/upscale/reframe/inpaint/edit
+                    generation, compare, upscale, reframe, inpaint, edit), so client-side
+                    navigation keeps a running generation/compare/upscale/reframe/inpaint/edit
                     job alive. Loads once on mount; model changes are
                     pushed via `reloadModels()` from the relevant handlers (no
                     per-navigation refetch).
@@ -66,7 +67,7 @@ and download models, configure settings, and generate images.
                     opens the NavDrawer instead (all via MUI sx breakpoints).
                     Publishes the sticky AppBar's live height as the `--app-header-h`
                     CSS var (ResizeObserver) so the sticky result panels
-                    (Generation/Upscale/Reframe/Inpaint/Edit) can offset their `top` below
+                    (Generation/Compare/Upscale/Reframe/Inpaint/Edit) can offset their `top` below
                     it — otherwise the box's top edge + heading clip behind the AppBar.
 - Components      — the atoms/molecules/organisms catalog + their Key Components live in
                     src/components/AGENTS.md; the feature state providers in

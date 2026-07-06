@@ -1,0 +1,32 @@
+[
+  {
+    "slug": "lora--pixel-art-xl",
+    "repo_id": "nerijs/pixel-art-xl",
+    "filename": "pixel-art-xl.safetensors",
+    "name": "Pixel Art XL",
+    "family": "SDXL",
+    "description": "Crisp pixel-art style for SDXL. Add the trigger to the prompt.",
+    "trigger": "pixel art",
+    "approx_size_gb": 0.17
+  },
+  {
+    "slug": "lora--lcm-sdxl",
+    "repo_id": "latent-consistency/lcm-lora-sdxl",
+    "filename": "pytorch_lora_weights.safetensors",
+    "name": "LCM-LoRA SDXL",
+    "family": "SDXL",
+    "description": "Latent-consistency accelerator for SDXL — few-step generation. Pair with the LCM sampler and low guidance (~1).",
+    "trigger": null,
+    "approx_size_gb": 0.39
+  },
+  {
+    "slug": "lora--lcm-sd15",
+    "repo_id": "latent-consistency/lcm-lora-sdv1-5",
+    "filename": "pytorch_lora_weights.safetensors",
+    "name": "LCM-LoRA SD 1.5",
+    "family": "SD 1.5",
+    "description": "Latent-consistency accelerator for SD 1.5 — few-step generation. Pair with the LCM sampler and low guidance (~1).",
+    "trigger": null,
+    "approx_size_gb": 0.13
+  }
+]

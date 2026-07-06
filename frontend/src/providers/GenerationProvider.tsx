@@ -19,6 +19,7 @@ import { useJobTracker } from "@/lib/ws";
 import type {
   GalleryImage,
   GenerationProgress,
+  LoraRef,
   ModelEntry,
   ReferenceMode,
   Sampler,
@@ -51,6 +52,8 @@ interface GenerationContextValue {
   referenceMode: ReferenceMode;
   strength: number;
   ipAdapterScale: number;
+  loras: LoraRef[];
+  setLoras: (v: LoraRef[]) => void;
   setPrompt: (v: string) => void;
   setNegative: (v: string) => void;
   setSteps: (v: number) => void;
@@ -113,6 +116,7 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
   const [referenceMode, setReferenceMode] = useState<ReferenceMode>("img2img");
   const [strength, setStrength] = useState(0.6);
   const [ipAdapterScale, setIpAdapterScale] = useState(0.6);
+  const [loras, setLoras] = useState<LoraRef[]>([]);
 
   const [jobId, setJobId] = useState<string | null>(null);
   const [progress, setProgress] = useState<GenerationProgress | null>(null);
@@ -255,6 +259,7 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
         reference_mode: referenceMode,
         strength,
         ip_adapter_scale: ipAdapterScale,
+        loras,
       });
       setJobId(job_id);
       saveJob("generation", job_id);
@@ -277,6 +282,7 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
     referenceMode,
     strength,
     ipAdapterScale,
+    loras,
   ]);
 
   const applyPrefill = useCallback(
@@ -317,6 +323,8 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
       referenceMode,
       strength,
       ipAdapterScale,
+      loras,
+      setLoras,
       setPrompt,
       setNegative,
       setSteps,
@@ -358,6 +366,7 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
       referenceMode,
       strength,
       ipAdapterScale,
+      loras,
       changeModel,
       progress,
       images,

@@ -39,6 +39,10 @@ _ip_adapter_loaded = False
 # IP-Adapter restore path consults this so it never re-enables slicing that was
 # off to begin with.
 _attention_slicing = False
+# LoRA adapters currently loaded on the base pipe: adapter_name (== lora slug) ->
+# weight. Compared against a run's request to skip redundant reload/activation.
+# Loaded on the base text2img pipe so the derived img2img pipe shares them.
+_loaded_loras: dict[str, float] = {}
 
 # family -> (repo_id, subfolder, weight_name) for IP-Adapter "style" conditioning.
 # Only UNet families have ready diffusers IP-Adapters; others fall back (blocked).
@@ -58,6 +62,9 @@ def _reset_aux_state() -> None:
     _img2img_pipe = None
     _img2img_slug = None
     _ip_adapter_loaded = False
+    # LoRA adapters live on the (now-dropped) pipe; forget them so the next load
+    # re-applies from scratch.
+    _loaded_loras.clear()
 
 
 def _load(model: ModelInfo):
@@ -254,6 +261,62 @@ def _ensure_no_ip_adapter(pipe) -> None:
             pipe.enable_attention_slicing()
 
 
+def _ensure_no_loras(pipe) -> None:
+    """Unload any LoRA adapters so a plain run is unaffected."""
+    if _loaded_loras:
+        try:
+            pipe.unload_lora_weights()
+        except Exception:  # noqa: BLE001 - best-effort; state is reset regardless
+            pass
+        _loaded_loras.clear()
+
+
+def _apply_loras(pipe, model: ModelInfo, requested: list[tuple[str, float]]) -> None:
+    """Load + activate the requested LoRA adapters on ``pipe``, blended by weight.
+
+    ``requested`` is a list of ``(lora_slug, weight)``. Each LoRA's family must match
+    the base model and it must be downloaded; GGUF-quantized bases are unsupported.
+    A no-op when the requested set (slugs + weights) already matches what's loaded.
+    """
+    from . import loras as loras_svc
+
+    if not requested:
+        _ensure_no_loras(pipe)
+        return
+    if model.is_gguf:
+        raise ValueError(messages.LORA_GGUF_UNSUPPORTED)
+
+    resolved: list[tuple[str, float, "object"]] = []
+    for slug, weight in requested:
+        info = loras_svc.get(slug)
+        if info is None:
+            raise ValueError(messages.LORA_NOT_FOUND.format(slug=slug))
+        if info.family != model.family:
+            raise ValueError(
+                messages.LORA_INCOMPATIBLE.format(
+                    name=info.name, lora_family=info.family, family=model.family
+                )
+            )
+        if not is_downloaded(slug):
+            raise ValueError(messages.LORA_NOT_DOWNLOADED.format(slug=slug))
+        resolved.append((slug, weight, info))
+
+    wanted = {slug: weight for slug, weight, _info in resolved}
+    if wanted == _loaded_loras:
+        return  # already loaded + activated with these exact weights
+
+    # Reload from scratch: unload everything, then load + activate the wanted set.
+    _ensure_no_loras(pipe)
+    for slug, _weight, info in resolved:
+        pipe.load_lora_weights(
+            str(config.model_dir(slug)), weight_name=info.filename, adapter_name=slug
+        )
+    pipe.set_adapters(
+        [slug for slug, _w, _i in resolved], [weight for _s, weight, _i in resolved]
+    )
+    _loaded_loras.update(wanted)
+
+
 def _supported_kwargs(pipe, kwargs: dict) -> dict:
     params = inspect.signature(pipe.__call__).parameters
     return {k: v for k, v in kwargs.items() if k in params and v is not None}
@@ -318,6 +381,7 @@ def generate(
     reference_mode: str = "img2img",
     strength: float = 0.6,
     ip_adapter_scale: float = 0.6,
+    loras: list[tuple[str, float]] | None = None,
     on_step: Callable[[int], None] | None = None,
     on_preview: Callable[[str], None] | None = None,
 ):
@@ -349,6 +413,10 @@ def generate(
     import torch
 
     pipe = _load(model)
+
+    # Load/activate (or clear) LoRA adapters on the base pipe before deriving the
+    # img2img pipe / running, so both the plain and img2img paths pick them up.
+    _apply_loras(pipe, model, loras or [])
 
     use_ref = init_image is not None
     extra: dict = {}

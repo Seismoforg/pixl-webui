@@ -16,11 +16,16 @@ from pydantic import BaseModel, Field
 
 from .. import live, messages, samplers
 from ..catalog import get_model
-from ..services import gallery, job_guard, jobs, pipeline
+from ..services import downloader, gallery, job_guard, jobs, loras as loras_svc, pipeline
 
 router = APIRouter(prefix="/api", tags=["generate"])
 
 _SEED_MAX = 2**32 - 1
+
+
+class LoraRef(BaseModel):
+    slug: str
+    weight: float = Field(default=1.0, ge=0.0, le=2.0)
 
 
 class GenerateRequest(BaseModel):
@@ -40,6 +45,8 @@ class GenerateRequest(BaseModel):
     reference_mode: str = "img2img"  # "img2img" | "style"
     strength: float = Field(default=0.6, ge=0.05, le=1.0)
     ip_adapter_scale: float = Field(default=0.6, ge=0.0, le=1.0)
+    # LoRA adapters to blend into this run (each family-matched + downloaded).
+    loras: list[LoraRef] = []
 
 
 class GenerateStarted(BaseModel):
@@ -160,6 +167,7 @@ def _run(job: _Job, req: GenerateRequest, model, init_image) -> None:
                 reference_mode=req.reference_mode,
                 strength=req.strength,
                 ip_adapter_scale=req.ip_adapter_scale,
+                loras=[(lora.slug, lora.weight) for lora in req.loras],
                 on_step=on_step,
                 on_preview=on_preview,
             )
@@ -176,6 +184,7 @@ def _run(job: _Job, req: GenerateRequest, model, init_image) -> None:
                     "height": req.height,
                     "seed": seed_i,
                     "sampler": effective_sampler,
+                    "loras": [f"{lora.slug}@{lora.weight}" for lora in req.loras],
                 },
             )
             with _store.lock:
@@ -216,6 +225,24 @@ def start_generation(req: GenerateRequest) -> GenerateStarted:
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+
+    # Validate any requested LoRAs up front (exists / downloaded / family match) so a
+    # bad selection is a 400 rather than a started-then-failed job.
+    for ref in req.loras:
+        lora = loras_svc.get(ref.slug)
+        if lora is None:
+            raise HTTPException(404, messages.LORA_NOT_FOUND.format(slug=ref.slug))
+        if model.is_gguf:
+            raise HTTPException(400, messages.LORA_GGUF_UNSUPPORTED)
+        if lora.family != model.family:
+            raise HTTPException(
+                400,
+                messages.LORA_INCOMPATIBLE.format(
+                    name=lora.name, lora_family=lora.family, family=model.family
+                ),
+            )
+        if not downloader.is_downloaded(ref.slug):
+            raise HTTPException(400, messages.LORA_NOT_DOWNLOADED.format(slug=ref.slug))
 
     with _store.lock:
         seed = req.seed if req.seed is not None else random.randint(0, _SEED_MAX)

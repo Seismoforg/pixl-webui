@@ -196,6 +196,9 @@ export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPa
                     value={`${selected.width}×${selected.height}`}
                     mono
                   />
+                  {selected.loras && selected.loras.length > 0 && (
+                    <DetailRow label={t("gallery.loras")} value={selected.loras.join(", ")} />
+                  )}
                   <DetailRow label={t("gallery.created")} value={selected.created} />
                 </Stack>
               </Box>

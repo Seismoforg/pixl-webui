@@ -16,6 +16,7 @@ import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { FieldWithInfo } from "@/components/molecules/FieldWithInfo";
 import { InfoTip } from "@/components/molecules/InfoTip";
 import { LabeledSlider } from "@/components/molecules/LabeledSlider";
+import { LoraPicker } from "@/components/organisms/LoraPicker";
 import { PromptSnippets } from "@/components/organisms/PromptSnippets";
 import { ReferenceImage } from "@/components/organisms/ReferenceImage";
 import { useGeneration } from "@/providers/GenerationProvider";
@@ -69,6 +70,11 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
   // The IP-Adapter "style" mode only works on SD 1.5 / SDXL.
   const styleSupported = useMemo(
     () => supportsStyleTransfer(downloaded.find((m) => m.slug === gen.slug)?.family),
+    [downloaded, gen.slug],
+  );
+
+  const modelFamily = useMemo(
+    () => downloaded.find((m) => m.slug === gen.slug)?.family,
     [downloaded, gen.slug],
   );
 
@@ -166,6 +172,15 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
         <Box component="section">
           <ReferenceImage styleSupported={styleSupported} />
         </Box>
+
+        <Divider />
+
+        <FormSection title={t("generate.sections.loras")}>
+          <LoraPicker
+            family={modelFamily}
+            onAppendPrompt={(text) => gen.setPrompt(appendPrompt(gen.prompt, text))}
+          />
+        </FormSection>
 
         <Divider />
 

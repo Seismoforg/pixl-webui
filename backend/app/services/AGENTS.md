@@ -15,7 +15,8 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
 - jobs.py           — shared job infra (see Key Components)
 - job_guard.py      — process-wide single-heavy-job guard (see ADR 0014)
 - downloader.py     — download orchestration + progress state machine
-- pipeline.py       — diffusers load/cache + text-to-image generation
+- pipeline.py       — diffusers load/cache + text-to-image generation (+ LoRA blend)
+- loras.py          — LoRA adapter catalog (JSON-backed, family-scoped)
 - prompt_embeds.py  — long/weighted CLIP prompt embeds (compel)
 - preview.py        — TAESD live per-step preview
 - callbacks.py      — shared diffusers step-callback + StepTimer
@@ -23,6 +24,7 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
 - upscalers.py      — upscale/outpaint/inpaint engine catalog (JSON-backed)
 - upscale.py        — upscaling dispatch (Real-ESRGAN / SD x4) + tiling
 - reframe.py        — aspect-ratio reframe geometry (pure PIL)
+- grid.py           — compose a labelled XYZ-plot contact-sheet grid (pure PIL)
 - inpaint_engine.py — shared inpaint pipe load/run (outpaint + inpaint)
 - inpaint.py        — user-mask inpainting
 - outpaint.py       — border-mask outpainting (reframe=outpaint)
@@ -51,8 +53,15 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             progress state; delete/is_downloaded. GGUF path: `resolve_gguf_base_files`
             = base repo minus transformer (keeps config), `_run_gguf_download` fetches
             base snapshot + the single `.gguf` into models/<slug> (combined size)
+- loras.py — LoRA catalog (JSON-backed like models/engines): `LoraInfo` (slug, repo_id,
+            filename, family, trigger?, size), `all_loras()`/`get()` + catalog load/save/
+            reset. Each downloads its single `.safetensors` into models/<slug> via the
+            downloader single-file path; applied at generation time by pipeline
 - pipeline.py — diffusers load/cache + generation (step callback); cached img2img pipe
-            (from_pipe) + IP-Adapter load/unload for style. GGUF entries → `_load_gguf`:
+            (from_pipe) + IP-Adapter load/unload for style. LoRA: `_apply_loras` loads +
+            `set_adapters` blends the requested `(slug, weight)` list on the base pipe
+            (family-matched, downloaded, non-GGUF; idempotent when unchanged),
+            `_ensure_no_loras` clears them; reset on model switch. GGUF entries → `_load_gguf`:
             transformer built from local `.gguf` (GGUFQuantizationConfig, bf16), passed
             into family from_pretrained (Flux/StableDiffusion3), CPU-offloaded (bounds
             VRAM). ROCm: load prologue enables TunableOp (GEMM tuning); post apply_perf

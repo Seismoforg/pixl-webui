@@ -36,6 +36,9 @@ class ImageMeta(BaseModel):
     # Effective sampler id (e.g. "dpmpp_2m_karras"). Defaults to "default" for
     # images generated before samplers were selectable.
     sampler: str = "default"
+    # Applied LoRA adapters as "slug@weight" strings; empty for non-LoRA runs and
+    # images generated before LoRA support.
+    loras: list[str] = []
 
 
 def _new_id() -> str:

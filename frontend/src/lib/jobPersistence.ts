@@ -45,7 +45,7 @@ export interface PersistedDownload {
   slug: string;
   title: string;
   route: string;
-  kind: "upscaler" | "model";
+  kind: "upscaler" | "model" | "lora";
 }
 
 const DL_KEY = PREFIX + "downloads";

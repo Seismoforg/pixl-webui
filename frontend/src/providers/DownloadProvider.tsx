@@ -19,7 +19,7 @@ import {
   type PersistedDownload,
 } from "@/lib/jobPersistence";
 import { live } from "@/lib/ws";
-import type { DownloadProgress, UpscalerEngine } from "@/types";
+import type { DownloadProgress, LoraEntry, UpscalerEngine } from "@/types";
 
 /**
  * App-level download tracking so a download's status survives leaving its page
@@ -70,24 +70,54 @@ export const trackUpscalerDownload = (
     });
   });
 
+/**
+ * Start a LoRA download and register it with the download tracker so its progress
+ * survives navigation. Mirrors `trackUpscalerDownload`.
+ */
+export const trackLoraDownload = (
+  track: DownloadContextValue["track"],
+  lora: Pick<LoraEntry, "slug" | "name">,
+  route: string,
+): Promise<void> =>
+  api.downloadLora(lora.slug).then(() => {
+    track(lora.slug, {
+      title: lora.name,
+      route,
+      kind: "lora",
+      fetch: () => api.getLoraProgress(lora.slug),
+      retry: () => api.downloadLora(lora.slug),
+    });
+  });
+
 /** Rebuild the non-serializable fetch/retry closures for a persisted download from
  *  its `kind`, so a still-running download's bubble can resume after a reload. */
-const rebuildMeta = (d: PersistedDownload): TrackMeta =>
-  d.kind === "model"
-    ? {
-        title: d.title,
-        route: d.route,
-        kind: "model",
-        fetch: () => api.getProgress(d.slug),
-        retry: () => api.downloadModel(d.slug),
-      }
-    : {
-        title: d.title,
-        route: d.route,
-        kind: "upscaler",
-        fetch: () => api.getUpscalerProgress(d.slug),
-        retry: () => api.downloadUpscaler(d.slug),
-      };
+const rebuildMeta = (d: PersistedDownload): TrackMeta => {
+  if (d.kind === "model") {
+    return {
+      title: d.title,
+      route: d.route,
+      kind: "model",
+      fetch: () => api.getProgress(d.slug),
+      retry: () => api.downloadModel(d.slug),
+    };
+  }
+  if (d.kind === "lora") {
+    return {
+      title: d.title,
+      route: d.route,
+      kind: "lora",
+      fetch: () => api.getLoraProgress(d.slug),
+      retry: () => api.downloadLora(d.slug),
+    };
+  }
+  return {
+    title: d.title,
+    route: d.route,
+    kind: "upscaler",
+    fetch: () => api.getUpscalerProgress(d.slug),
+    retry: () => api.downloadUpscaler(d.slug),
+  };
+};
 
 interface DownloadProviderProps {
   onFinished: () => void; // e.g. reload the models list when a download completes

@@ -1,5 +1,15 @@
 # Technical Debt
 
+## Curated LoRA entries depend on community repo filenames  (added 2026-07-06)
+- Problem: The curated LoRA catalog (`app/loras_catalog.json`) pins each entry's
+  `repo_id` + exact `filename` (e.g. `nerijs/pixel-art-xl` → `pixel-art-xl.safetensors`).
+  A community repo can rename/move the weight file or disappear; the single-file
+  download then 404s. Same class of risk as the Flux Fill/Kontext GGUF note below.
+- Impact: A curated LoRA can break with a download error until its catalog entry is
+  fixed (editable in Settings → Curated LoRAs).
+- Proposed Resolution: Periodically verify the pinned repos/filenames, or resolve the
+  weight filename from the repo listing instead of hardcoding it.
+
 ## Frontend inspect harness: only the shared-browser core is built  (added 2026-07-06)
 - Problem: The Playwright harness (`frontend/e2e`) ships only the shared-browser inspect
   core — Claude attaches over CDP to a browser the user drives (`test-frontend.bat`).

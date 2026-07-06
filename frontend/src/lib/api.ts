@@ -4,10 +4,14 @@ import type {
   AppSettings,
   DownloadProgress,
   EngineCatalogEntry,
+  CompareProgress,
+  CompareRequest,
   GalleryImage,
   GenerateRequest,
   GenerateResponse,
   GenerationProgress,
+  LoraCatalogEntry,
+  LoraEntry,
   ModelCatalogEntry,
   ModelEntry,
   PromptKind,
@@ -95,6 +99,15 @@ export const api = {
   getGenerationProgress: (jobId: string) =>
     request<GenerationProgress>(`/api/generate/${jobId}`),
 
+  compare: (req: CompareRequest) =>
+    request<UpscaleStarted>("/api/compare", {
+      method: "POST",
+      body: JSON.stringify(req),
+    }),
+
+  getCompareProgress: (jobId: string) =>
+    request<CompareProgress>(`/api/compare/${jobId}`),
+
   getPromptSnippets: () => request<PromptSnippet[]>("/api/prompt-templates"),
 
   createPromptSnippet: (kind: PromptKind, name: string, text: string) =>
@@ -176,6 +189,33 @@ export const api = {
 
   getEditProgress: (jobId: string) =>
     request<EditProgress>(`/api/edit/${jobId}`),
+
+  getLoras: () => request<LoraEntry[]>("/api/loras"),
+
+  // Curated LoRA-catalog editing (Settings).
+  getLorasCatalog: () => request<LoraCatalogEntry[]>("/api/loras/catalog"),
+
+  saveLorasCatalog: (entries: LoraCatalogEntry[]) =>
+    request<LoraCatalogEntry[]>("/api/loras/catalog", {
+      method: "PUT",
+      body: JSON.stringify(entries),
+    }),
+
+  resetLorasCatalog: () =>
+    request<LoraCatalogEntry[]>("/api/loras/catalog/reset", { method: "POST" }),
+
+  downloadLora: (slug: string) =>
+    request<{ slug: string; message: string }>(`/api/loras/${slug}/download`, {
+      method: "POST",
+    }),
+
+  deleteLora: (slug: string) =>
+    request<{ slug: string; status: string }>(`/api/loras/${slug}`, {
+      method: "DELETE",
+    }),
+
+  getLoraProgress: (slug: string) =>
+    request<DownloadProgress>(`/api/loras/${slug}/progress`),
 
   getImages: () => request<GalleryImage[]>("/api/images"),
 
