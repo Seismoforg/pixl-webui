@@ -8,6 +8,8 @@
     "generation": "Generating",
     "upscale": "Upscaling",
     "reframe": "Reframing",
+    "inpaint": "Inpainting",
+    "edit": "Post processing",
     "download": "Downloading {name}",
     "downloadPercent": "{value}%",
     "downloadFailed": "Download failed",
@@ -35,6 +37,8 @@
     "models": "Models",
     "upscale": "Upscale",
     "reframe": "Reframe",
+    "inpaint": "Inpaint",
+    "edit": "Post Processing",
     "gallery": "Gallery",
     "settings": "Settings",
     "toggleTheme": "Toggle light/dark mode"
@@ -182,6 +186,8 @@
       "loading": "Loading model…",
       "upscaling": "Upscaling…",
       "outpainting": "Outpainting",
+      "inpainting": "Inpainting",
+      "editing": "Editing",
       "finalizing": "Finalizing…",
       "tile": "Tile {current}/{total}",
       "step": "Step {current}/{total}",
@@ -205,9 +211,13 @@
     "error": "Reframing failed.",
     "format": {
       "title": "Target format",
-      "help": "Change the image to a target aspect ratio. The strategy decides how the extra area is handled. This only reframes — it does not upscale.",
+      "help": "Change the image to a target aspect ratio, or pick Custom for an exact resolution. The strategy decides how the extra area is handled. Preset ratios don't upscale; a custom size may, to hit the exact pixels.",
       "ratio": "Aspect ratio",
-      "strategy": "Strategy"
+      "strategy": "Strategy",
+      "custom": "Custom…",
+      "width": "Width",
+      "height": "Height",
+      "customHelp": "Exact output size in pixels (64–4096). May upscale to hit it."
     },
     "strategy": {
       "cover": "Cover (crop)",
@@ -262,9 +272,11 @@
     },
     "position": {
       "title": "Source position",
-      "help": "Where the source sits in the frame: for outpaint/contain/edge it positions the image (the rest becomes the new area); for cover it pans which part of the crop is kept. 50 % = centered. Only the axis with room to move has an effect; the preview shows it.",
+      "help": "Where the source sits in the frame: for outpaint/contain/edge it positions the image (the rest becomes the new area); for cover it pans which part of the crop is kept. 50 % = centered. With Source scale below 100 % both axes have room to move; otherwise only the extended axis does. The preview shows it.",
       "horizontal": "Horizontal position",
-      "vertical": "Vertical position"
+      "vertical": "Vertical position",
+      "scale": "Source scale",
+      "scaleHelp": "Shrink the source inside the frame (100 % = fills it). Below 100 % leaves room on all sides to place it with the position sliders — the rest becomes new area (backdrop / edge / outpaint). Not used by cover."
     },
     "preview": {
       "label": "Preview",
@@ -286,6 +298,91 @@
       "thumbAlt": "Reframe variant {index}",
       "showPreview": "Overlay layout preview",
       "hidePreview": "Hide layout preview"
+    }
+  },
+  "inpaint": {
+    "title": "Inpaint",
+    "model": "Inpaint model",
+    "modelHelp": "The inpaint model used to repaint the masked area. Manage models on the Models page.",
+    "notInstalled": "not installed",
+    "needsModel": "Inpainting needs an inpaint model (≈ {size} GB).",
+    "download": "Download inpaint model",
+    "downloading": "Downloading…",
+    "mask": {
+      "title": "Mask",
+      "help": "Paint over the area you want to regenerate. White = repaint, the rest is kept. The overlay previews the mask gradient, composite seam and seed blur you set below."
+    },
+    "canvas": {
+      "paint": "Paint",
+      "erase": "Erase",
+      "invert": "Invert",
+      "clear": "Clear mask",
+      "source": "Source image",
+      "ariaLabel": "Mask paint surface — drag to paint the area to regenerate",
+      "empty": "Pick a source image to start painting a mask.",
+      "hint": "Drag on the image to paint the mask. Use Erase to remove parts."
+    },
+    "brush": {
+      "title": "Brush",
+      "help": "Size and edge softness of the paint brush. These affect painting only — the mask feather below controls what the model regenerates.",
+      "size": "Brush size",
+      "softness": "Brush softness",
+      "softnessHelp": "How soft the brush edge is while painting. Higher = feathered strokes."
+    },
+    "tuning": {
+      "title": "Seam blending",
+      "help": "Fine-tune how the repainted area blends with your image. Higher is softer/wider, lower is tighter; the inpaint defaults keep the edit contained. Changes show live on the canvas. Note: FLUX Fill uses a crisp mask (mask gradient & seed blur mainly affect SD/SDXL) — the composite seam controls the blend there.",
+      "presets": "Presets — one tap sets the three sliders below:",
+      "preset": {
+        "retouch": "Fine retouch",
+        "retouchHelp": "Small blemish fixes (e.g. remove a pimple) — tight edit that stays close to the original.",
+        "replace": "Replace / insert object",
+        "replaceHelp": "Replace or add an object — frees the model to invent new content and blends the edge softly.",
+        "background": "Swap background",
+        "backgroundHelp": "Change the background with a clean edge around the kept subject. Tip: paint the subject, then Invert."
+      },
+      "maskExpand": "Mask expand",
+      "maskExpandHelp": "Grow the painted area outward before generating, so the edit overshoots your brush and swallows a subject's soft fringe (fur, hair) — otherwise a halo of the original can remain at the edge. Raise it if you see a coloured rim of the old content; lower it for tight retouches.",
+      "maskFeather": "Mask gradient",
+      "maskFeatherHelp": "Width of the gradient band where the AI blends into the kept image. Wider = smoother transition, but generation reaches further in. Shown as the cyan band on the canvas.",
+      "seamFeather": "Composite seam",
+      "seamFeatherHelp": "How softly the regenerated area fades back into your pixel-exact source. Wider = less visible seam. Shown as the amber band on the canvas.",
+      "seedBlur": "Seed blur",
+      "seedBlurHelp": "Blur of the source content under the mask before generation. Higher = softer starting point, less anchored to the original. Shown as the softened interior on the canvas."
+    },
+    "promptLabel": "Prompt",
+    "promptHelp": "Describes what to draw inside the painted area.",
+    "negativeLabel": "Negative (optional)",
+    "negativeHelp": "What to avoid in the regenerated area. Appended to the built-in default (editable in Settings).",
+    "autofill": "Auto-fill from source",
+    "params": {
+      "title": "Generation parameters",
+      "help": "Diffusion settings for the inpaint pass.",
+      "sampler": "Sampler",
+      "samplerHelp": "Scheduler used for denoising. Applied when the inpaint model supports it.",
+      "steps": "Steps",
+      "stepsHelp": "Denoising steps for the inpaint pass. More = more detail, slower.",
+      "refine": "Hires refine pass",
+      "refineHelp": "Runs a second, full-resolution inpaint over large masked areas to add detail. Off by default: it is much slower per step. The source stays pixel-exact either way.",
+      "refineSteps": "Refine steps",
+      "refineStepsHelp": "Denoising steps for the hires refinement pass.",
+      "guidance": "Guidance scale",
+      "guidanceHelp": "How strongly the inpaint follows your prompt (CFG). Higher = closer to the prompt, less variety.",
+      "batch": "Batch",
+      "batchHelp": "How many variants to generate, each with an incrementing seed. Pick the best afterwards.",
+      "seed": "Seed",
+      "seedPlaceholder": "Random",
+      "seedHelp": "Fix the seed to reproduce a result, or leave blank for a random one. Batch variant k uses seed + k."
+    },
+    "run": "Inpaint",
+    "running": "Inpainting…",
+    "clear": "Clear",
+    "result": {
+      "title": "Result",
+      "open": "Open full size",
+      "empty": "Your inpainted image will appear here.",
+      "imageOfBatch": "Variant {current} of {total}",
+      "thumbAlt": "Inpaint variant {index}"
     }
   },
   "models": {
@@ -436,6 +533,49 @@
       "outpaint": "Default outpaint model"
     }
   },
+  "edit": {
+    "title": "Post Processing",
+    "model": "Edit model",
+    "modelHelp": "FLUX.1 Kontext edits your image from a written instruction. Downloaded on demand.",
+    "notInstalled": "not installed",
+    "needsModel": "This model needs to be downloaded first (~{size} GB).",
+    "downloading": "Downloading…",
+    "download": "Download model",
+    "promptLabel": "Instruction",
+    "promptPlaceholder": "Describe the change, e.g. \"Change the lighting to a night scene\"",
+    "promptHelp": "Say what should change in plain language. People and composition are kept; only what you describe is changed.",
+    "qualityNote": "Great for restyling and relighting. \"Enhance quality / remove blur\" works as an instruction but is limited — for pure resolution and detail, use Upscale instead.",
+    "examples": {
+      "title": "Try an example",
+      "night": "Change the lighting to a night scene",
+      "day": "Make it a bright sunny day",
+      "paint": "Turn it into a watercolor painting",
+      "enhance": "Enhance the quality and sharpness"
+    },
+    "params": {
+      "title": "Generation parameters",
+      "help": "Kontext is flow-matching (no sampler). Guidance around 2.5 is a good default; higher follows the instruction more strictly.",
+      "steps": "Steps",
+      "stepsHelp": "Denoising steps. Around 28 balances quality and speed.",
+      "guidance": "Guidance",
+      "guidanceHelp": "How strictly to follow the instruction. ~2.5 keeps it natural; raise it for stronger edits.",
+      "batch": "Variants",
+      "batchHelp": "How many results to generate (each with a different seed).",
+      "seed": "Seed",
+      "seedPlaceholder": "random",
+      "seedHelp": "Leave empty for a random seed, or set a number for a reproducible edit."
+    },
+    "run": "Edit image",
+    "running": "Editing…",
+    "clear": "Clear",
+    "result": {
+      "title": "Result",
+      "open": "Open full size",
+      "empty": "Your edited image will appear here.",
+      "imageOfBatch": "Image {current} of {total}",
+      "thumbAlt": "Variant {index}"
+    }
+  },
   "engines": {
     "title": "Upscale & outpaint models",
     "subtitle": "Engines used for AI upscaling and outpainting. The curated list is edited in Settings.",
@@ -443,7 +583,8 @@
     "kind": {
       "realesrgan": "Real-ESRGAN",
       "sd_x4": "SD x4 upscaler",
-      "inpaint": "Inpaint (outpaint)"
+      "inpaint": "Inpaint (outpaint)",
+      "edit": "Post processing"
     }
   },
   "common": {

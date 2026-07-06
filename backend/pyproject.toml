@@ -12,7 +12,7 @@ requires-python = ">=3.10,<3.14"
 dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
-    "diffusers>=0.31",  # GGUFQuantizationConfig (GGUF-quantized FLUX) needs >=0.31
+    "diffusers>=0.35",  # GGUF FLUX needs >=0.31; FluxKontextPipeline (edit) needs >=0.35
     "transformers>=4.40",
     "accelerate>=0.29",
     "safetensors>=0.4",

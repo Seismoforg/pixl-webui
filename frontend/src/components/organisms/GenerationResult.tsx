@@ -51,7 +51,7 @@ export const GenerationResult = () => {
         // Sticky result: stays in view while the form scrolls; on mobile it moves
         // to the top of the single-column layout (matches the reframe page).
         position: "sticky",
-        top: (theme) => theme.spacing(10),
+        top: "calc(var(--app-header-h, 80px) + 8px)",
         alignSelf: "start",
         order: { xs: -1, md: 0 },
         // `order` also flips grid paint order; a z-index keeps the result above

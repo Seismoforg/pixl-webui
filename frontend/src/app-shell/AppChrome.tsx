@@ -1,7 +1,9 @@
 "use client";
 
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
 import AspectRatioIcon from "@mui/icons-material/AspectRatio";
+import BrushIcon from "@mui/icons-material/Brush";
 import CollectionsIcon from "@mui/icons-material/Collections";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
@@ -19,7 +21,7 @@ import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useTranslations } from "@/i18n";
 import { useColorMode } from "@/providers/ColorModeProvider";
@@ -34,6 +36,8 @@ const NAV = [
   { href: "/generate", key: "nav.generate", icon: AutoAwesomeIcon },
   { href: "/upscale", key: "nav.upscale", icon: PhotoSizeSelectLargeIcon },
   { href: "/reframe", key: "nav.reframe", icon: AspectRatioIcon },
+  { href: "/inpaint", key: "nav.inpaint", icon: BrushIcon },
+  { href: "/edit", key: "nav.edit", icon: AutoFixHighIcon },
   { href: "/models", key: "nav.models", icon: ViewInArIcon },
   { href: "/gallery", key: "nav.gallery", icon: CollectionsIcon },
 ] as const;
@@ -51,6 +55,21 @@ export const AppChrome = ({ children }: { children: ReactNode }) => {
   const activeIndex = NAV.findIndex((n) => pathname.startsWith(n.href));
   const tabValue = activeIndex === -1 ? false : activeIndex;
 
+  // Publish the sticky AppBar's live height as a CSS var so sticky result panels can
+  // offset below it (it's responsive: the tab row + status bar change its height), and
+  // not have their top edge/heading clipped behind it.
+  const headerRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return undefined;
+    const apply = () =>
+      document.documentElement.style.setProperty("--app-header-h", `${el.offsetHeight}px`);
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const [drawerOpen, setDrawerOpen] = useState(false);
   // Nav items for the mobile drawer: the tab routes plus Settings.
   const drawerItems = [
@@ -60,7 +79,13 @@ export const AppChrome = ({ children }: { children: ReactNode }) => {
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
-      <AppBar position="sticky" color="default" elevation={0} sx={{ borderBottom: 1, borderColor: "divider" }}>
+      <AppBar
+        ref={headerRef}
+        position="sticky"
+        color="default"
+        elevation={0}
+        sx={{ borderBottom: 1, borderColor: "divider" }}
+      >
         <Toolbar>
           <IconButton
             edge="start"

@@ -15,11 +15,25 @@ export const parseRatio = (value: string | null | undefined): [number, number] |
 };
 
 /** Smallest canvas of ratio rw:rh that fully contains w×h — extends exactly one
- * axis; the image is never shrunk (mirrors `extend_size`). */
-export const extendSize = (w: number, h: number, rw: number, rh: number): [number, number] => {
+ * axis; the image is never shrunk (mirrors `extend_size`). `scale` (0..1, 1 = fills
+ * the frame) < 1 enlarges the canvas by `1/scale` so the source occupies `scale` of
+ * the fitting axis with room to position it on both axes. */
+export const extendSize = (
+  w: number,
+  h: number,
+  rw: number,
+  rh: number,
+  scale = 1,
+): [number, number] => {
   const target = rw / rh;
-  if (target > w / h) return [Math.max(w, Math.round(h * target)), h];
-  return [w, Math.max(h, Math.round(w / target))];
+  let [cw, ch] =
+    target > w / h ? [Math.max(w, Math.round(h * target)), h] : [w, Math.max(h, Math.round(w / target))];
+  const s = Math.min(1, Math.max(0.01, scale));
+  if (s < 1) {
+    cw = Math.round(cw / s);
+    ch = Math.round(ch / s);
+  }
+  return [cw, ch];
 };
 
 export interface Rect {

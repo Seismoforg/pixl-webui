@@ -14,10 +14,10 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
   `default_model`/`default_upscaler`/`default_outpaint_engine`, consumed by the UI).
   On ROCm, GEMM kernels are auto-tuned via TunableOp (persistently cached in `data/`)
 - Run text-to-image generation as a background job with live step progress
-- Load GGUF-quantized FLUX models (catalog entries carrying a `.gguf` transformer
-  source): download the base repo without its transformer weights + the single
-  `.gguf`, and load the quantized transformer via diffusers' GGUFQuantizationConfig
-  so FLUX runs in ~16 GB VRAM
+- Load GGUF-quantized FLUX and SD 3.x models (catalog entries carrying a `.gguf`
+  transformer source): download the base repo without its transformer weights + the
+  single `.gguf`, and load the quantized transformer via diffusers'
+  GGUFQuantizationConfig so FLUX / SD 3.5 Large run in ~16 GB VRAM
 - Encode long/weighted prompts (>77 CLIP tokens, A1111 `(word:1.2)` weighting)
   via compel for SD 1.5 / SDXL; other families keep the native prompt path
 - Optional reference image: img2img variations, or IP-Adapter style (SD 1.5/SDXL)
@@ -31,10 +31,25 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
   engine on demand and optionally tiling large inputs
 - Reframe an image to a target aspect ratio WITHOUT upscaling (cover/contain/edge,
   or AI outpaint with a selectable inpaint model + its own outpaint prompt) — a
-  standalone job/endpoint, separate from upscaling. The inpaint model can be SD/SDXL
+  standalone job/endpoint, separate from upscaling. A "custom" target instead pins an
+  exact output resolution (target_width×target_height): the strategy sets the aspect,
+  then the result is resized to those exact pixels (may upscale — the one exception to
+  the no-upscaling rule). The inpaint model can be SD/SDXL
   or a GGUF-quantized FLUX.1-Fill-dev engine (Flux-quality outpainting in ~16 GB)
-- Serve the curated upscale/outpaint engine catalog (JSON-backed, editable in
-  Settings) and download engines like generation models
+- Inpaint a hand-painted region of an image (user supplies the mask; white =
+  repaint) with a selectable inpaint engine + a prompt — a standalone job/endpoint.
+  Auto-crops a padded box around the mask, generates at the model's native
+  resolution, and composites the result back over the pixel-exact source with a
+  feathered seam. Reuses the same `inpaint`-kind engines as outpaint (SD/SDXL +
+  GGUF FLUX.1-Fill); a curated SDXL inpaint checkpoint (`inpaint--sdxl`) covers the
+  mid-VRAM tier
+- Post-process (edit) an image from a natural-language instruction ("change the
+  lighting to a night scene") with FLUX.1 Kontext — a whole-image, mask-free,
+  structure-preserving edit. A separate `edit`-kind engine loaded from a
+  GGUF-quantized Kontext transformer (like the FLUX Fill engines, ~16 GB); its own
+  job/endpoint, VRAM-coordinated with the other model services
+- Serve the curated upscale/outpaint/inpaint engine catalog (JSON-backed, editable
+  in Settings) and download engines like generation models
 - Persist reusable positive/negative/upscale/outpaint/outpaint-negative prompt
   snippets (prompt templates)
 - Delete downloaded models from disk and report live system-resource stats
@@ -51,7 +66,7 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                           `data/models_catalog.json` override (written by the Settings
                           editor) replaces it. `ModelInfo` carries optional
                           `gguf_repo_id`/`gguf_filename` (+ `is_gguf`) for
-                          GGUF-quantized FLUX entries
+                          GGUF-quantized FLUX / SD 3.x entries
 - app/models_catalog.json — bundled default generation-model catalog
 - app/engines_catalog.json — bundled default upscale/outpaint engine catalog
 - app/samplers.py       — sampler (diffusers scheduler) registry + apply_sampler
@@ -59,13 +74,16 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 - app/live.py           — in-process pub/sub hub: producer threads publish(key) to
                           wake the WebSocket pusher event-driven (thread→async bridge)
 - app/routers/          — HTTP controllers: system, settings, models, generate,
-                          images, templates, upscale, reframe, ws
+                          images, templates, upscale, reframe, inpaint, edit, ws
 - app/services/         — business logic: downloader (download orchestration +
                           progress), pipeline, prompt_embeds (long-prompt CLIP
                           embeds), callbacks (shared diffusers step-callback +
                           timing), gallery (+ data-URL image decode), resources,
                           fit (GPU fit check), upscalers (JSON-backed engine
-                          catalog) + upscale (engine service)
+                          catalog) + upscale (engine service); inpaint_engine
+                          (shared inpaint pipe load/run) + inpaint (user-mask) +
+                          outpaint (border-mask) services; edit (FLUX Kontext
+                          prompt-based whole-image edit)
 
 # Key Components
 - services/downloader.py — background snapshot_download + size-based progress state
@@ -105,20 +123,55 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            optional tiling stitches large inputs (bounds VRAM);
                            caches loaded engines like pipeline.py
 - services/reframe.py    — aspect-ratio reframing (pure PIL): cover/contain/edge +
+                           to_exact_size (final resize to a custom target W×H) +
                            canvas/mask geometry for outpainting (build_mask gradient
                            band, feathered_keep_mask seam, reflect_fill seed) with
                            default_*_feather/default_seed_blur + scale_softness so the
                            seam widths are user-tunable (0.5 = tuned default);
                            place_offset positions the source (pos_x/pos_y, 0.5 =
                            centred): contain/edge/outpaint place it in the extended
-                           canvas, cover pans the kept crop
+                           canvas, cover pans the kept crop. extend_size takes a
+                           `scale` (0..1, 1 = fills the frame): < 1 enlarges the canvas
+                           by 1/scale so the source sits smaller inside it with room to
+                           be positioned on both axes (contain/edge/outpaint; cover
+                           ignores it)
+- services/inpaint_engine.py — shared inpaint-engine primitives used by BOTH the
+                           outpaint and inpaint services: the single cached inpaint
+                           pipe + `load`/`unload`, `run_inpaint` (one inpaint pass,
+                           step-reported), engine-family caps, `is_sdxl`/`is_flux`/
+                           `working_cap`, `make_generator`, `effective_negative`.
+                           GGUF engines load FLUX.1-Fill via `_load_flux_fill` (GGUF
+                           transformer + FluxFillPipeline + CPU offload; the Flux
+                           branch drops the negative prompt and passes explicit
+                           height/width); non-GGUF engines use
+                           AutoPipelineForInpainting. Only one inpaint pipe is loaded
+                           at a time (outpaint + inpaint never run together);
+                           `pipeline.unload()`/`upscale.unload()` are called before
+                           loading (VRAM-coordinated)
+- services/inpaint.py    — user-mask inpainting: repaint the painted region (white in
+                           the mask) with an `inpaint`-kind engine. Auto-crops a
+                           padded box around the mask (`_padded_box`; a `mask_expand`
+                           knob first grows the painted region so the edit swallows a
+                           subject's soft fringe instead of leaving a halo of the
+                           original), scales that
+                           crop into the model's working range (UP to the family native
+                           res so small edits don't fall below the training size →
+                           noise; DOWN to the cap for huge crops), generates there, and
+                           composites the result back over the pixel-exact full-res
+                           source with a feathered seam. Three feather knobs mirror reframe
+                           (mask_softness = mask-edge gradient fed to the diffuser,
+                           seed_softness = blur of the source under the mask,
+                           seam_softness = composite-back alpha), plus optional hires
+                           refine on large crops. FLUX Fill is fed a CRISP binary mask +
+                           unblurred init (it zeroes the masked init and reads the mask
+                           in latent space, so a soft edge leaves a grey haze ring); the
+                           composite seam does the blend there. SD/SDXL keep the
+                           feathered mask + seed blur. Uses `inpaint_engine` + reframe
+                           geometry helpers. Driven by the inpaint job
 - services/outpaint.py   — extend an image to a target ratio by generating the new
-                           area with a selectable inpaint pipe (engine passed in;
-                           reloads on slug change). GGUF engines load FLUX.1-Fill via
-                           `_load_flux_fill` (GGUF transformer + FluxFillPipeline +
-                           CPU offload); the Flux branch drops the negative prompt,
-                           passes explicit height/width, and uses a 1024 cap. Non-GGUF
-                           engines use AutoPipelineForInpainting as before. Whole-canvas
+                           area with a selectable inpaint pipe (engine + pass
+                           load/run via `inpaint_engine`; `unload` re-exported from
+                           it). Whole-canvas
                            composition pass at a model-family working cap (SD 1.x 768 /
                            SDXL 1024 / FLUX 1024) — the full
                            canvas directly when it fits, else generated at the cap and
@@ -138,6 +191,17 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            the pipe supports it) + a seed (seeded torch.Generator for a
                            reproducible border). Used by the reframe job for
                            reframe=outpaint
+- services/edit.py       — prompt-based whole-image editing (FLUX.1 Kontext). Loads an
+                           `edit`-kind engine's GGUF transformer into a
+                           `FluxKontextPipeline` (own cached pipe + `unload`,
+                           CPU-offloaded). `edit_image` runs one Kontext pass (source
+                           image + instruction prompt, NO mask, NO negative — Kontext
+                           auto-resizes to its preferred ~1 MP internally, bounding
+                           VRAM, and the result is scaled back to the source size),
+                           step-reported (phase "editing"). VRAM-coordinated: loading
+                           frees the generation/upscale/inpaint models, and each of
+                           those frees it before loading (mutual lazy-import unload).
+                           Driven by the edit job
 - services/fit.py        — assess(model): fits_gpu / fits_offload / too_large / cpu_only
                            against live VRAM+RAM; drives both the UI badge and the
                            pipeline's device placement (offload) so they never disagree
@@ -146,8 +210,9 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            IP-Adapter load/unload for style conditioning. GGUF entries
                            branch to `_load_gguf`: the transformer is built from the
                            local `.gguf` (GGUFQuantizationConfig, bf16) and passed into
-                           FluxPipeline.from_pretrained (overriding that component),
-                           then CPU-offloaded to bound VRAM (FLUX only). On ROCm the
+                           the family's pipeline.from_pretrained (Flux/StableDiffusion3,
+                           overriding that component), then CPU-offloaded to bound VRAM
+                           (FLUX + SD 3.x). On ROCm the
                            load prologue enables TunableOp (GEMM tuning); after
                            apply_perf it runs apply_compile (optional torch.compile)
 - services/callbacks.py  — shared diffusers step-callback wiring (`step_kwargs`,
@@ -202,10 +267,12 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            engine); upscales and saves to the gallery. Reframing is
                            now a separate router (below)
 - routers/reframe.py     — POST /api/reframe (gallery-id or uploaded data URL +
-                           target_ratio + reframe strategy + outpaint_prompt +
+                           target_ratio (+ optional target_width/target_height for a
+                           custom exact resolution) + reframe strategy + outpaint_prompt +
                            outpaint_negative + outpaint_engine + outpaint seam-blend
                            softness mask/seam/seed_softness + source position
-                           pos_x/pos_y + outpaint generation params
+                           pos_x/pos_y + source scale (shrinks the source within the
+                           frame; area-adding strategies) + outpaint generation params
                            outpaint_steps/refine_steps/guidance/sampler/seed/batch +
                            an outpaint_refine flag gating the slow full-res hires
                            refinement pass, off by default)
@@ -219,6 +286,27 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            image_ids; phase incl. "outpainting"/steps/elapsed).
                            Mirrors the upscale job store; publishes the `reframe`
                            WS channel
+- routers/inpaint.py     — POST /api/inpaint (gallery-id or uploaded data URL +
+                           mask_data painted-mask data URL + engine + prompt +
+                           negative + feather softness mask/seam/seed_softness +
+                           generation params steps/refine_steps/refine/guidance/
+                           sampler/seed/batch) as a background job that repaints the
+                           masked region via the inpaint service (generating `batch`
+                           variants with incrementing seeds) and saves to the gallery;
+                           GET /api/inpaint/{job_id} returns `InpaintProgress` (the
+                           `ReframeProgress` shape: UpscaleProgress + batch fields;
+                           phase incl. "inpainting"). Mirrors the reframe job store;
+                           publishes the `inpaint` WS channel
+- routers/edit.py        — POST /api/edit (gallery-id or uploaded data URL + edit
+                           engine + instruction prompt + generation params
+                           steps/guidance/seed/batch) as a background job that edits
+                           the image via the edit service (generating `batch` variants
+                           with incrementing seeds) and saves to the gallery;
+                           GET /api/edit/{job_id} returns `EditProgress` (the
+                           `InpaintProgress` shape: UpscaleProgress + batch fields;
+                           phase incl. "editing"). Requires a non-empty prompt and an
+                           `edit`-kind engine. Mirrors the inpaint job store; publishes
+                           the `edit` WS channel
 - routers/templates.py   — CRUD for prompt snippets under /api/prompt-templates
 - routers/models.py      — catalog list (curated, each with a fit verdict) +
                            catalog editing (GET/PUT /api/models/catalog,
@@ -226,16 +314,16 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            DELETE /api/models/{slug} (remove from disk)
 - routers/system.py      — GET /api/system (device) + GET /api/system/stats (live resources)
 - routers/ws.py          — multiplexed WebSocket at /ws: subscribe channels
-                           (system/generation/upscale/reframe/download), server pushes the
+                           (system/generation/upscale/reframe/inpaint/edit/download), server pushes the
                            same models the REST endpoints return, send-on-change;
-                           generation/upscale/reframe (and download status) are event-driven
+                           generation/upscale/reframe/inpaint/edit (and download status) are event-driven
                            via app/live.py publish; system stats + download bytes stay
                            on a ~1s tick (sampled). REST endpoints remain the fallback
 
 # Dependencies
 fastapi, uvicorn, diffusers (>=0.31 for GGUF), transformers, accelerate,
 huggingface_hub, pillow, pydantic, psutil, compel (long/weighted prompts), gguf
-(GGUF-quantized FLUX transformers); torch (CUDA/ROCm/CPU) installed by the root
+(GGUF-quantized FLUX / SD 3.x transformers); torch (CUDA/ROCm/CPU) installed by the root
 installer.
 
 # Related Modules

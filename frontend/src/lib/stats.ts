@@ -42,9 +42,15 @@ export const upscaleStatsView = (
   if (stepped) {
     parts.push(t("upscale.stats.step", { current: progress.current_step, total: progress.total_steps }));
   }
-  const word =
-    progress.phase === "outpainting" ? t("upscale.stats.outpainting") : t("upscale.stats.upscaling");
-  const label = parts.length > 0 ? (progress.phase === "outpainting" ? `${word} · ${parts.join(" · ")}` : parts.join(" · ")) : word;
+  // Outpaint/inpaint/edit prefix a task word; upscaling shows just the parts.
+  const taskWord: Record<string, string> = {
+    outpainting: "upscale.stats.outpainting",
+    inpainting: "upscale.stats.inpainting",
+    editing: "upscale.stats.editing",
+  };
+  const filling = progress.phase in taskWord;
+  const word = filling ? t(taskWord[progress.phase]) : t("upscale.stats.upscaling");
+  const label = parts.length > 0 ? (filling ? `${word} · ${parts.join(" · ")}` : parts.join(" · ")) : word;
 
   const percent = stepped
     ? (progress.current_step / progress.total_steps) * 100

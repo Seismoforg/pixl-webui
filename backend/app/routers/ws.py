@@ -19,6 +19,8 @@ Channels:
 - ``generation`` — a generation job's progress (``job_id``, event-driven)
 - ``upscale``    — an upscale job's progress (``job_id``, event-driven)
 - ``reframe``    — a reframe job's progress (``job_id``, event-driven)
+- ``inpaint``    — an inpaint job's progress (``job_id``, event-driven)
+- ``edit``       — a Post-Processing edit job's progress (``job_id``, event-driven)
 - ``download``   — a model/upscaler download's progress (``slug``; status
   event-driven, byte progress on the periodic tick)
 """
@@ -31,7 +33,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from .. import live
 from ..services import downloader, resources
-from . import generate, reframe, upscale
+from . import edit, generate, inpaint, reframe, upscale
 
 router = APIRouter()
 
@@ -40,7 +42,7 @@ _SYSTEM_EVERY = 2    # push system stats every N periodic passes (~1s)
 
 # Channels that get producer-published wakes via the pub/sub hub (system is purely
 # tick-driven and never published).
-_PUBLISHED = ("generation", "upscale", "reframe", "download")
+_PUBLISHED = ("generation", "upscale", "reframe", "inpaint", "edit", "download")
 # Channels whose payload changes without a producer event, so the periodic tick
 # must keep re-reading them (download = growing on-disk bytes; system = psutil).
 _SAMPLED = ("system", "download")
@@ -56,6 +58,10 @@ def _channel_data(desc: dict) -> dict | None:
             return upscale.upscale_progress(desc["job_id"]).model_dump()
         if channel == "reframe":
             return reframe.reframe_progress(desc["job_id"]).model_dump()
+        if channel == "inpaint":
+            return inpaint.inpaint_progress(desc["job_id"]).model_dump()
+        if channel == "edit":
+            return edit.edit_progress(desc["job_id"]).model_dump()
         if channel == "download":
             return downloader.get_progress(desc["slug"]).model_dump()
     except HTTPException:
@@ -68,7 +74,7 @@ def _key(msg: dict) -> tuple[str, dict] | None:
     channel = msg.get("channel")
     if channel == "system":
         return "system", {"channel": "system"}
-    if channel in ("generation", "upscale", "reframe"):
+    if channel in ("generation", "upscale", "reframe", "inpaint", "edit"):
         job_id = msg.get("job_id")
         if not job_id:
             return None

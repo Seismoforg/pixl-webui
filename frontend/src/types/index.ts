@@ -157,7 +157,7 @@ export interface GenerationProgress {
   error: string | null;
 }
 
-export type UpscalerKind = "realesrgan" | "sd_x4" | "inpaint";
+export type UpscalerKind = "realesrgan" | "sd_x4" | "inpaint" | "edit";
 
 export type ReframeStrategy = "cover" | "contain" | "edge" | "outpaint";
 
@@ -220,7 +220,11 @@ export interface UpscaleStarted {
 export interface ReframeRequest {
   image_id?: string | null;
   image_data?: string | null; // uploaded image as a data URL
-  target_ratio: string; // "16:9" | "4:3" | … (never "original")
+  target_ratio: string; // "16:9" | "4:3" | … (never "original"); "WxH" for custom
+  // Custom exact output resolution (pixels). Both set → resize the result to exactly
+  // this size (may upscale); omitted → size derived from the source + ratio.
+  target_width?: number | null;
+  target_height?: number | null;
   reframe: ReframeStrategy;
   outpaint_prompt: string; // describes the scene generated in the outpainted area
   outpaint_negative?: string; // per-run negative, appended to the Settings default
@@ -234,6 +238,9 @@ export interface ReframeRequest {
   // strategies (outpaint/contain/edge); cover ignores it.
   pos_x?: number;
   pos_y?: number;
+  // Source scale within the frame (0..1; 1 = fills the fitting axis). < 1 shrinks the
+  // source inside a larger canvas to position it (area-adding strategies; cover ignores).
+  scale?: number;
   // Generation parameters for reframe=outpaint (ignored by cover/contain/edge):
   // composition/refinement steps, CFG scale, scheduler id, seed (null → random),
   // and how many variants to generate (incrementing seeds).
@@ -254,7 +261,68 @@ export interface ReframeProgress extends UpscaleProgress {
   image_ids: string[];
 }
 
-export type UpscalePhase = "loading" | "upscaling" | "outpainting" | "finalizing";
+/** Inpaint (paint-a-mask region fill) request. */
+export interface InpaintRequest {
+  image_id?: string | null;
+  image_data?: string | null; // uploaded source image as a data URL
+  mask_data: string; // painted mask as a data URL (white = repaint, black = keep)
+  engine?: string | null; // inpaint engine slug; null → curated default
+  prompt: string; // what to draw inside the painted area
+  negative?: string; // per-run negative, appended to the Settings default
+  // Feather tuning (0..1; 0.5 = default): mask-edge gradient / composite seam /
+  // seed blur under the mask.
+  mask_softness?: number;
+  seam_softness?: number;
+  seed_softness?: number;
+  mask_expand?: number; // grow the painted region before generating (0..1)
+  // Generation parameters: inpaint/refine steps, CFG scale, scheduler id, seed
+  // (null → random), and how many variants to generate (incrementing seeds).
+  steps?: number;
+  refine_steps?: number;
+  refine?: boolean; // run the slow full-res hires refine pass (default off)
+  guidance?: number;
+  sampler?: string | null;
+  seed?: number | null;
+  batch?: number;
+}
+
+/** Inpaint job progress = the upscale progress shape plus batch fields (a superset,
+ *  so the shared upscale live-stats UI keeps working). */
+export interface InpaintProgress extends UpscaleProgress {
+  batch_index: number;
+  batch_size: number;
+  image_ids: string[];
+}
+
+/** Post-Processing (FLUX Kontext) prompt-based image-edit request. */
+export interface EditRequest {
+  image_id?: string | null;
+  image_data?: string | null; // uploaded source image as a data URL
+  engine?: string | null; // edit engine slug; null → curated default
+  prompt: string; // the natural-language edit instruction
+  // Generation parameters: denoising steps, CFG scale, seed (null → random), and
+  // how many variants to generate (incrementing seeds).
+  steps?: number;
+  guidance?: number;
+  seed?: number | null;
+  batch?: number;
+}
+
+/** Edit job progress = the upscale progress shape plus batch fields (a superset,
+ *  so the shared upscale live-stats UI keeps working). */
+export interface EditProgress extends UpscaleProgress {
+  batch_index: number;
+  batch_size: number;
+  image_ids: string[];
+}
+
+export type UpscalePhase =
+  | "loading"
+  | "upscaling"
+  | "outpainting"
+  | "inpainting"
+  | "editing"
+  | "finalizing";
 
 export interface UpscaleProgress {
   job_id: string;

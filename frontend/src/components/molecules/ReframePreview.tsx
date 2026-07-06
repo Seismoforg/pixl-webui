@@ -22,6 +22,9 @@ interface ReframePreviewProps {
   /** Source placement in the extended frame (0..1; 0.5 = centred). */
   posX?: number;
   posY?: number;
+  /** Source scale within the frame (0..1; 1 = fills the fitting axis). < 1 enlarges
+   * the frame so the source sits smaller inside it (area-adding strategies). */
+  scale?: number;
   /** Render only the bare canvas, absolutely filling a positioned parent and
    * semi-transparent — for superimposing the layout over the result image. */
   overlay?: boolean;
@@ -191,6 +194,7 @@ export const ReframePreview = ({
   seamSoftness = 0.5,
   posX = 0.5,
   posY = 0.5,
+  scale = 1,
   overlay = false,
 }: ReframePreviewProps) => {
   const t = useTranslations();
@@ -216,7 +220,7 @@ export const ReframePreview = ({
       if (strategy === "cover") {
         drawCover(ctx, img, w, h, rw, rh, theme, posX, posY, overlay);
       } else {
-        const [cw, ch] = extendSize(w, h, rw, rh);
+        const [cw, ch] = extendSize(w, h, rw, rh, scale);
         drawExtend(ctx, img, cw, ch, w, h, strategy === "outpaint", theme, maskSoftness, seamSoftness, posX, posY, overlay);
       }
     };
@@ -224,7 +228,7 @@ export const ReframePreview = ({
     return () => {
       img.onload = null;
     };
-  }, [preview, w, h, targetRatio, strategy, theme, maskSoftness, seamSoftness, posX, posY, overlay]);
+  }, [preview, w, h, targetRatio, strategy, theme, maskSoftness, seamSoftness, posX, posY, scale, overlay]);
 
   // Aspect ratio of the whole frame — reserved up front so the canvas never
   // shifts layout as the image decodes.
@@ -232,7 +236,7 @@ export const ReframePreview = ({
     dims && ratio
       ? strategy === "cover"
         ? `${dims.w} / ${dims.h}`
-        : extendSize(dims.w, dims.h, ratio[0], ratio[1]).join(" / ")
+        : extendSize(dims.w, dims.h, ratio[0], ratio[1], scale).join(" / ")
       : undefined;
 
   const hintKey =

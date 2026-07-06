@@ -110,14 +110,16 @@ def upscale(engine: UpscalerInfo, image, prompt: str = "", tile: bool = True, on
     if not is_downloaded(engine.slug):
         raise ValueError(messages.MODEL_NOT_DOWNLOADED.format(slug=engine.slug))
 
-    # Maximise VRAM headroom: drop the generation pipeline and any other cached
-    # upscaler engine, keeping only the one about to run. Lazy import of pipeline
-    # avoids the pipeline <-> upscale import cycle.
+    # Maximise VRAM headroom: drop the generation pipeline, the edit pipe and any
+    # other cached upscaler engine, keeping only the one about to run. Lazy imports
+    # avoid the pipeline <-> upscale <-> edit import cycle.
+    from . import edit as _edit
     from . import outpaint as _outpaint
     from . import pipeline as _pipeline
 
     _pipeline.unload()
     _outpaint.unload()
+    _edit.unload()
     unload(keep_slug=engine.slug)
 
     report = on_progress or (lambda _u: None)

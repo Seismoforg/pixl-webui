@@ -11,8 +11,9 @@ and download models, configure settings, and generate images.
 # File Structure
 - app/layout.tsx            — providers (MUI cache, ColorMode, i18n) + AppChrome
 - app/page.tsx              — redirects `/` → `/generate`
-- app/generate|models|upscale|reframe|gallery|settings/page.tsx — one route per
-                             screen (thin clients reading AppData/Generation context)
+- app/generate|models|upscale|reframe|inpaint|edit|gallery|settings/page.tsx — one
+                             route per screen (thin clients reading AppData/Generation
+                             context); `/edit` is the Post Processing (FLUX Kontext) page
 - src/app-shell/AppChrome.tsx — shared VISUAL chrome above all routes: AppBar,
                              link-based tabs (active from usePathname), status bar,
                              activity overlay. Shared data + feature providers now
@@ -21,8 +22,9 @@ and download models, configure settings, and generate images.
                              AppDataProvider (shared models/system + `useAppData`;
                              hosts the feature providers), ColorModeProvider,
                              GenerationProvider, UpscaleProvider, ReframeProvider,
-                             ActivityProvider, DownloadProvider. Grouped here so
-                             navigation-surviving state has one home
+                             InpaintProvider, EditProvider, ActivityProvider,
+                             DownloadProvider.
+                             Grouped here so navigation-surviving state has one home
 - src/theme/theme.ts        — theme tokens only: Inter font (loaded by next/font in
                              app/layout.tsx, read via the `--font-inter` CSS var),
                              a cohesive light/dark palette (background/paper/divider/
@@ -35,11 +37,14 @@ and download models, configure settings, and generate images.
                              (see lib/AGENTS.md): api.ts (typed REST client),
                              ws.ts (reconnecting multiplexed WebSocket `live` +
                              `useLive`), fit.ts (GPU-fit → chip color + locale keys),
-                             stats.ts (upscale status line + percent)
+                             stats.ts (upscale status line + percent), reframe.ts +
+                             inpaint.ts (client-side geometry / mask-overlay math)
 - src/types/                — API response types
 - src/components/atoms/     — SectionHeading (semantic h2/h3 with a visual variant),
                              Logo (the app mark, mirrors app/icon.svg)
-- src/components/molecules/ — LabeledSlider, ModelListItem, GalleryCard, InfoTip,
+- src/components/molecules/ — LabeledSlider, BrushControls (brush size + softness
+                             sliders for the inpaint mask editor), ModelListItem,
+                             GalleryCard, InfoTip,
                              ConfirmDialog, ConnectionStatus, NavDrawer (mobile nav),
                              ActivityBubble (one off-route status card), UpscaleStats
                              (upscale status line shared by the frame/overlay),
@@ -72,7 +77,9 @@ and download models, configure settings, and generate images.
                              ReferenceImage, PromptSnippets, PromptSnippetManager,
                              SnippetPromptField (snippet control + prompt field),
                              UpscalePanel (host) + EnginePicker + SourcePicker +
-                             UpscaleResult, ReframePanel (host) + ReframeResult
+                             UpscaleResult, ReframePanel (host) + ReframeResult,
+                             InpaintPanel (host) + InpaintCanvas (paint-a-mask editor)
+                             + InpaintResult, EditPanel (host) + EditResult
 
 # Key Components
 - AppDataProvider — mounted in the root layout, wraps AppChrome. Loads models +
@@ -89,6 +96,10 @@ and download models, configure settings, and generate images.
                     token (~1700px) and centered.
                     Responsive: the tab bar shows at md+; below md a burger button
                     opens the NavDrawer instead (all via MUI sx breakpoints).
+                    Publishes the sticky AppBar's live height as the `--app-header-h`
+                    CSS var (ResizeObserver) so the sticky result panels
+                    (Generation/Upscale/Reframe/Inpaint) can offset their `top` below
+                    it — otherwise the box's top edge + heading clip behind the AppBar.
 - GenerationProvider — holds all generation state + the polling loop in a context
                     that never unmounts; GenerationPanel is a thin consumer
 - GenerationPanel — thin two-column host: the sectioned form on the left, the
@@ -158,7 +169,8 @@ and download models, configure settings, and generate images.
                     on its own /reframe screen
 - ReframePanel    — the /reframe screen: change an image's aspect ratio WITHOUT
                     upscaling. Choose a source (gallery picker or upload), a target
-                    aspect ratio + strategy (cover/contain/edge/outpaint); for
+                    aspect ratio (or "Custom" = an exact W×H resolution) + strategy
+                    (cover/contain/edge/outpaint); for
                     outpaint pick the inpaint model (dropdown, curated or custom,
                     downloaded on demand) + an outpaint prompt and negative prompt
                     (each with its own outpaint/outpaint-negative snippet control; the
@@ -166,7 +178,9 @@ and download models, configure settings, and generate images.
                     source's original prompt; the negative is appended to the
                     Settings default) + seam-blend tuning sliders
                     (mask gradient / composite seam / seed blur, 0–100 %, 50 =
-                    default). Horizontal/vertical source-position sliders (all
+                    default). A source-scale slider (area-adding strategies; 100 % =
+                    fills the frame, lower shrinks the source so it can be freely
+                    positioned) + horizontal/vertical source-position sliders (all
                     strategies; place the source, or pan the crop for cover; 50 =
                     centred). For outpaint, a Generation-parameters section
                     (sampler dropdown / steps / refine steps / guidance / seed /
@@ -185,6 +199,45 @@ and download models, configure settings, and generate images.
                     result image superimposes the ReframePreview `overlay` variant
                     over the result to recall the planned layout (all strategies, not
                     just outpaint)
+- InpaintPanel    — the /inpaint screen: repaint a hand-painted region of an image
+                    WITHOUT changing its size. Choose a source (gallery picker or
+                    upload), an inpaint model (dropdown, curated or custom, downloaded
+                    on demand — reuses the outpaint `inpaint`-kind engines), paint a
+                    mask on the InpaintCanvas, then a prompt + negative (outpaint/
+                    outpaint-negative snippet controls; the prompt "auto-fills from
+                    source" from a gallery source's original prompt) + feather-tuning
+                    sliders (mask expand / mask gradient / composite seam / seed blur,
+                    0–100 %) with one-tap presets (fine retouch / replace object / swap
+                    background) that update the canvas overlay live + a Generation-
+                    parameters section (sampler / steps / guidance / seed / batch + a
+                    "hires refine pass" toggle, off by default). Runs the job via
+                    InpaintProvider and shows the saved result(s) with live stats;
+                    reuses SourcePicker/GalleryPicker/UpscaleStats/BrushControls
+- InpaintCanvas   — the paint-a-mask editor: the source image with two overlaid
+                    canvases — a mask overlay that tints the painted region and
+                    visualizes the three feather controls (mask gradient / composite
+                    seam / seed blur) live via src/lib/inpaint, and a top cursor
+                    canvas that draws the brush as size + soft-core rings (paint-
+                    program style) and captures interpolated pointer strokes (brush
+                    size/softness + paint/erase toggle + invert + clear). Stores the mask at
+                    source resolution as white-on-transparent (so the tint keys on the
+                    painted area) and exports it flattened onto black (white = repaint)
+                    per stroke
+- InpaintResult   — the sticky inpaint result column (live stats + a selectable
+                    thumbnail grid for a batch of variants), mirroring ReframeResult
+                    without the layout preview
+- EditPanel       — the /edit screen (Post Processing): prompt-based whole-image
+                    editing with FLUX.1 Kontext. Choose a source (gallery picker or
+                    upload), an edit model (dropdown, curated `edit`-kind engines,
+                    downloaded on demand), type an instruction prompt (with one-tap
+                    example chips) and generation params (steps / guidance / seed /
+                    batch — no mask, no sampler). Shows an honest note that "enhance
+                    quality / remove blur" is limited vs. Upscale. Runs the job via
+                    EditProvider and shows the saved result(s) with live stats; reuses
+                    SourcePicker/GalleryPicker/UpscaleStats
+- EditResult      — the sticky Post-Processing result column (live stats + a
+                    selectable thumbnail grid for a batch of variants), mirroring
+                    InpaintResult
 - SettingsPanel   — HF token + performance toggles (VAE tiling/slicing, xformers)
                     + SD x4 upscaler step count (number input) + the outpaint negative
                     default (multiline) + a Defaults section (preferred default

@@ -12,6 +12,10 @@ import type {
   ModelEntry,
   PromptKind,
   PromptSnippet,
+  InpaintProgress,
+  InpaintRequest,
+  EditProgress,
+  EditRequest,
   ResourceStats,
   SamplerList,
   SystemInfo,
@@ -154,6 +158,24 @@ export const api = {
 
   getReframeProgress: (jobId: string) =>
     request<ReframeProgress>(`/api/reframe/${jobId}`),
+
+  inpaint: (req: InpaintRequest) =>
+    request<UpscaleStarted>("/api/inpaint", {
+      method: "POST",
+      body: JSON.stringify(req),
+    }),
+
+  getInpaintProgress: (jobId: string) =>
+    request<InpaintProgress>(`/api/inpaint/${jobId}`),
+
+  edit: (req: EditRequest) =>
+    request<UpscaleStarted>("/api/edit", {
+      method: "POST",
+      body: JSON.stringify(req),
+    }),
+
+  getEditProgress: (jobId: string) =>
+    request<EditProgress>(`/api/edit/${jobId}`),
 
   getImages: () => request<GalleryImage[]>("/api/images"),
 

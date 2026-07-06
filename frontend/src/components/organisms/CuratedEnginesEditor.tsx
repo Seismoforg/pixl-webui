@@ -42,6 +42,7 @@ export const CuratedEnginesEditor = () => {
           { value: "realesrgan", label: t("engines.kind.realesrgan") },
           { value: "sd_x4", label: t("engines.kind.sd_x4") },
           { value: "inpaint", label: t("engines.kind.inpaint") },
+          { value: "edit", label: t("engines.kind.edit") },
         ],
       },
       { key: "repo_id", label: f("repoId"), type: "text" },

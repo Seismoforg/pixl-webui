@@ -55,3 +55,16 @@ Scope for the first version: **FLUX family only**, **curated catalog entries onl
   resolve + add-model flow to capture two repos and a filename).
 - The GGUF path uses a bf16 compute dtype (FLUX-native), unlike the fp16 used
   elsewhere.
+
+# Amendment 2026-07-05 — extend GGUF to SD 3.x
+The per-transformer GGUF mechanism is family-agnostic, so `_load_gguf` now selects
+the transformer + pipeline classes by `model.family`: FLUX →
+`FluxTransformer2DModel`/`FluxPipeline` (unchanged), SD 3.x →
+`SD3Transformer2DModel`/`StableDiffusion3Pipeline`. Everything else is identical
+(`from_single_file` with the local `.gguf` + transformer config +
+`GGUFQuantizationConfig(bf16)`, then `enable_model_cpu_offload`); the download path
+(`resolve_gguf_base_files`) is unchanged because SD 3.5 uses the same `transformer/`
+diffusers layout. Curated SD 3.5 Large GGUF entries (Q5_1, Q8_0) from
+`city96/stable-diffusion-3.5-large-gguf` let SD 3.5 run in ~16 GB VRAM. Any family
+other than FLUX / SD 3.x still raises `GGUF_UNSUPPORTED_FAMILY`. This extends the
+decision above; it does not supersede it.

@@ -29,6 +29,9 @@ interface ReframeContextValue {
   // form (persisted across navigation)
   source: UpscaleSource | null;
   targetRatio: string;
+  // Custom exact output resolution (px), used when targetRatio === "custom".
+  customWidth: number;
+  customHeight: number;
   reframe: ReframeStrategy;
   outpaintPrompt: string;
   outpaintNegative: string;
@@ -40,6 +43,9 @@ interface ReframeContextValue {
   // Source placement as 0–100 percent (50 = centred).
   posX: number;
   posY: number;
+  // Source scale as 0–100 percent (100 = fills the frame). < 100 shrinks the source
+  // within the frame so it can be positioned (area-adding strategies).
+  scale: number;
   // Outpaint generation parameters (only used by reframe=outpaint).
   outpaintSteps: number;
   outpaintRefineSteps: number;
@@ -51,6 +57,8 @@ interface ReframeContextValue {
   samplers: Sampler[];
   setSource: (v: UpscaleSource | null) => void;
   setTargetRatio: (v: string) => void;
+  setCustomWidth: (v: number) => void;
+  setCustomHeight: (v: number) => void;
   setReframe: (v: ReframeStrategy) => void;
   setOutpaintPrompt: (v: string) => void;
   setOutpaintNegative: (v: string) => void;
@@ -60,6 +68,7 @@ interface ReframeContextValue {
   setSeedBlur: (v: number) => void;
   setPosX: (v: number) => void;
   setPosY: (v: number) => void;
+  setScale: (v: number) => void;
   setOutpaintSteps: (v: number) => void;
   setOutpaintRefineSteps: (v: number) => void;
   setOutpaintRefine: (v: boolean) => void;
@@ -98,6 +107,9 @@ export const ReframeProvider = ({ onReframed, children }: ReframeProviderProps) 
   const [source, setSource] = useState<UpscaleSource | null>(null);
   // Reframing always changes the ratio, so default to a concrete one (not "original").
   const [targetRatio, setTargetRatio] = useState("16:9");
+  // Custom exact resolution (px); only used when targetRatio === "custom".
+  const [customWidth, setCustomWidth] = useState(1024);
+  const [customHeight, setCustomHeight] = useState(1024);
   const [reframe, setReframe] = useState<ReframeStrategy>("cover");
   const [outpaintPrompt, setOutpaintPrompt] = useState("");
   const [outpaintNegative, setOutpaintNegative] = useState("");
@@ -109,6 +121,8 @@ export const ReframeProvider = ({ onReframed, children }: ReframeProviderProps) 
   // 50 % = centred (matches the backend's old //2 placement).
   const [posX, setPosX] = useState(50);
   const [posY, setPosY] = useState(50);
+  // 100 % = the source fills the frame (current behavior); lower shrinks it.
+  const [scale, setScale] = useState(100);
   // Outpaint generation parameters, defaulting to the backend constants.
   const [outpaintSteps, setOutpaintSteps] = useState(30);
   const [outpaintRefineSteps, setOutpaintRefineSteps] = useState(24);
@@ -228,6 +242,8 @@ export const ReframeProvider = ({ onReframed, children }: ReframeProviderProps) 
   const value: ReframeContextValue = {
     source,
     targetRatio,
+    customWidth,
+    customHeight,
     reframe,
     outpaintPrompt,
     outpaintNegative,
@@ -237,6 +253,7 @@ export const ReframeProvider = ({ onReframed, children }: ReframeProviderProps) 
     seedBlur,
     posX,
     posY,
+    scale,
     outpaintSteps,
     outpaintRefineSteps,
     outpaintRefine,
@@ -247,6 +264,8 @@ export const ReframeProvider = ({ onReframed, children }: ReframeProviderProps) 
     samplers,
     setSource,
     setTargetRatio,
+    setCustomWidth,
+    setCustomHeight,
     setReframe,
     setOutpaintPrompt,
     setOutpaintNegative,
@@ -256,6 +275,7 @@ export const ReframeProvider = ({ onReframed, children }: ReframeProviderProps) 
     setSeedBlur,
     setPosX,
     setPosY,
+    setScale,
     setOutpaintSteps,
     setOutpaintRefineSteps,
     setOutpaintRefine,

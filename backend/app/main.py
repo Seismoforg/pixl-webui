@@ -9,8 +9,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import config
 from .routers import (
+    edit,
     generate,
     images,
+    inpaint,
     models,
     reframe,
     settings,
@@ -40,6 +42,8 @@ app.include_router(images.router)
 app.include_router(templates.router)
 app.include_router(upscale.router)
 app.include_router(reframe.router)
+app.include_router(inpaint.router)
+app.include_router(edit.router)
 app.include_router(ws.router)
 
 

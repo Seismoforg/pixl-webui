@@ -14,7 +14,9 @@ import type { ModelEntry, SystemInfo } from "@/types";
 
 import { ActivityProvider } from "@/providers/ActivityProvider";
 import { DownloadProvider } from "@/providers/DownloadProvider";
+import { EditProvider } from "@/providers/EditProvider";
 import { GenerationProvider } from "@/providers/GenerationProvider";
+import { InpaintProvider } from "@/providers/InpaintProvider";
 import { ReframeProvider } from "@/providers/ReframeProvider";
 import { UpscaleProvider } from "@/providers/UpscaleProvider";
 
@@ -82,7 +84,11 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
         <DownloadProvider onFinished={reloadModels}>
           <GenerationProvider models={models} onGenerated={handleGenerated}>
             <UpscaleProvider onUpscaled={refreshGallery}>
-              <ReframeProvider onReframed={refreshGallery}>{children}</ReframeProvider>
+              <ReframeProvider onReframed={refreshGallery}>
+                <InpaintProvider onInpainted={refreshGallery}>
+                  <EditProvider onEdited={refreshGallery}>{children}</EditProvider>
+                </InpaintProvider>
+              </ReframeProvider>
             </UpscaleProvider>
           </GenerationProvider>
         </DownloadProvider>

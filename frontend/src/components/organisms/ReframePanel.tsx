@@ -65,6 +65,8 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
     error: jobError,
     source,
     targetRatio,
+    customWidth,
+    customHeight,
     reframe: strategy,
     outpaintPrompt,
     outpaintNegative,
@@ -74,6 +76,7 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
     seedBlur,
     posX,
     posY,
+    scale,
     outpaintSteps,
     outpaintRefineSteps,
     outpaintRefine,
@@ -84,6 +87,8 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
     samplers,
     setSource,
     setTargetRatio,
+    setCustomWidth,
+    setCustomHeight,
     setReframe,
     setOutpaintPrompt,
     setOutpaintNegative,
@@ -93,6 +98,7 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
     setSeedBlur,
     setPosX,
     setPosY,
+    setScale,
     setOutpaintSteps,
     setOutpaintRefineSteps,
     setOutpaintRefine,
@@ -240,13 +246,21 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
     reader.readAsDataURL(file);
   };
 
+  const isCustom = targetRatio === "custom";
+  // Both dimensions must be within the backend's 64–4096 bounds to run.
+  const inRange = (n: number) => Number.isFinite(n) && n >= 64 && n <= 4096;
+  const customValid = !isCustom || (inRange(customWidth) && inRange(customHeight));
+
   const handleRun = () => {
-    if (!source) return;
+    if (!source || !customValid) return;
     setError(null);
     reframe.start({
       image_id: source.kind === "gallery" ? source.imageId : null,
       image_data: source.kind === "upload" ? source.dataUrl : null,
-      target_ratio: targetRatio,
+      // Custom: send "WxH" as the ratio (derives the aspect) + the exact pixel size.
+      target_ratio: isCustom ? `${customWidth}x${customHeight}` : targetRatio,
+      target_width: isCustom ? customWidth : null,
+      target_height: isCustom ? customHeight : null,
       reframe: strategy,
       outpaint_prompt: outpaintPrompt,
       outpaint_negative: outpaintNegative,
@@ -256,6 +270,8 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
       seed_softness: seedBlur / 100,
       pos_x: posX / 100,
       pos_y: posY / 100,
+      // cover has no surrounding area to shrink into — always send 1.0 there.
+      scale: strategy === "cover" ? 1 : scale / 100,
       outpaint_steps: outpaintSteps,
       outpaint_refine_steps: outpaintRefineSteps,
       outpaint_refine: outpaintRefine,
@@ -330,6 +346,7 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
                     {r}
                   </MenuItem>
                 ))}
+                <MenuItem value="custom">{t("reframe.format.custom")}</MenuItem>
               </TextField>
               <TextField
                 select
@@ -347,6 +364,37 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
                 ))}
               </TextField>
             </Stack>
+
+            {/* Custom exact output resolution (px). The result is resized to exactly
+                this size after the strategy sets the aspect (may upscale). */}
+            {isCustom && (
+              <Stack direction="row" spacing={1.5} sx={{ mt: 1.5, alignItems: "flex-start" }}>
+                <TextField
+                  size="small"
+                  type="number"
+                  label={t("reframe.format.width")}
+                  value={customWidth}
+                  onChange={(e) => setCustomWidth(Number(e.target.value))}
+                  error={!inRange(customWidth)}
+                  inputProps={{ min: 64, max: 4096 }}
+                  sx={{ maxWidth: 130 }}
+                />
+                <Typography sx={{ mt: 1 }} aria-hidden>
+                  ×
+                </Typography>
+                <TextField
+                  size="small"
+                  type="number"
+                  label={t("reframe.format.height")}
+                  value={customHeight}
+                  onChange={(e) => setCustomHeight(Number(e.target.value))}
+                  error={!inRange(customHeight)}
+                  inputProps={{ min: 64, max: 4096 }}
+                  helperText={t("reframe.format.customHelp")}
+                  sx={{ maxWidth: 130 }}
+                />
+              </Stack>
+            )}
 
             {outpaint && enginesLoading && inpaintEngines.length === 0 && (
               <LoadingIndicator label={t("loading.engines")} minHeight={80} />
@@ -405,6 +453,18 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
               <InfoTip text={t("reframe.position.help")} />
             </Box>
             <Stack spacing={1.5}>
+              {/* Scale shrinks the source within the frame so it can be positioned;
+                  cover has no surrounding area, so it's hidden there. */}
+              {strategy !== "cover" && (
+                <LabeledSlider
+                  label={t("reframe.position.scale")}
+                  info={t("reframe.position.scaleHelp")}
+                  value={scale}
+                  min={20}
+                  max={100}
+                  onChange={setScale}
+                />
+              )}
               <LabeledSlider
                 label={t("reframe.position.horizontal")}
                 value={posX}
@@ -606,7 +666,7 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
               size="large"
               startIcon={<AspectRatioIcon />}
               onClick={handleRun}
-              disabled={!source || running || needInpaintDownload}
+              disabled={!source || running || needInpaintDownload || !customValid}
               sx={{ flexGrow: 1 }}
             >
               {running ? t("reframe.running") : t("reframe.run")}

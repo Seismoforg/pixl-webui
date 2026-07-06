@@ -51,7 +51,11 @@ class DownloadStarted(BaseModel):
 
 
 def _engine_family(kind: str) -> str:
-    return "Outpaint" if kind == "inpaint" else "Upscaler"
+    if kind == "inpaint":
+        return "Outpaint"
+    if kind == "edit":
+        return "Post Processing"
+    return "Upscaler"
 
 
 class UpscaleRequest(BaseModel):

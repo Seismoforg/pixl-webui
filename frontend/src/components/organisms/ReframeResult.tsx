@@ -37,12 +37,19 @@ export const ReframeResult = ({ preview, dims }: ReframeResultProps) => {
     progress,
     resultIds,
     targetRatio,
+    customWidth,
+    customHeight,
     reframe: strategy,
     maskFeather,
     seamFeather,
     posX,
     posY,
+    scale,
   } = useReframe();
+
+  // In custom mode the dropdown value is the sentinel "custom"; the preview needs a
+  // real aspect, so derive it from the typed W×H.
+  const previewRatio = targetRatio === "custom" ? `${customWidth}:${customHeight}` : targetRatio;
 
   // Which batch variant is shown enlarged; clamp when the result set changes.
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -62,7 +69,7 @@ export const ReframeResult = ({ preview, dims }: ReframeResultProps) => {
         p: 2,
         minHeight: (theme) => theme.layout.resultMinHeight,
         position: "sticky",
-        top: (theme) => theme.spacing(10),
+        top: "calc(var(--app-header-h, 80px) + 8px)",
         alignSelf: "start",
         // On mobile (single column) show the preview+result on top and keep it
         // sticky; desktop keeps the form-left / result-right columns.
@@ -82,12 +89,13 @@ export const ReframeResult = ({ preview, dims }: ReframeResultProps) => {
         <ReframePreview
           preview={preview}
           dims={dims}
-          targetRatio={targetRatio}
+          targetRatio={previewRatio}
           strategy={strategy}
           maskSoftness={maskFeather / 100}
           seamSoftness={seamFeather / 100}
           posX={posX / 100}
           posY={posY / 100}
+          scale={strategy === "cover" ? 1 : scale / 100}
         />
       </Box>
 
@@ -119,12 +127,13 @@ export const ReframeResult = ({ preview, dims }: ReframeResultProps) => {
                 overlay
                 preview={preview}
                 dims={dims}
-                targetRatio={targetRatio}
+                targetRatio={previewRatio}
                 strategy={strategy}
                 maskSoftness={maskFeather / 100}
                 seamSoftness={seamFeather / 100}
                 posX={posX / 100}
                 posY={posY / 100}
+                scale={strategy === "cover" ? 1 : scale / 100}
               />
             )}
             {preview && dims && (

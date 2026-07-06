@@ -40,8 +40,14 @@ class ReframeRequest(BaseModel):
     image_id: str | None = None   # source: an existing gallery image
     image_data: str | None = None  # source: an uploaded image as a data URL
     # Target aspect ratio (e.g. "16:9"); "original"/invalid is rejected — reframing
-    # always changes the ratio.
+    # always changes the ratio. For a custom resolution the frontend sends "WxH"
+    # (parse_ratio derives the aspect) plus target_width/target_height below.
     target_ratio: str
+    # Custom exact output resolution (pixels). When BOTH are set, the result is
+    # resized to exactly this size (may upscale); None → the size is derived from the
+    # source + ratio (the default reframe behavior, no upscaling).
+    target_width: int | None = Field(default=None, ge=64, le=4096)
+    target_height: int | None = Field(default=None, ge=64, le=4096)
     reframe: str = "cover"  # "cover" | "contain" | "edge" | "outpaint"
     outpaint_prompt: str = ""  # describes the scene generated in the outpainted area
     # Per-run negative prompt for outpaint; appended to the configurable Settings
@@ -59,6 +65,10 @@ class ReframeRequest(BaseModel):
     # the area-adding strategies (outpaint/contain/edge); cover ignores it.
     pos_x: float = Field(default=0.5, ge=0.0, le=1.0)
     pos_y: float = Field(default=0.5, ge=0.0, le=1.0)
+    # Source scale within the frame (0..1; 1 = fills the fitting axis). < 1 shrinks the
+    # source inside a larger canvas so it can be positioned with room around it (the
+    # area-adding strategies outpaint/contain/edge; cover ignores it).
+    scale: float = Field(default=1.0, ge=0.1, le=1.0)
     # Generation parameters for reframe=outpaint (ignored by cover/contain/edge):
     # composition/refinement step counts, CFG scale, scheduler id, RNG seed
     # (None → random), and how many variants to generate (incrementing seeds).
@@ -158,7 +168,9 @@ def _run(
             _run_outpaint(job, req, image, ratio, outpaint_engine, on_progress, pub_key)
         else:
             # cover / contain / edge are cheap PIL ops — no engine, near-instant.
-            result = reframe_svc.apply(image.convert("RGB"), ratio, strategy, req.pos_x, req.pos_y)
+            result = reframe_svc.apply(
+                image.convert("RGB"), ratio, strategy, req.pos_x, req.pos_y, req.scale
+            )
             with _lock:
                 job.phase = "finalizing"
             live.publish(pub_key)
@@ -192,7 +204,7 @@ def _run_outpaint(job, req, image, ratio, engine, on_progress, pub_key) -> None:
                 mask_softness=req.mask_softness,
                 seam_softness=req.seam_softness,
                 seed_softness=req.seed_softness,
-                pos_x=req.pos_x, pos_y=req.pos_y,
+                pos_x=req.pos_x, pos_y=req.pos_y, scale=req.scale,
                 negative=req.outpaint_negative,
                 steps=req.outpaint_steps,
                 refine_steps=req.outpaint_refine_steps,
@@ -216,6 +228,9 @@ def _run_outpaint(job, req, image, ratio, engine, on_progress, pub_key) -> None:
 def _save_result(job, req, result, model_slug, model_name, *, steps, guidance, seed, sampler) -> None:
     """Persist one reframe result to the gallery and record it on the job (the first
     image also fills ``image_id`` for single-image compatibility)."""
+    # Custom target resolution: resize to the exact size after the strategy has set
+    # the aspect (single choke point for both the PIL and outpaint paths).
+    result = reframe_svc.to_exact_size(result, req.target_width, req.target_height)
     meta = gallery.save(
         result,
         {
@@ -242,6 +257,10 @@ def start_reframe(req: ReframeRequest) -> ReframeStarted:
     ratio = reframe_svc.parse_ratio(req.target_ratio)
     if ratio is None:
         raise HTTPException(400, messages.REFRAME_RATIO_REQUIRED)
+
+    # Custom resolution needs BOTH dimensions (the Field bounds enforce 64–4096).
+    if (req.target_width is None) != (req.target_height is None):
+        raise HTTPException(400, messages.REFRAME_SIZE_INVALID)
 
     # Outpaint needs the selected inpaint model on disk.
     outpaint_engine: UpscalerInfo | None = None

@@ -7,6 +7,8 @@ Kinds supported and selectable by the user:
 * ``sd_x4`` — Stable Diffusion x4 latent upscaler (a diffusers repo) run with an
   optional text prompt. Slower and more VRAM-heavy.
 * ``inpaint`` — an inpaint model used for the outpaint reframe strategy.
+* ``edit`` — a FLUX.1 Kontext model for prompt-based whole-image editing (Post
+  Processing); loads from a GGUF-quantized transformer like the FLUX Fill engines.
 
 Each engine downloads into ``models/<slug>`` like a generation model, so the
 existing download/progress/delete machinery applies unchanged.
@@ -38,7 +40,7 @@ class EngineDefaults(BaseModel):
 
 class UpscalerInfo(BaseModel):
     slug: str
-    kind: str  # "realesrgan" | "sd_x4" | "inpaint"
+    kind: str  # "realesrgan" | "sd_x4" | "inpaint" | "edit"
     name: str
     description: str
     repo_id: str
@@ -70,6 +72,8 @@ class UpscalerInfo(BaseModel):
 
 # Slug of the inpaint model used for the outpaint reframe strategy.
 INPAINT_SLUG = "outpaint--sd-inpaint"
+# Default edit (FLUX Kontext) engine — the smallest GGUF, widest VRAM compatibility.
+EDIT_SLUG = "edit--flux-kontext-gguf-q4ks"
 
 DEFAULT_CATALOG_FILE = Path(__file__).parents[1] / "engines_catalog.json"
 OVERRIDE_CATALOG_FILE = DATA_DIR / "engines_catalog.json"

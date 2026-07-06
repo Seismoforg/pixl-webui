@@ -174,5 +174,37 @@
     "gguf_repo_id": null,
     "gguf_filename": null,
     "defaults": { "steps": 28, "guidance_scale": 4.5, "width": 1024, "height": 1024 }
+  },
+  {
+    "slug": "sd35-large-gguf-q5-1",
+    "repo_id": "stabilityai/stable-diffusion-3.5-large",
+    "name": "Stable Diffusion 3.5 Large (GGUF Q5_1)",
+    "family": "SD 3.x",
+    "pipeline_tag": "text-to-image",
+    "description": "Quantized SD 3.5 Large (Q5_1) — sweet-spot quality, runs in ~16 GB VRAM. Gated — needs a HuggingFace token.",
+    "gated": true,
+    "approx_size_gb": 17.5,
+    "min_vram_gb": 16.0,
+    "variant": null,
+    "use_safetensors": true,
+    "gguf_repo_id": "city96/stable-diffusion-3.5-large-gguf",
+    "gguf_filename": "sd3.5_large-Q5_1.gguf",
+    "defaults": { "steps": 28, "guidance_scale": 4.5, "width": 1024, "height": 1024 }
+  },
+  {
+    "slug": "sd35-large-gguf-q8",
+    "repo_id": "stabilityai/stable-diffusion-3.5-large",
+    "name": "Stable Diffusion 3.5 Large (GGUF Q8_0)",
+    "family": "SD 3.x",
+    "pipeline_tag": "text-to-image",
+    "description": "Quantized SD 3.5 Large (Q8_0) — highest GGUF quality, ~16 GB VRAM. Gated — needs a HuggingFace token.",
+    "gated": true,
+    "approx_size_gb": 20.0,
+    "min_vram_gb": 16.0,
+    "variant": null,
+    "use_safetensors": true,
+    "gguf_repo_id": "city96/stable-diffusion-3.5-large-gguf",
+    "gguf_filename": "sd3.5_large-Q8_0.gguf",
+    "defaults": { "steps": 28, "guidance_scale": 4.5, "width": 1024, "height": 1024 }
   }
 ]

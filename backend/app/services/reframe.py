@@ -35,15 +35,25 @@ def round8(n: int) -> int:
     return max(8, ((int(n) + 7) // 8) * 8)
 
 
-def extend_size(w: int, h: int, rw: float, rh: float) -> tuple[int, int]:
+def extend_size(w: int, h: int, rw: float, rh: float, scale: float = 1.0) -> tuple[int, int]:
     """Smallest canvas of ratio ``rw:rh`` that fully contains ``w×h`` (extends one
     axis; the image is never shrunk). A wider target grows the width, a taller
-    target grows the height."""
+    target grows the height.
+
+    ``scale`` (0..1, 1 = fills the frame) shrinks the source *relative to the frame*
+    by enlarging the canvas by ``1/scale`` (both axes → the ratio is preserved), so
+    the source then occupies ``scale`` of the fitting axis with room to be positioned
+    on both axes. ``scale`` 1.0 is the original behaviour."""
     target = rw / rh
     current = w / h
     if target > current:
-        return max(w, round(h * target)), h
-    return w, max(h, round(w / target))
+        cw, ch = max(w, round(h * target)), h
+    else:
+        cw, ch = w, max(h, round(w / target))
+    s = min(1.0, max(0.01, scale))
+    if s < 1.0:
+        cw, ch = round(cw / s), round(ch / s)
+    return cw, ch
 
 
 def cover(img, rw: float, rh: float, pos_x: float = 0.5, pos_y: float = 0.5):
@@ -70,27 +80,29 @@ def place_offset(cw: int, ch: int, w: int, h: int, pos_x: float = 0.5, pos_y: fl
     return ox, oy
 
 
-def contain(img, rw: float, rh: float, pos_x: float = 0.5, pos_y: float = 0.5):
+def contain(img, rw: float, rh: float, pos_x: float = 0.5, pos_y: float = 0.5, scale: float = 1.0):
     """Place ``img`` on a target-ratio canvas at ``pos_x``/``pos_y`` (0.5 = centre);
-    backdrop = a blurred, cover-scaled copy of the image so there are no hard bars."""
+    backdrop = a blurred, cover-scaled copy of the image so there are no hard bars.
+    ``scale`` < 1 shrinks the source within a larger canvas (see :func:`extend_size`)."""
     from PIL import ImageFilter
 
     w, h = img.size
-    cw, ch = extend_size(w, h, rw, rh)
+    cw, ch = extend_size(w, h, rw, rh, scale)
     radius = max(8, max(cw, ch) // 24)
     backdrop = img.resize((cw, ch)).filter(ImageFilter.GaussianBlur(radius)).convert("RGB")
     backdrop.paste(img, place_offset(cw, ch, w, h, pos_x, pos_y))
     return backdrop
 
 
-def edge_extend(img, rw: float, rh: float, pos_x: float = 0.5, pos_y: float = 0.5):
+def edge_extend(img, rw: float, rh: float, pos_x: float = 0.5, pos_y: float = 0.5, scale: float = 1.0):
     """Fill the new area by mirroring/replicating the border pixels, with the source
-    placed at ``pos_x``/``pos_y`` (0.5 = centre)."""
+    placed at ``pos_x``/``pos_y`` (0.5 = centre). ``scale`` < 1 shrinks the source
+    within a larger canvas (see :func:`extend_size`)."""
     import numpy as np
     from PIL import Image
 
     w, h = img.size
-    cw, ch = extend_size(w, h, rw, rh)
+    cw, ch = extend_size(w, h, rw, rh, scale)
     left, top = place_offset(cw, ch, w, h, pos_x, pos_y)
     right, bottom = cw - w - left, ch - h - top
     arr = np.asarray(img.convert("RGB"))
@@ -125,19 +137,35 @@ def reflect_fill(src, canvas_size: tuple[int, int], offset: tuple[int, int]):
 
 
 def apply(img, ratio: tuple[float, float] | None, strategy: str,
-          pos_x: float = 0.5, pos_y: float = 0.5):
+          pos_x: float = 0.5, pos_y: float = 0.5, scale: float = 1.0):
     """Reframe ``img`` to ``ratio`` with a non-AI ``strategy`` (cover/contain/edge).
     ``ratio`` None → returns ``img`` unchanged. ``pos_x``/``pos_y`` position the
     source: contain/edge place it in the extended canvas, cover pans the kept crop.
-    Outpaint is handled elsewhere."""
+    ``scale`` < 1 shrinks the source within a larger canvas (contain/edge only; cover
+    has no surrounding area). Outpaint is handled elsewhere."""
     if ratio is None:
         return img
     rw, rh = ratio
     if strategy == "contain":
-        return contain(img, rw, rh, pos_x, pos_y)
+        return contain(img, rw, rh, pos_x, pos_y, scale)
     if strategy == "edge":
-        return edge_extend(img, rw, rh, pos_x, pos_y)
+        return edge_extend(img, rw, rh, pos_x, pos_y, scale)
     return cover(img, rw, rh, pos_x, pos_y)
+
+
+def to_exact_size(img, width: int | None, height: int | None):
+    """Resize ``img`` to exactly ``width``×``height`` (LANCZOS) when BOTH are given
+    (a custom target resolution); otherwise return it unchanged. Runs after the
+    strategy has produced the correct aspect, so this only sets the exact pixel
+    dimensions — and MAY upscale past the source, which is the point of asking for an
+    explicit resolution."""
+    if not width or not height:
+        return img
+    from PIL import Image
+
+    if img.size == (width, height):
+        return img
+    return img.resize((width, height), Image.LANCZOS)
 
 
 def default_mask_feather(cw: int, ch: int) -> int:

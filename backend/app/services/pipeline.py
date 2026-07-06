@@ -137,27 +137,35 @@ def _load(model: ModelInfo):
 
 
 def _load_gguf(model: ModelInfo):
-    """Build a FLUX pipeline whose transformer is loaded from the model's GGUF file.
+    """Build a pipeline whose transformer is loaded from the model's GGUF file.
 
-    Only the transformer is quantized (and dequantized on the fly during forward);
-    the VAE, text encoders, tokenizers and scheduler come from the base repo. Always
-    uses CPU offloading so the large T5 text encoder streams off the GPU during
-    denoising, keeping peak VRAM low enough to fit ~16 GB.
+    Supports FLUX and SD 3.x. Only the transformer is quantized (and dequantized on
+    the fly during forward); the VAE, text encoders, tokenizers and scheduler come
+    from the base repo. Always uses CPU offloading so the large text encoders stream
+    off the GPU during denoising, keeping peak VRAM low enough to fit ~16 GB.
     """
-    if model.family != "FLUX":
-        raise ValueError(messages.GGUF_UNSUPPORTED_FAMILY.format(family=model.family))
+    from diffusers import GGUFQuantizationConfig
 
-    from diffusers import FluxPipeline, FluxTransformer2DModel, GGUFQuantizationConfig
+    if model.family == "FLUX":
+        from diffusers import FluxPipeline, FluxTransformer2DModel
+
+        TransformerCls, PipelineCls = FluxTransformer2DModel, FluxPipeline
+    elif model.family == "SD 3.x":
+        from diffusers import SD3Transformer2DModel, StableDiffusion3Pipeline
+
+        TransformerCls, PipelineCls = SD3Transformer2DModel, StableDiffusion3Pipeline
+    else:
+        raise ValueError(messages.GGUF_UNSUPPORTED_FAMILY.format(family=model.family))
 
     model_path = config.model_dir(model.slug)
     dtype = get_compute_dtype()
-    transformer = FluxTransformer2DModel.from_single_file(
+    transformer = TransformerCls.from_single_file(
         str(model_path / model.gguf_filename),
         config=str(model_path / "transformer"),
         quantization_config=GGUFQuantizationConfig(compute_dtype=dtype),
         torch_dtype=dtype,
     )
-    pipe = FluxPipeline.from_pretrained(
+    pipe = PipelineCls.from_pretrained(
         str(model_path),
         transformer=transformer,
         torch_dtype=dtype,
@@ -328,13 +336,15 @@ def generate(
     if not is_downloaded(model.slug):
         raise ValueError(messages.MODEL_NOT_DOWNLOADED.format(slug=model.slug))
 
-    # Free VRAM held by the upscaler / outpaint models before generating (lazy
-    # imports avoid the pipeline <-> upscale/outpaint cycle; unload() empties cache).
+    # Free VRAM held by the upscaler / outpaint / edit models before generating (lazy
+    # imports avoid the pipeline <-> upscale/outpaint/edit cycle; unload() empties cache).
+    from . import edit as _edit
     from . import outpaint as _outpaint
     from . import upscale as _upscale
 
     _upscale.unload()
     _outpaint.unload()
+    _edit.unload()
 
     import torch
 
