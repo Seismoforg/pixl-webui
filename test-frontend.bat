@@ -11,11 +11,7 @@ setlocal
 set "ROOT=%~dp0"
 set "VENV_PY=%ROOT%.venv\Scripts\python.exe"
 
-if /I "%~1"=="inspect" (
-  cd /d "%ROOT%frontend"
-  node e2e\inspect.mjs %2 %3 %4 %5 %6 %7 %8 %9
-  exit /b %errorlevel%
-)
+if /I "%~1"=="inspect" goto inspect
 
 if not exist "%VENV_PY%" (
   echo Backend is not installed. Run install.ps1 first.
@@ -48,3 +44,19 @@ echo Prepare any state in the window, then ask Claude to inspect. Close the wind
 cd /d "%ROOT%frontend"
 node e2e\lib\shared-browser.mjs
 endlocal
+goto :eof
+
+rem --- inspect subcommand: forward ALL args after `inspect` to inspect.mjs (no arg cap,
+rem     so --device composes with --goto/--a11y/--console/--name). %1 keeps quotes.
+:inspect
+cd /d "%ROOT%frontend"
+shift
+set "IARGS="
+:collectargs
+if "%~1"=="" goto runinspect
+set "IARGS=%IARGS% %1"
+shift
+goto collectargs
+:runinspect
+node e2e\inspect.mjs %IARGS%
+exit /b %errorlevel%

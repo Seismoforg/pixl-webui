@@ -17,9 +17,13 @@ repo-root `test-frontend.bat`.
                            port`), open the app, stay alive. Env: APP_URL, CDP_PORT,
                            HEADLESS=1 (default headed)
 - inspect.mjs            — `connectOverCDP` → active page → screenshot to screens/ +
-                           print metrics JSON for a selector. Flags: `--a11y` (axe
-                           violations), `--console` (console + failed requests via a
-                           reload), `--name <label>`
+                           print metrics JSON for a selector. Flags: `--goto <route|url>`
+                           (navigate the tab first — bare route joins `APP_BASE`, full
+                           URL used as-is; for walking the nav / self-navigating),
+                           `--a11y` (axe violations), `--console` (console + failed
+                           requests via a reload), `--device <mobile|tablet|desktop|WxH>`
+                           (emulate a viewport via CDP for that run — see below),
+                           `--name <label>`
 - screens/              — screenshot output (gitignored)
 - .profile/             — persistent shared-browser profile (gitignored)
 
@@ -27,6 +31,13 @@ repo-root `test-frontend.bat`.
 - shared-browser.mjs — the browser the user drives; must stay running while inspecting
 - inspect.mjs — the reporter; `browser.close()` only disconnects CDP, the user's window
   stays open. Picks the `localhost:3000` tab, else the last-opened page
+- `--device` viewport emulation — via CDP `Emulation.setDeviceMetricsOverride` (the
+  shared browser runs `viewport:null`, so `page.setViewportSize()` is unavailable).
+  Scope is PER-RUN: set → inspect → cleared in the same session before disconnect. A
+  cross-process reset is impossible (only the setting session can clear an override), so
+  each run is self-contained; pass `--device` on every call you want emulated. Presets:
+  mobile 390×844, tablet 820×1180, desktop 1440×900; or a custom `WxH`. `report.viewport`
+  = actual `window.innerWidth/innerHeight/dpr`
 
 # How Claude uses it
 1. Run `test-frontend.bat` (starts backend + frontend dev + the shared window).
