@@ -13,7 +13,7 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { BrushControls } from "@/components/molecules/BrushControls";
@@ -28,6 +28,7 @@ import { SnippetPromptField } from "@/components/organisms/SnippetPromptField";
 import { SourcePicker } from "@/components/organisms/SourcePicker";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import { formLockStyle } from "@/lib/formLock";
 import { useInpaint } from "@/providers/InpaintProvider";
 import { trackUpscalerDownload, useDownloads } from "@/providers/DownloadProvider";
 import type { GalleryImage, PromptSnippet, UpscalerEngine } from "@/types";
@@ -44,16 +45,6 @@ const TUNING_PRESETS = [
   { key: "replace", mask: 55, seam: 45, seed: 50, expand: 40 },
   { key: "background", mask: 45, seam: 55, seed: 35, expand: 40 },
 ] as const;
-
-// Dim + lock the form controls while a job runs (mirrors ReframePanel).
-const formLockStyle = (locked: boolean): CSSProperties => ({
-  border: 0,
-  margin: 0,
-  padding: 0,
-  minInlineSize: 0,
-  opacity: locked ? 0.6 : 1,
-  pointerEvents: locked ? "none" : "auto",
-});
 
 export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps) => {
   const t = useTranslations();
@@ -197,9 +188,12 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
     }
   };
 
+  // Refresh the engine list once this engine's download finishes (so `downloaded`
+  // flips), and surface a download error.
   useEffect(() => {
     if (engineDl?.status === "done") reloadEngines();
-  }, [engineDl?.status, reloadEngines]);
+    if (engineDl?.status === "error") setError(engineDl.error ?? t("inpaint.error"));
+  }, [engineDl?.status, engineDl?.error, reloadEngines, t]);
 
   const onUpload = (file: File | undefined) => {
     if (!file) return;

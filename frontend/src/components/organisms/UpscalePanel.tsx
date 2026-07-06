@@ -10,7 +10,7 @@ import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { InfoTip } from "@/components/molecules/InfoTip";
@@ -21,6 +21,7 @@ import { SourcePicker } from "@/components/organisms/SourcePicker";
 import { UpscaleResult } from "@/components/organisms/UpscaleResult";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import { formLockStyle } from "@/lib/formLock";
 import { useUpscale } from "@/providers/UpscaleProvider";
 import { trackUpscalerDownload, useDownloads } from "@/providers/DownloadProvider";
 import type { GalleryImage, PromptSnippet, UpscalerEngine } from "@/types";
@@ -29,16 +30,6 @@ interface UpscalePanelProps {
   reloadToken: number;
   initialImageId?: string | null;
 }
-
-// Reset-styled fieldset that locks (and dims) the form's controls while running.
-const formLockStyle = (locked: boolean): CSSProperties => ({
-  border: 0,
-  margin: 0,
-  padding: 0,
-  minInlineSize: 0,
-  opacity: locked ? 0.6 : 1,
-  pointerEvents: locked ? "none" : "auto",
-});
 
 export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps) => {
   const t = useTranslations();
@@ -146,10 +137,10 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
   // Inpaint engines aren't selectable upscalers — they populate the outpaint-model
   // dropdown, which now lives on the Reframe page — so they're filtered out here.
   const selectableEngines = engines.filter((e) => e.kind !== "inpaint");
-  const engine = selectableEngines.find((e) => e.slug === engineSlug) ?? null;
+  const selectedEngine = selectableEngines.find((e) => e.slug === engineSlug) ?? null;
   // Engine downloads share the app-level tracker (survive navigation + feed the
   // off-route bubble). Read this engine's progress for the inline bar.
-  const engineDl = engine ? downloads.progress[engine.slug] : undefined;
+  const engineDl = selectedEngine ? downloads.progress[selectedEngine.slug] : undefined;
   const downloadPercent =
     engineDl && engineDl.status === "downloading" ? engineDl.percent : null;
 
@@ -163,7 +154,7 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
   };
 
   const handleDownload = () => {
-    if (engine) startEngineDownload(engine);
+    if (selectedEngine) startEngineDownload(selectedEngine);
   };
 
   // Refresh the engine list once this engine's download finishes (so `downloaded`
@@ -181,15 +172,15 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
   };
 
   const handleRun = () => {
-    if (!engine || !source) return;
+    if (!selectedEngine || !source) return;
     setError(null);
     upscale.start({
-      engine: engine.slug,
+      engine: selectedEngine.slug,
       image_id: source.kind === "gallery" ? source.imageId : null,
       image_data: source.kind === "upload" ? source.dataUrl : null,
       prompt,
       tile,
-      sd_x4_steps: engine.kind === "sd_x4" ? sdX4Steps : null,
+      sd_x4_steps: selectedEngine.kind === "sd_x4" ? sdX4Steps : null,
     });
   };
 
@@ -228,7 +219,7 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
           <fieldset disabled={running} style={formLockStyle(running)}>
             <Stack spacing={3}>
           <EnginePicker
-            engine={engine}
+            engine={selectedEngine}
             engines={selectableEngines}
             loading={enginesLoading}
             downloadPercent={downloadPercent}
@@ -246,7 +237,7 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
           />
 
           {/* Upscaler prompt — guides the diffusion upscaler (SD x4) toward detail. */}
-          {engine?.prompt_capable && (
+          {selectedEngine?.prompt_capable && (
             <SnippetPromptField
               kind="upscale"
               snippets={snippets}
@@ -260,7 +251,7 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
           )}
 
           {/* SD x4 step count — per-run override of the global default. */}
-          {engine?.kind === "sd_x4" && (
+          {selectedEngine?.kind === "sd_x4" && (
             <Box>
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
                 <Typography variant="subtitle2">{t("upscale.steps.label")}</Typography>
@@ -302,7 +293,7 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
               size="large"
               startIcon={<AutoAwesomeIcon />}
               onClick={handleRun}
-              disabled={!engine || !engine.downloaded || !source || running}
+              disabled={!selectedEngine || !selectedEngine.downloaded || !source || running}
               sx={{ flexGrow: 1 }}
             >
               {running ? t("upscale.running") : t("upscale.run")}

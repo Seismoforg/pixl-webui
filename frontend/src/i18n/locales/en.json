@@ -376,6 +376,7 @@
     },
     "run": "Inpaint",
     "running": "Inpainting…",
+    "error": "Inpainting failed.",
     "clear": "Clear",
     "result": {
       "title": "Result",
@@ -567,6 +568,7 @@
     },
     "run": "Edit image",
     "running": "Editing…",
+    "error": "Editing failed.",
     "clear": "Clear",
     "result": {
       "title": "Result",

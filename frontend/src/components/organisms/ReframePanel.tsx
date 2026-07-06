@@ -12,7 +12,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { InfoTip } from "@/components/molecules/InfoTip";
@@ -25,6 +25,7 @@ import { SnippetPromptField } from "@/components/organisms/SnippetPromptField";
 import { SourcePicker } from "@/components/organisms/SourcePicker";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import { formLockStyle } from "@/lib/formLock";
 import { useReframe } from "@/providers/ReframeProvider";
 import { trackUpscalerDownload, useDownloads } from "@/providers/DownloadProvider";
 import type {
@@ -42,16 +43,6 @@ interface ReframePanelProps {
 // Reframing always changes the ratio, so "original" is intentionally absent.
 const RATIOS = ["16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16", "21:9"];
 const REFRAME: ReframeStrategy[] = ["cover", "contain", "edge", "outpaint"];
-
-// Reset-styled fieldset that locks (and dims) the form's controls while running.
-const formLockStyle = (locked: boolean): CSSProperties => ({
-  border: 0,
-  margin: 0,
-  padding: 0,
-  minInlineSize: 0,
-  opacity: locked ? 0.6 : 1,
-  pointerEvents: locked ? "none" : "auto",
-});
 
 export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps) => {
   const t = useTranslations();
@@ -144,11 +135,11 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
   // Only inpaint engines are selectable outpaint models.
   const inpaintEngines = engines.filter((e) => e.kind === "inpaint");
   // The chosen outpaint model (falls back to the first available inpaint engine).
-  const inpaintEngine =
+  const selectedEngine=
     inpaintEngines.find((e) => e.slug === outpaintEngine) ?? inpaintEngines[0] ?? null;
   // FLUX Fill (GGUF) is flow-matching: it ignores the sampler and wants a higher
   // guidance / more steps than SD inpaint.
-  const fluxOutpaint = !!inpaintEngine?.is_gguf;
+  const fluxOutpaint = !!selectedEngine?.is_gguf;
 
   // Load the preferred default outpaint engine from Settings (best-effort).
   useEffect(() => {
@@ -221,8 +212,8 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
   // Auto-fill source: a gallery image carries its original generation prompt in
   // metadata (uploads carry none).
   const sourcePrompt = source?.kind === "gallery" ? sourceMeta?.prompt?.trim() || null : null;
-  const inpaintDl = inpaintEngine ? downloads.progress[inpaintEngine.slug] : undefined;
-  const needInpaintDownload = outpaint && !!inpaintEngine && !inpaintEngine.downloaded;
+  const inpaintDl = selectedEngine? downloads.progress[selectedEngine.slug] : undefined;
+  const needInpaintDownload = outpaint && !!selectedEngine&& !selectedEngine.downloaded;
 
   const startEngineDownload = async (eng: UpscalerEngine) => {
     setError(null);
@@ -233,10 +224,12 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
     }
   };
 
-  // Refresh the engine list once an inpaint download finishes (so `downloaded` flips).
+  // Refresh the engine list once an inpaint download finishes (so `downloaded`
+  // flips), and surface a download error.
   useEffect(() => {
     if (inpaintDl?.status === "done") reloadEngines();
-  }, [inpaintDl?.status, reloadEngines]);
+    if (inpaintDl?.status === "error") setError(inpaintDl.error ?? t("reframe.error"));
+  }, [inpaintDl?.status, inpaintDl?.error, reloadEngines, t]);
 
   const onUpload = (file: File | undefined) => {
     if (!file) return;
@@ -263,7 +256,7 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
       reframe: strategy,
       outpaint_prompt: outpaintPrompt,
       outpaint_negative: outpaintNegative,
-      outpaint_engine: inpaintEngine?.slug ?? null,
+      outpaint_engine: selectedEngine?.slug ?? null,
       mask_softness: maskFeather / 100,
       seam_softness: seamFeather / 100,
       seed_softness: seedBlur / 100,
@@ -404,7 +397,7 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
                 select
                 size="small"
                 label={t("reframe.outpaint.model")}
-                value={inpaintEngine?.slug ?? ""}
+                value={selectedEngine?.slug ?? ""}
                 onChange={(e) => setOutpaintEngine(e.target.value)}
                 helperText={t("reframe.outpaint.modelHelp")}
                 sx={{ mt: 1.5, minWidth: { xs: "100%", sm: 260 } }}
@@ -418,10 +411,10 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
               </TextField>
             )}
 
-            {needInpaintDownload && inpaintEngine && (
+            {needInpaintDownload && selectedEngine&& (
               <Box sx={{ mt: 1.5 }}>
                 <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
-                  {t("reframe.outpaint.needsModel", { size: inpaintEngine.approx_size_gb })}
+                  {t("reframe.outpaint.needsModel", { size: selectedEngine.approx_size_gb })}
                 </Typography>
                 {inpaintDl?.status === "downloading" ? (
                   <Box>
@@ -435,7 +428,7 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
                     variant="contained"
                     size="small"
                     startIcon={<DownloadIcon />}
-                    onClick={() => startEngineDownload(inpaintEngine)}
+                    onClick={() => startEngineDownload(selectedEngine)}
                   >
                     {t("reframe.outpaint.download")}
                   </Button>

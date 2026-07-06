@@ -12,7 +12,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { GenerationParams } from "@/components/molecules/GenerationParams";
@@ -22,6 +22,7 @@ import { GalleryPicker } from "@/components/organisms/GalleryPicker";
 import { SourcePicker } from "@/components/organisms/SourcePicker";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import { formLockStyle } from "@/lib/formLock";
 import { useEdit } from "@/providers/EditProvider";
 import { trackUpscalerDownload, useDownloads } from "@/providers/DownloadProvider";
 import type { GalleryImage, UpscalerEngine } from "@/types";
@@ -34,16 +35,6 @@ interface EditPanelProps {
 // Example instruction prompts shown as one-tap chips (the chip label is the prompt
 // text itself). Localised via edit.examples.<key>.
 const EXAMPLE_KEYS = ["night", "day", "paint", "enhance"] as const;
-
-// Dim + lock the form controls while a job runs (mirrors InpaintPanel).
-const formLockStyle = (locked: boolean): CSSProperties => ({
-  border: 0,
-  margin: 0,
-  padding: 0,
-  minInlineSize: 0,
-  opacity: locked ? 0.6 : 1,
-  pointerEvents: locked ? "none" : "auto",
-});
 
 export const EditPanel = ({ reloadToken, initialImageId }: EditPanelProps) => {
   const t = useTranslations();
@@ -92,6 +83,8 @@ export const EditPanel = ({ reloadToken, initialImageId }: EditPanelProps) => {
   const selectedEngine = editEngines.find((e) => e.slug === engine) ?? editEngines[0] ?? null;
 
   // Default to the first downloaded edit engine (else the first listed) once loaded.
+  // Intentional divergence from Reframe/Inpaint/Upscale: no `default_edit_engine`
+  // Setting exists, so there is no Settings default to honour here.
   useEffect(() => {
     if (engine !== "" || editEngines.length === 0) return;
     const target = editEngines.find((e) => e.downloaded) ?? editEngines[0];
@@ -134,9 +127,12 @@ export const EditPanel = ({ reloadToken, initialImageId }: EditPanelProps) => {
     }
   };
 
+  // Refresh the engine list once this engine's download finishes (so `downloaded`
+  // flips), and surface a download error.
   useEffect(() => {
     if (engineDl?.status === "done") reloadEngines();
-  }, [engineDl?.status, reloadEngines]);
+    if (engineDl?.status === "error") setError(engineDl.error ?? t("edit.error"));
+  }, [engineDl?.status, engineDl?.error, reloadEngines, t]);
 
   const onUpload = (file: File | undefined) => {
     if (!file) return;

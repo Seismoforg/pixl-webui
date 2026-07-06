@@ -15,7 +15,6 @@ import {
   useEffect,
   useMemo,
   useState,
-  type CSSProperties,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -28,6 +27,7 @@ import { ReferenceImage } from "@/components/organisms/ReferenceImage";
 import { useGeneration } from "@/providers/GenerationProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import { formLockStyle } from "@/lib/formLock";
 import type { ModelEntry, PromptSnippet } from "@/types";
 
 interface GenerationFormProps {
@@ -36,16 +36,6 @@ interface GenerationFormProps {
 
 const appendPrompt = (current: string, addition: string): string =>
   current.trim() === "" ? addition : `${current.trim()}, ${addition}`;
-
-// Reset-styled fieldset that locks (and dims) a form's controls while a job runs.
-const formLockStyle = (locked: boolean): CSSProperties => ({
-  border: 0,
-  margin: 0,
-  padding: 0,
-  minInlineSize: 0,
-  opacity: locked ? 0.6 : 1,
-  pointerEvents: locked ? "none" : "auto",
-});
 
 /** One labelled group of controls in the generation form. */
 const FormSection = ({ title, children }: { title: string; children: ReactNode }) => {
