@@ -195,7 +195,10 @@ def build_mask(canvas_size: tuple[int, int], region: tuple[int, int, int, int], 
     edge so the outpaint blends into the kept content over a broad gradient (the
     standard-inpaint analog of a differential-diffusion change map) instead of a
     hard step. ``region`` is (x0, y0, w, h). ``feather`` defaults to a
-    canvas-relative band; the ``//4`` clamp keeps small regions valid."""
+    canvas-relative band; the ``//4`` clamp keeps small regions valid. ``feather``
+    <= 0 yields a CRISP binary mask (hard edge, no blur) — what FLUX Fill needs,
+    since it zeroes the masked init and reads the mask in latent space, so a soft
+    edge leaves a grey haze ring; the composite seam does the blend instead."""
     from PIL import Image, ImageDraw, ImageFilter
 
     cw, ch = canvas_size
@@ -205,6 +208,8 @@ def build_mask(canvas_size: tuple[int, int], region: tuple[int, int, int, int], 
     f = max(0, min(feather, rw // 4, rh // 4))
     mask = Image.new("L", (cw, ch), 255)
     ImageDraw.Draw(mask).rectangle([x0 + f, y0 + f, x0 + rw - f, y0 + rh - f], fill=0)
+    if f <= 0:
+        return mask
     return mask.filter(ImageFilter.GaussianBlur(max(1, f // 2)))
 
 

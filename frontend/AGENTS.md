@@ -43,8 +43,12 @@ and download models, configure settings, and generate images.
 - src/components/atoms/     — SectionHeading (semantic h2/h3 with a visual variant),
                              Logo (the app mark, mirrors app/icon.svg)
 - src/components/molecules/ — LabeledSlider, BrushControls (brush size + softness
-                             sliders for the inpaint mask editor), ModelListItem,
-                             GalleryCard, InfoTip,
+                             sliders for the inpaint mask editor), GenerationParams
+                             (the shared sampler/steps/refine/guidance/batch/seed
+                             block; presentational, keyed by an i18n `keyPrefix`;
+                             reused by the Reframe/Inpaint/Edit panels — optional
+                             sampler + refine controls hidden when omitted),
+                             ModelListItem, GalleryCard, InfoTip,
                              ConfirmDialog, ConnectionStatus, NavDrawer (mobile nav),
                              ActivityBubble (one off-route status card), UpscaleStats
                              (upscale status line shared by the frame/overlay),
@@ -85,8 +89,9 @@ and download models, configure settings, and generate images.
 - AppDataProvider — mounted in the root layout, wraps AppChrome. Loads models +
                     system into an AppData context (`useAppData`) and hosts the
                     always-mounted feature providers (activity, downloads,
-                    generation, upscale, reframe), so client-side navigation keeps a
-                    running generation/upscale/reframe alive. Loads once on mount;
+                    generation, upscale, reframe, inpaint, edit), so client-side
+                    navigation keeps a running generation/upscale/reframe/inpaint/edit
+                    job alive. Loads once on mount;
                     model changes are
                     pushed via `reloadModels()` from the relevant handlers (no
                     per-navigation refetch).
@@ -98,7 +103,7 @@ and download models, configure settings, and generate images.
                     opens the NavDrawer instead (all via MUI sx breakpoints).
                     Publishes the sticky AppBar's live height as the `--app-header-h`
                     CSS var (ResizeObserver) so the sticky result panels
-                    (Generation/Upscale/Reframe/Inpaint) can offset their `top` below
+                    (Generation/Upscale/Reframe/Inpaint/Edit) can offset their `top` below
                     it — otherwise the box's top edge + heading clip behind the AppBar.
 - GenerationProvider — holds all generation state + the polling loop in a context
                     that never unmounts; GenerationPanel is a thin consumer

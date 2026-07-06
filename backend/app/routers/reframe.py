@@ -24,12 +24,14 @@ from .. import live, messages, samplers
 from ..services import (
     downloader,
     gallery,
+    inpaint_engine,
+    job_guard,
     outpaint as outpaint_svc,
     reframe as reframe_svc,
     upscalers,
 )
 from ..services.upscalers import UpscalerInfo
-from .upscale import UpscaleProgress
+from .upscale import BatchProgress
 
 router = APIRouter(prefix="/api/reframe", tags=["reframe"])
 
@@ -72,12 +74,12 @@ class ReframeRequest(BaseModel):
     # Generation parameters for reframe=outpaint (ignored by cover/contain/edge):
     # composition/refinement step counts, CFG scale, scheduler id, RNG seed
     # (None → random), and how many variants to generate (incrementing seeds).
-    outpaint_steps: int = Field(default=30, ge=1, le=150)
-    outpaint_refine_steps: int = Field(default=24, ge=1, le=150)
+    outpaint_steps: int = Field(default=inpaint_engine.DEFAULT_STEPS, ge=1, le=150)
+    outpaint_refine_steps: int = Field(default=inpaint_engine.DEFAULT_REFINE_STEPS, ge=1, le=150)
     # Whether to run the (slow, full-resolution) hires refinement pass on large
     # canvases. Off by default — see outpaint._reframe_single.
     outpaint_refine: bool = False
-    outpaint_guidance: float = Field(default=7.5, ge=0.0, le=30.0)
+    outpaint_guidance: float = Field(default=inpaint_engine.DEFAULT_GUIDANCE, ge=0.0, le=30.0)
     outpaint_sampler: str | None = None
     outpaint_seed: int | None = None
     outpaint_batch: int = Field(default=1, ge=1, le=8)
@@ -85,15 +87,6 @@ class ReframeRequest(BaseModel):
 
 class ReframeStarted(BaseModel):
     job_id: str
-
-
-class ReframeProgress(UpscaleProgress):
-    """Reframe job progress = the shared upscale shape plus batch fields (a superset,
-    so the frontend's upscale-based live-stats UI keeps working unchanged)."""
-
-    batch_index: int = 0
-    batch_size: int = 1
-    image_ids: list[str] = []
 
 
 class _Job:
@@ -184,6 +177,8 @@ def _run(
             job.status = "error"
             job.error = messages.REFRAME_FAILED.format(detail=str(exc))
         live.publish(pub_key)
+    finally:
+        job_guard.release(job.job_id)
 
 
 def _run_outpaint(job, req, image, ratio, engine, on_progress, pub_key) -> None:
@@ -278,11 +273,13 @@ def start_reframe(req: ReframeRequest) -> ReframeStarted:
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
+    engine_name = outpaint_engine.name if outpaint_engine else "Reframe"
     with _lock:
-        if any(j.status == "running" for j in _jobs.values()):
-            raise HTTPException(409, messages.REFRAME_ALREADY_RUNNING)
-        engine_name = outpaint_engine.name if outpaint_engine else "Reframe"
         job = _Job(_new_job_id(), engine_name)
+    busy = job_guard.acquire(job.job_id, "reframe")
+    if busy is not None:
+        raise HTTPException(409, messages.JOB_BUSY.format(kind=busy))
+    with _lock:
         _jobs[job.job_id] = job
 
     thread = threading.Thread(
@@ -294,13 +291,13 @@ def start_reframe(req: ReframeRequest) -> ReframeStarted:
     return ReframeStarted(job_id=job.job_id)
 
 
-@router.get("/{job_id}", response_model=ReframeProgress)
-def reframe_progress(job_id: str) -> ReframeProgress:
+@router.get("/{job_id}", response_model=BatchProgress)
+def reframe_progress(job_id: str) -> BatchProgress:
     with _lock:
         job = _jobs.get(job_id)
         if job is None:
             raise HTTPException(404, messages.JOB_NOT_FOUND.format(job_id=job_id))
-        return ReframeProgress(
+        return BatchProgress(
             job_id=job.job_id,
             status=job.status,
             phase=job.phase,

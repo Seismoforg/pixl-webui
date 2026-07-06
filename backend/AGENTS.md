@@ -101,6 +101,12 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            (and the non-active upscaler engine) + call release before
                            loading, so only the current task's model sits in VRAM;
                            cross-service calls use lazy imports to avoid a cycle
+- services/job_guard.py  — process-wide single-heavy-job guard: acquire(job_id, kind)
+                           /release(job_id). Every job router (generate/upscale/
+                           reframe/inpaint/edit) acquires on start (409 JOB_BUSY when
+                           any job of any kind is already running) and releases in its
+                           `_run` finally, so only one GPU job runs at a time — the
+                           invariant the VRAM mutual-unload coordination assumes
 - services/optimizations.py — apply_perf(pipe, settings): best-effort VAE tiling/
                            slicing + xformers, shared by the generation and upscale
                            pipeline loaders; driven by the persisted settings.
@@ -183,7 +189,14 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            coordinated. The mask/seam/seed widths are user-scalable via
                            mask_softness/seam_softness/seed_softness (0..1, 0.5 =
                            default) and the source placement via pos_x/pos_y (0.5 =
-                           centred). The negative prompt = the configurable
+                           centred). FLUX-aware seam blending (like services/inpaint):
+                           FLUX Fill gets a CRISP binary border mask + UNBLURRED init
+                           (it zeroes the masked init and reads the mask in latent
+                           space, so a soft edge/blur leaves a grey haze ring) — the
+                           composite seam does the blend; so for FLUX mask_softness/
+                           seed_softness are inert and only seam_softness applies.
+                           SD/SDXL keep the feathered mask + seed blur. The negative
+                           prompt = the configurable
                            Settings.outpaint_negative default with the per-run negative
                            appended. Generation params are configurable per run:
                            steps (composition) + refine_steps (hires pass) + guidance +

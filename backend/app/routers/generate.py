@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from .. import live, messages, samplers
 from ..catalog import get_model
-from ..services import gallery, pipeline
+from ..services import gallery, job_guard, pipeline
 
 router = APIRouter(prefix="/api", tags=["generate"])
 
@@ -205,6 +205,8 @@ def _run(job: _Job, req: GenerateRequest, model) -> None:
             job.status = "error"
             job.error = messages.GENERATION_FAILED.format(detail=str(exc))
         live.publish(key)
+    finally:
+        job_guard.release(job.job_id)
 
 
 @router.get("/samplers", response_model=SamplerList)
@@ -219,8 +221,6 @@ def start_generation(req: GenerateRequest) -> GenerateStarted:
         raise HTTPException(404, messages.MODEL_NOT_FOUND.format(slug=req.slug))
 
     with _lock:
-        if any(j.status == "running" for j in _jobs.values()):
-            raise HTTPException(409, messages.GENERATION_ALREADY_RUNNING)
         seed = req.seed if req.seed is not None else random.randint(0, _SEED_MAX)
         job = _Job(
             _new_job_id(),
@@ -229,6 +229,11 @@ def start_generation(req: GenerateRequest) -> GenerateStarted:
             prompt=req.prompt,
             batch_size=req.batch,
         )
+    # One heavy GPU job across the whole process (generation/upscale/reframe/inpaint/edit).
+    busy = job_guard.acquire(job.job_id, "generation")
+    if busy is not None:
+        raise HTTPException(409, messages.JOB_BUSY.format(kind=busy))
+    with _lock:
         _jobs[job.job_id] = job
 
     thread = threading.Thread(target=_run, args=(job, req, model), daemon=True)

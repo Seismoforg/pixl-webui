@@ -95,19 +95,23 @@ def _reframe_single(pipe, img, ratio, prompt, negative, report, cap,
     src = img.resize((nw, nh), Image.LANCZOS)
 
     # Seed the border by reflecting the source outward (a boundary-consistent start
-    # that matches the edge, unlike a blurred whole-image copy), softened with a
-    # blur so the inpaint sees a gradient rather than a hard mirror line; then paste
-    # the (scaled) source. mask = the (wide-feathered) border. All three widths are
-    # user-scalable via the *_softness knobs (0.5 = tuned default).
-    seed_blur = reframe.scale_softness(reframe.default_seed_blur(cw, ch), seed_softness)
+    # that matches the edge, unlike a blurred whole-image copy); then paste the
+    # (scaled) source. SD/SDXL soften the reflected seed with a blur so the inpaint
+    # sees a gradient rather than a hard mirror line, and get a wide-feathered mask.
+    # FLUX Fill instead gets an UNBLURRED init + a CRISP binary mask: it zeroes the
+    # masked init and reads the mask in latent space, so a soft edge/blur leaves a
+    # grey haze ring — the composite seam (feathered_keep_mask, below) does the blend
+    # instead. The mask/seed widths stay user-scalable for SD/SDXL (0.5 = default).
     canvas = reframe.reflect_fill(src, (cw, ch), (ox, oy))
-    if seed_blur > 0:
-        canvas = canvas.filter(ImageFilter.GaussianBlur(seed_blur))
+    if not is_flux:
+        seed_blur = reframe.scale_softness(reframe.default_seed_blur(cw, ch), seed_softness)
+        if seed_blur > 0:
+            canvas = canvas.filter(ImageFilter.GaussianBlur(seed_blur))
     canvas.paste(src, (ox, oy))
-    mask = reframe.build_mask(
-        (cw, ch), (ox, oy, nw, nh),
-        feather=reframe.scale_softness(reframe.default_mask_feather(cw, ch), mask_softness),
+    mask_feather = 0 if is_flux else reframe.scale_softness(
+        reframe.default_mask_feather(cw, ch), mask_softness
     )
+    mask = reframe.build_mask((cw, ch), (ox, oy, nw, nh), feather=mask_feather)
     # Report two passes only when a refinement pass will actually follow.
     pass_total = 2 if (two_pass and refine) else 1
     gen = inpaint_engine.run_inpaint(
@@ -132,9 +136,12 @@ def _reframe_single(pipe, img, ratio, prompt, negative, report, cap,
     # Either way the pristine full-res source is composited back pixel-exact.
     result = gen.resize((cw_full, ch_full), Image.LANCZOS)
     if refine:
+        # Crisp mask for FLUX (see the composition pass above); feathered for SD/SDXL.
+        full_feather = 0 if is_flux else reframe.scale_softness(
+            reframe.default_mask_feather(cw_full, ch_full), mask_softness
+        )
         full_mask = reframe.build_mask(
-            (cw_full, ch_full), (ox_full, oy_full, sw, sh),
-            feather=reframe.scale_softness(reframe.default_mask_feather(cw_full, ch_full), mask_softness),
+            (cw_full, ch_full), (ox_full, oy_full, sw, sh), feather=full_feather,
         )
         result = inpaint_engine.run_inpaint(
             pipe, result, full_mask, prompt, negative, report, 2, 2,

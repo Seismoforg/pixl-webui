@@ -23,10 +23,11 @@ from ..services import (
     downloader,
     edit as edit_svc,
     gallery,
+    job_guard,
     upscalers,
 )
 from ..services.upscalers import UpscalerInfo
-from .upscale import UpscaleProgress
+from .upscale import BatchProgress
 
 router = APIRouter(prefix="/api/edit", tags=["edit"])
 
@@ -49,15 +50,6 @@ class EditRequest(BaseModel):
 
 class EditStarted(BaseModel):
     job_id: str
-
-
-class EditProgress(UpscaleProgress):
-    """Edit job progress = the shared upscale shape plus batch fields (a superset,
-    so the frontend's upscale-based live-stats UI keeps working unchanged)."""
-
-    batch_index: int = 0
-    batch_size: int = 1
-    image_ids: list[str] = []
 
 
 class _Job:
@@ -144,6 +136,7 @@ def _run(job: _Job, req: EditRequest, image, engine: UpscalerInfo) -> None:
         live.publish(pub_key)
     finally:
         edit_svc.unload()  # free the Kontext pipe
+        job_guard.release(job.job_id)
 
 
 def _save_result(job, req, result, engine: UpscalerInfo, seed: int) -> None:
@@ -184,9 +177,11 @@ def start_edit(req: EditRequest) -> EditStarted:
         raise HTTPException(400, str(exc)) from exc
 
     with _lock:
-        if any(j.status == "running" for j in _jobs.values()):
-            raise HTTPException(409, messages.EDIT_ALREADY_RUNNING)
         job = _Job(_new_job_id(), engine.name)
+    busy = job_guard.acquire(job.job_id, "edit")
+    if busy is not None:
+        raise HTTPException(409, messages.JOB_BUSY.format(kind=busy))
+    with _lock:
         _jobs[job.job_id] = job
 
     thread = threading.Thread(target=_run, args=(job, req, image, engine), daemon=True)
@@ -194,13 +189,13 @@ def start_edit(req: EditRequest) -> EditStarted:
     return EditStarted(job_id=job.job_id)
 
 
-@router.get("/{job_id}", response_model=EditProgress)
-def edit_progress(job_id: str) -> EditProgress:
+@router.get("/{job_id}", response_model=BatchProgress)
+def edit_progress(job_id: str) -> BatchProgress:
     with _lock:
         job = _jobs.get(job_id)
         if job is None:
             raise HTTPException(404, messages.JOB_NOT_FOUND.format(job_id=job_id))
-        return EditProgress(
+        return BatchProgress(
             job_id=job.job_id,
             status=job.status,
             phase=job.phase,

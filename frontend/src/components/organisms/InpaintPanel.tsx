@@ -7,11 +7,9 @@ import DownloadIcon from "@mui/icons-material/Download";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import FormControlLabel from "@mui/material/FormControlLabel";
 import LinearProgress from "@mui/material/LinearProgress";
 import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
-import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
@@ -20,6 +18,7 @@ import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { BrushControls } from "@/components/molecules/BrushControls";
 import { InfoTip } from "@/components/molecules/InfoTip";
+import { GenerationParams } from "@/components/molecules/GenerationParams";
 import { LabeledSlider } from "@/components/molecules/LabeledSlider";
 import { LoadingIndicator } from "@/components/molecules/LoadingIndicator";
 import { GalleryPicker } from "@/components/organisms/GalleryPicker";
@@ -452,88 +451,26 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
               </Box>
 
               {/* Generation parameters */}
-              <Box>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-                  <Typography variant="subtitle2">{t("inpaint.params.title")}</Typography>
-                  <InfoTip text={t("inpaint.params.help")} />
-                </Box>
-                <Stack spacing={1.5}>
-                  {!fluxEngine && (
-                    <TextField
-                      select
-                      size="small"
-                      label={t("inpaint.params.sampler")}
-                      value={samplers.some((s) => s.id === sampler) ? sampler : ""}
-                      onChange={(e) => setSampler(e.target.value)}
-                      helperText={t("inpaint.params.samplerHelp")}
-                    >
-                      {samplers.map((s) => (
-                        <MenuItem key={s.id} value={s.id}>
-                          {s.label}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                  )}
-                  <LabeledSlider
-                    label={t("inpaint.params.steps")}
-                    info={t("inpaint.params.stepsHelp")}
-                    value={steps}
-                    min={1}
-                    max={150}
-                    onChange={setSteps}
-                  />
-                  <Box>
-                    <FormControlLabel
-                      control={<Switch checked={refine} onChange={(e) => setRefine(e.target.checked)} />}
-                      label={
-                        <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-                          {t("inpaint.params.refine")}
-                          <InfoTip text={t("inpaint.params.refineHelp")} sx={{ fontSize: 16 }} />
-                        </Box>
-                      }
-                    />
-                  </Box>
-                  {refine && (
-                    <LabeledSlider
-                      label={t("inpaint.params.refineSteps")}
-                      info={t("inpaint.params.refineStepsHelp")}
-                      value={refineSteps}
-                      min={1}
-                      max={150}
-                      onChange={setRefineSteps}
-                    />
-                  )}
-                  <LabeledSlider
-                    label={t("inpaint.params.guidance")}
-                    info={t("inpaint.params.guidanceHelp")}
-                    value={guidance}
-                    min={0}
-                    max={30}
-                    step={0.5}
-                    onChange={setGuidance}
-                  />
-                  <LabeledSlider
-                    label={t("inpaint.params.batch")}
-                    info={t("inpaint.params.batchHelp")}
-                    value={batch}
-                    min={1}
-                    max={8}
-                    onChange={setBatch}
-                  />
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                    <TextField
-                      size="small"
-                      label={t("inpaint.params.seed")}
-                      placeholder={t("inpaint.params.seedPlaceholder")}
-                      type="number"
-                      value={seed}
-                      onChange={(e) => setSeed(e.target.value)}
-                      sx={{ flexGrow: 1 }}
-                    />
-                    <InfoTip text={t("inpaint.params.seedHelp")} />
-                  </Box>
-                </Stack>
-              </Box>
+              <GenerationParams
+                keyPrefix="inpaint.params"
+                steps={steps}
+                onSteps={setSteps}
+                guidance={guidance}
+                onGuidance={setGuidance}
+                batch={batch}
+                onBatch={setBatch}
+                seed={seed}
+                onSeed={setSeed}
+                sampler={
+                  fluxEngine ? undefined : { list: samplers, value: sampler, onChange: setSampler }
+                }
+                refine={{
+                  checked: refine,
+                  onChange: setRefine,
+                  steps: refineSteps,
+                  onSteps: setRefineSteps,
+                }}
+              />
             </Stack>
           </fieldset>
 

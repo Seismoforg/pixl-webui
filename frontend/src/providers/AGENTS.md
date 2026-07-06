@@ -13,7 +13,7 @@ navigation-surviving state or wraps the tree in a context lives here.
 # File Structure
 - AppDataProvider.tsx    — shared models/system state + `useAppData`; hosts the
                            feature providers (activity, downloads, generation,
-                           upscale, reframe). Loads models/system once; model changes
+                           upscale, reframe, inpaint, edit). Loads models/system once; model changes
                            are pushed via `reloadModels()` from the relevant handlers
                            (NOT refetched on every navigation). Exposes `modelsLoading`
                            (true until the first models load resolves) for the Models

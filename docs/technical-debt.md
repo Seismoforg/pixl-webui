@@ -11,10 +11,12 @@
   appear and offer to delete their folders (or surface an "orphaned downloads"
   cleanup action on the Models page).
 
-## Flux Fill outpaint depends on a community GGUF repo  (added 2026-07-05)
+## Flux Fill/Kontext GGUF engines depend on community GGUF repos  (added 2026-07-05, widened 2026-07-06)
 - Problem: The curated `outpaint--flux-fill-gguf` engine pulls its transformer from
   a community GGUF repo (`YarvixPA/FLUX.1-Fill-dev-GGUF`) and its base components
   from the gated `black-forest-labs/FLUX.1-Fill-dev` (needs a HuggingFace token).
+  The same pattern now applies to the `edit--flux-kontext-gguf-*` engines (community
+  `QuantStack/FLUX.1-Kontext-dev-GGUF` + gated `black-forest-labs/FLUX.1-Kontext-dev`).
 - Impact: The community repo could move/rename/disappear, and the gated base fails
   to download without a token; either breaks the engine with a download error.
 - Proposed Resolution: Pin/verify the GGUF repo periodically (or mirror it), and
@@ -37,10 +39,12 @@
   `install.ps1` and re-measure it/s. On Windows/ROCm, revisit only once AMD
   publishes a Windows Triton wheel (or the triton-windows AMD port matures).
 
-## GGUF FLUX still downloads the full fp16 T5 encoder  (added 2026-07-05)
-- Problem: A GGUF FLUX entry downloads the base repo's ~9.5 GB fp16 T5 text encoder
-  even though only the transformer is quantized, so on-disk size is ~17 GB despite
-  the low (~16 GB) VRAM footprint.
+## GGUF models still download the full fp16 text encoder  (added 2026-07-05, widened 2026-07-06)
+- Problem: A GGUF entry downloads the base repo's full fp16 text encoder(s) even
+  though only the transformer is quantized, so on-disk size is ~17 GB despite the low
+  (~16 GB) VRAM footprint. Applies to every GGUF entry — FLUX generation, FLUX.1-Fill
+  outpaint, FLUX.1-Kontext edit (~9.5 GB fp16 T5 each), and SD 3.5 Large (its T5 +
+  dual CLIP encoders).
 - Impact: Larger download/disk than the VRAM budget implies; no separate control to
   pick a smaller text encoder.
 - Proposed Resolution: Support an fp8/GGUF T5 text encoder (swap the
@@ -111,13 +115,14 @@
   `CompelForSDXL` convenience wrapper (or upstream fix) once it handles differing
   pos/neg lengths, and drop the manual padding.
 
-## Outpaint hires refinement pass is un-tiled  (added 2026-07-05)
-- Problem: `services/outpaint.py`'s hires refinement pass runs a single full-canvas
-  inpaint (no tiling/OOM fallback) when the reframe canvas exceeds the family cap.
-  Unlike `services/upscale.py`, it does not tile large inputs.
-- Impact: Very large reframes (e.g. a 2K+ source to an ultrawide ratio) can spike
-  VRAM in the refinement pass on constrained GPUs; only cpu-offload + attention
-  slicing bound it. Not yet verified on low-VRAM hardware.
+## Inpaint/outpaint hires refinement pass is un-tiled  (added 2026-07-05, widened 2026-07-06)
+- Problem: The hires refinement pass in `services/outpaint.py` (large reframe canvas)
+  and `services/inpaint.py` (large user-mask crop) runs a single full-resolution
+  inpaint with no tiling/OOM fallback when the canvas/crop exceeds the family cap.
+  Unlike `services/upscale.py`, neither tiles large inputs.
+- Impact: Very large reframes (e.g. a 2K+ source to an ultrawide ratio) or a big
+  painted region can spike VRAM in the refinement pass on constrained GPUs; only
+  cpu-offload + attention slicing bound it. Not yet verified on low-VRAM hardware.
 - Proposed Resolution: Cap the refinement resolution, or tile the refinement pass
   like the upscaler, if OOM shows up in practice.
 

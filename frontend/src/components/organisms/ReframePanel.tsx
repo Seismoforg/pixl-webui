@@ -7,10 +7,8 @@ import DownloadIcon from "@mui/icons-material/Download";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import FormControlLabel from "@mui/material/FormControlLabel";
 import LinearProgress from "@mui/material/LinearProgress";
 import MenuItem from "@mui/material/MenuItem";
-import Switch from "@mui/material/Switch";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
@@ -18,6 +16,7 @@ import { useCallback, useEffect, useState, type CSSProperties } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { InfoTip } from "@/components/molecules/InfoTip";
+import { GenerationParams } from "@/components/molecules/GenerationParams";
 import { LabeledSlider } from "@/components/molecules/LabeledSlider";
 import { LoadingIndicator } from "@/components/molecules/LoadingIndicator";
 import { GalleryPicker } from "@/components/organisms/GalleryPicker";
@@ -568,93 +567,28 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
           {/* Generation parameters — sampler / steps / guidance / seed / batch for
               the AI outpaint pass (the PIL strategies ignore them). */}
           {outpaint && (
-            <Box>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-                <Typography variant="subtitle2">{t("reframe.params.title")}</Typography>
-                <InfoTip text={t("reframe.params.help")} />
-              </Box>
-              <Stack spacing={1.5}>
-                {!fluxOutpaint && (
-                  <TextField
-                    select
-                    size="small"
-                    label={t("reframe.params.sampler")}
-                    value={samplers.some((s) => s.id === outpaintSampler) ? outpaintSampler : ""}
-                    onChange={(e) => setOutpaintSampler(e.target.value)}
-                    helperText={t("reframe.params.samplerHelp")}
-                  >
-                    {samplers.map((s) => (
-                      <MenuItem key={s.id} value={s.id}>
-                        {s.label}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                )}
-                <LabeledSlider
-                  label={t("reframe.params.steps")}
-                  info={t("reframe.params.stepsHelp")}
-                  value={outpaintSteps}
-                  min={1}
-                  max={150}
-                  onChange={setOutpaintSteps}
-                />
-                <Box>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={outpaintRefine}
-                        onChange={(e) => setOutpaintRefine(e.target.checked)}
-                      />
-                    }
-                    label={
-                      <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-                        {t("reframe.params.refine")}
-                        <InfoTip text={t("reframe.params.refineHelp")} sx={{ fontSize: 16 }} />
-                      </Box>
-                    }
-                  />
-                </Box>
-                {outpaintRefine && (
-                  <LabeledSlider
-                    label={t("reframe.params.refineSteps")}
-                    info={t("reframe.params.refineStepsHelp")}
-                    value={outpaintRefineSteps}
-                    min={1}
-                    max={150}
-                    onChange={setOutpaintRefineSteps}
-                  />
-                )}
-                <LabeledSlider
-                  label={t("reframe.params.guidance")}
-                  info={t("reframe.params.guidanceHelp")}
-                  value={outpaintGuidance}
-                  min={0}
-                  max={30}
-                  step={0.5}
-                  onChange={setOutpaintGuidance}
-                />
-                <LabeledSlider
-                  label={t("reframe.params.batch")}
-                  info={t("reframe.params.batchHelp")}
-                  value={outpaintBatch}
-                  min={1}
-                  max={8}
-                  onChange={setOutpaintBatch}
-                />
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                  <TextField
-                    size="small"
-                    label={t("reframe.params.seed")}
-                    placeholder={t("reframe.params.seedPlaceholder")}
-                    type="number"
-                    value={outpaintSeed}
-                    onChange={(e) => setOutpaintSeed(e.target.value)}
-                    sx={{ flexGrow: 1 }}
-                  />
-                  <InfoTip text={t("reframe.params.seedHelp")} />
-                </Box>
-              </Stack>
-            </Box>
+            <GenerationParams
+              keyPrefix="reframe.params"
+              steps={outpaintSteps}
+              onSteps={setOutpaintSteps}
+              guidance={outpaintGuidance}
+              onGuidance={setOutpaintGuidance}
+              batch={outpaintBatch}
+              onBatch={setOutpaintBatch}
+              seed={outpaintSeed}
+              onSeed={setOutpaintSeed}
+              sampler={
+                fluxOutpaint
+                  ? undefined
+                  : { list: samplers, value: outpaintSampler, onChange: setOutpaintSampler }
+              }
+              refine={{
+                checked: outpaintRefine,
+                onChange: setOutpaintRefine,
+                steps: outpaintRefineSteps,
+                onSteps: setOutpaintRefineSteps,
+              }}
+            />
           )}
 
             </Stack>

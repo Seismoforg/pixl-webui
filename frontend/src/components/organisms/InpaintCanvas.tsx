@@ -9,6 +9,7 @@ import Stack from "@mui/material/Stack";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
+import { useTheme } from "@mui/material/styles";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useTranslations } from "@/i18n";
@@ -49,6 +50,7 @@ export const InpaintCanvas = ({
   onChange,
 }: InpaintCanvasProps) => {
   const t = useTranslations();
+  const theme = useTheme();
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const cursorRef = useRef<HTMLCanvasElement | null>(null);
@@ -77,9 +79,9 @@ export const InpaintCanvas = ({
       maskSoftness,
       seamSoftness,
       seedSoftness,
-      tint: "rgb(99, 102, 241)",
+      tint: theme.palette.primary.main,
     });
-  }, [dims, maskSoftness, seamSoftness, seedSoftness]);
+  }, [dims, maskSoftness, seamSoftness, seedSoftness, theme.palette.primary.main]);
 
   // Coalesce overlay repaints to one per animation frame — the overlay runs
   // blur-heavy canvas ops, so repainting on every pointermove would jank (INP).

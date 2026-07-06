@@ -15,8 +15,7 @@ import Typography from "@mui/material/Typography";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
-import { InfoTip } from "@/components/molecules/InfoTip";
-import { LabeledSlider } from "@/components/molecules/LabeledSlider";
+import { GenerationParams } from "@/components/molecules/GenerationParams";
 import { LoadingIndicator } from "@/components/molecules/LoadingIndicator";
 import { EditResult } from "@/components/organisms/EditResult";
 import { GalleryPicker } from "@/components/organisms/GalleryPicker";
@@ -288,52 +287,19 @@ export const EditPanel = ({ reloadToken, initialImageId }: EditPanelProps) => {
                 </Alert>
               </Box>
 
-              {/* Generation parameters */}
-              <Box>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-                  <Typography variant="subtitle2">{t("edit.params.title")}</Typography>
-                  <InfoTip text={t("edit.params.help")} />
-                </Box>
-                <Stack spacing={1.5}>
-                  <LabeledSlider
-                    label={t("edit.params.steps")}
-                    info={t("edit.params.stepsHelp")}
-                    value={steps}
-                    min={1}
-                    max={150}
-                    onChange={setSteps}
-                  />
-                  <LabeledSlider
-                    label={t("edit.params.guidance")}
-                    info={t("edit.params.guidanceHelp")}
-                    value={guidance}
-                    min={0}
-                    max={10}
-                    step={0.5}
-                    onChange={setGuidance}
-                  />
-                  <LabeledSlider
-                    label={t("edit.params.batch")}
-                    info={t("edit.params.batchHelp")}
-                    value={batch}
-                    min={1}
-                    max={8}
-                    onChange={setBatch}
-                  />
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                    <TextField
-                      size="small"
-                      label={t("edit.params.seed")}
-                      placeholder={t("edit.params.seedPlaceholder")}
-                      type="number"
-                      value={seed}
-                      onChange={(e) => setSeed(e.target.value)}
-                      sx={{ flexGrow: 1 }}
-                    />
-                    <InfoTip text={t("edit.params.seedHelp")} />
-                  </Box>
-                </Stack>
-              </Box>
+              {/* Generation parameters (no mask, no sampler — Kontext is guidance-distilled) */}
+              <GenerationParams
+                keyPrefix="edit.params"
+                steps={steps}
+                onSteps={setSteps}
+                guidance={guidance}
+                onGuidance={setGuidance}
+                guidanceMax={10}
+                batch={batch}
+                onBatch={setBatch}
+                seed={seed}
+                onSeed={setSeed}
+              />
             </Stack>
           </fieldset>
 

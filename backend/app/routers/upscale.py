@@ -18,6 +18,7 @@ from ..services import (
     downloader,
     fit,
     gallery,
+    job_guard,
     outpaint as outpaint_svc,
     upscale as upscale_svc,
     upscalers,
@@ -87,6 +88,16 @@ class UpscaleProgress(BaseModel):
     engine_name: str
     image_id: str | None = None
     error: str | None = None
+
+
+class BatchProgress(UpscaleProgress):
+    """A batch job's progress = the shared upscale shape plus batch fields (a superset,
+    so the frontend's upscale-based live-stats UI keeps working unchanged). Shared by
+    the reframe, inpaint and edit jobs, which each generate a batch of variants."""
+
+    batch_index: int = 0
+    batch_size: int = 1
+    image_ids: list[str] = []
 
 
 class _Job:
@@ -181,6 +192,8 @@ def _run(
             job.status = "error"
             job.error = messages.UPSCALE_FAILED.format(detail=str(exc))
         live.publish(pub_key)
+    finally:
+        job_guard.release(job.job_id)
 
 
 @router.get("/engines", response_model=list[UpscalerEntry])
@@ -274,9 +287,11 @@ def start_upscale(req: UpscaleRequest) -> UpscaleStarted:
         raise HTTPException(400, str(exc)) from exc
 
     with _lock:
-        if any(j.status == "running" for j in _jobs.values()):
-            raise HTTPException(409, messages.UPSCALE_ALREADY_RUNNING)
         job = _Job(_new_job_id(), engine.name)
+    busy = job_guard.acquire(job.job_id, "upscale")
+    if busy is not None:
+        raise HTTPException(409, messages.JOB_BUSY.format(kind=busy))
+    with _lock:
         _jobs[job.job_id] = job
 
     thread = threading.Thread(
