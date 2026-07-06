@@ -49,6 +49,9 @@ _REGISTRY: list[tuple[str, str, str, dict]] = [
      {"use_karras_sigmas": True}),
     ("unipc", "UniPC", "UniPCMultistepScheduler", {}),
     ("ddim", "DDIM", "DDIMScheduler", {}),
+    # LCM: pair with an LCM-LoRA for few-step (~4-8) generation at low guidance (~1).
+    # Not advertised in a pipe's `compatibles`, so apply_sampler special-cases it.
+    ("lcm", "LCM", "LCMScheduler", {}),
 ]
 
 _BY_ID = {entry[0]: entry for entry in _REGISTRY}
@@ -82,7 +85,14 @@ def apply_sampler(pipe, sampler_id: str) -> str:
 
     # ``compatibles`` is the list of scheduler classes valid for this model.
     if target_cls not in getattr(pipe.scheduler, "compatibles", []):
-        return NATIVE
+        # LCM isn't advertised in `compatibles` but is valid on UNet models (SD 1.5/
+        # SDXL) — the standard LCM-LoRA recipe swaps in LCMScheduler. Allow it there
+        # (identified by a `.unet`); still block on flow-matching models (FLUX/SD 3.x,
+        # which expose `.transformer`), which keep their native sampler.
+        if sampler_id == "lcm" and getattr(pipe, "unet", None) is not None:
+            pass
+        else:
+            return NATIVE
 
     pipe.scheduler = target_cls.from_config(pipe.scheduler.config, **config)
     return sampler_id

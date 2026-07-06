@@ -155,7 +155,7 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
 
 # Dependencies
 diffusers (>=0.31 for GGUF), transformers, accelerate, huggingface_hub, pillow,
-pydantic, psutil, compel, gguf, spandrel (Real-ESRGAN); torch (CUDA/ROCm/CPU).
+pydantic, psutil, compel, gguf, peft (LoRA), spandrel (Real-ESRGAN); torch (CUDA/ROCm/CPU).
 
 # Related Modules
 - Parent: ../../ (backend)

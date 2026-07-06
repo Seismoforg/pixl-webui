@@ -175,8 +175,8 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 # Dependencies
 fastapi, uvicorn, diffusers (>=0.31 for GGUF), transformers, accelerate,
 huggingface_hub, pillow, pydantic, psutil, compel (long/weighted prompts), gguf
-(GGUF-quantized FLUX / SD 3.x transformers); torch (CUDA/ROCm/CPU) installed by the root
-installer.
+(GGUF-quantized FLUX / SD 3.x transformers), peft (PEFT backend for LoRA
+load/blend); torch (CUDA/ROCm/CPU) installed by the root installer.
 
 # Related Modules
 - Parent: ../  (project root)
