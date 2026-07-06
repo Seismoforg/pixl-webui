@@ -1,10 +1,9 @@
 """Text-to-image generation as a background job with live step progress.
 
-``POST /api/generate`` starts a generation on a background thread and returns a
-``job_id`` immediately. The diffusers step callback updates a per-job progress
-record (current step, iterations/second) that the frontend polls via
-``GET /api/generate/{job_id}``. On success the image is persisted to the gallery
-and its ``image_id`` is reported back.
+``POST /api/generate`` → starts on a background thread, returns ``job_id`` at once.
+The diffusers step callback updates a per-job record (current step, its/s), polled via
+``GET /api/generate/{job_id}``. On success the image is saved to the gallery + its
+``image_id`` reported back. Reuses the shared ``services.jobs`` store.
 """
 from __future__ import annotations
 
@@ -17,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from .. import live, messages, samplers
 from ..catalog import get_model
-from ..services import gallery, job_guard, pipeline
+from ..services import gallery, job_guard, jobs, pipeline
 
 router = APIRouter(prefix="/api", tags=["generate"])
 
@@ -106,15 +105,7 @@ class _Job:
         return (self.current_step - 1) / elapsed
 
 
-_jobs: dict[str, _Job] = {}
-_lock = threading.Lock()
-_counter = 0
-
-
-def _new_job_id() -> str:
-    global _counter
-    _counter += 1
-    return f"gen-{_counter}"
+_store: jobs.JobStore[_Job] = jobs.JobStore("gen")
 
 
 def _run(job: _Job, req: GenerateRequest, model, init_image) -> None:
@@ -125,7 +116,7 @@ def _run(job: _Job, req: GenerateRequest, model, init_image) -> None:
     def on_step(completed: int) -> None:
         # Some pipelines invoke the callback one extra time; clamp so the UI never
         # shows "step n+1 / n".
-        with _lock:
+        with _store.lock:
             if job.first_step_at is None:
                 job.first_step_at = time.perf_counter()
             completed = min(completed, job.total_steps)
@@ -136,7 +127,7 @@ def _run(job: _Job, req: GenerateRequest, model, init_image) -> None:
         live.publish(key)
 
     def on_preview(data_url: str) -> None:
-        with _lock:
+        with _store.lock:
             job.preview = data_url
         live.publish(key)
 
@@ -145,7 +136,7 @@ def _run(job: _Job, req: GenerateRequest, model, init_image) -> None:
         # uses an incrementing seed (base + index) so results vary yet stay
         # reproducible; per-image step/timing/preview state is reset each round.
         for i in range(job.batch_size):
-            with _lock:
+            with _store.lock:
                 job.batch_index = i + 1
                 job.current_step = 0
                 job.first_step_at = None
@@ -187,16 +178,16 @@ def _run(job: _Job, req: GenerateRequest, model, init_image) -> None:
                     "sampler": effective_sampler,
                 },
             )
-            with _lock:
+            with _store.lock:
                 job.current_step = job.total_steps
                 job.image_ids.append(meta.id)
             live.publish(key)
 
-        with _lock:
+        with _store.lock:
             job.status = "done"
         live.publish(key)
     except Exception as exc:  # noqa: BLE001 - surfaced to the UI via job state
-        with _lock:
+        with _store.lock:
             job.status = "error"
             job.error = messages.GENERATION_FAILED.format(detail=str(exc))
         live.publish(key)
@@ -226,10 +217,10 @@ def start_generation(req: GenerateRequest) -> GenerateStarted:
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
-    with _lock:
+    with _store.lock:
         seed = req.seed if req.seed is not None else random.randint(0, _SEED_MAX)
         job = _Job(
-            _new_job_id(),
+            _store.new_id(),
             seed=seed,
             total_steps=req.steps,
             prompt=req.prompt,
@@ -239,8 +230,8 @@ def start_generation(req: GenerateRequest) -> GenerateStarted:
     busy = job_guard.acquire(job.job_id, "generation")
     if busy is not None:
         raise HTTPException(409, messages.JOB_BUSY.format(kind=busy))
-    with _lock:
-        _jobs[job.job_id] = job
+    with _store.lock:
+        _store.add(job)
 
     thread = threading.Thread(target=_run, args=(job, req, model, init_image), daemon=True)
     thread.start()
@@ -249,8 +240,8 @@ def start_generation(req: GenerateRequest) -> GenerateStarted:
 
 @router.get("/generate/{job_id}", response_model=GenerationProgress)
 def generation_progress(job_id: str) -> GenerationProgress:
-    with _lock:
-        job = _jobs.get(job_id)
+    with _store.lock:
+        job = _store.get(job_id)
         if job is None:
             raise HTTPException(404, messages.JOB_NOT_FOUND.format(job_id=job_id))
         return GenerationProgress(

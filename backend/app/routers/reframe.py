@@ -1,21 +1,15 @@
 """Aspect-ratio reframing jobs (no upscaling).
 
-``POST /api/reframe`` reframes a source image (a stored gallery image or an
-uploaded data URL) to a target aspect ratio using a non-AI strategy
-(cover/contain/edge) or an AI outpaint pass, and saves the result to the gallery
-at the source resolution — it never runs an upscaler. Polled via
-``GET /api/reframe/{job_id}``; the progress payload reuses the upscale job's
-:class:`UpscaleProgress` shape so the frontend can share the live-stats UI.
-
-Mirrors the upscale router's small per-job store + background thread (the same
-pattern as generation/upscale) and publishes ``reframe:{job_id}`` wakes to the
-WebSocket pusher.
+``POST /api/reframe`` — reframe a source (gallery id or uploaded data URL) to a target
+ratio via a non-AI strategy (cover/contain/edge) or an AI outpaint pass; saves to the
+gallery at source resolution, never upscales. Polled via ``GET /api/reframe/{job_id}``
+(BatchProgress shape, shared live-stats UI). Uses the shared ``services.jobs`` store;
+publishes ``reframe:{job_id}`` wakes to the WebSocket pusher.
 """
 from __future__ import annotations
 
 import random
 import threading
-import time
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -23,9 +17,9 @@ from pydantic import BaseModel, Field
 from .. import live, messages, samplers
 from ..services import (
     downloader,
-    gallery,
     inpaint_engine,
     job_guard,
+    jobs,
     outpaint as outpaint_svc,
     reframe as reframe_svc,
     upscalers,
@@ -89,56 +83,11 @@ class ReframeStarted(BaseModel):
     job_id: str
 
 
-class _Job:
-    def __init__(self, job_id: str, engine_name: str) -> None:
-        self.job_id = job_id
-        self.status = "running"
-        self.phase = "loading"
-        self.current_tile = 0
-        self.total_tiles = 0
-        self.current_step = 0
-        self.total_steps = 0
-        self.its: float | None = None
-        self.engine_name = engine_name
-        self.started_at = time.perf_counter()
-        self.image_id: str | None = None
-        # Batch state (outpaint can produce several variants; 1 for the PIL strategies).
-        self.batch_index = 0
-        self.batch_size = 1
-        self.image_ids: list[str] = []
-        self.error: str | None = None
-
-    def elapsed(self) -> float:
-        return time.perf_counter() - self.started_at
-
-
-_jobs: dict[str, _Job] = {}
-_lock = threading.Lock()
-_counter = 0
-
-
-def _new_job_id() -> str:
-    global _counter
-    _counter += 1
-    return f"reframe-{_counter}"
-
-
-def _resolve_source(req: ReframeRequest):
-    """Load the source PIL image from a gallery id or an uploaded data URL."""
-    from PIL import Image
-
-    if req.image_data:
-        return gallery.decode_data_url(req.image_data, messages.REFRAME_SOURCE_MISSING)
-    if req.image_id:
-        path = gallery.file_path(req.image_id)
-        if path is None:
-            raise ValueError(messages.IMAGE_NOT_FOUND.format(image_id=req.image_id))
-        return Image.open(path)
-    raise ValueError(messages.REFRAME_SOURCE_MISSING)
+_store: jobs.JobStore[jobs.JobState] = jobs.JobStore("reframe")
 
 
 def _run(
-    job: _Job,
+    job: jobs.JobState,
     req: ReframeRequest,
     image,
     ratio: tuple[float, float],
@@ -146,12 +95,7 @@ def _run(
 ) -> None:
     # Wakes the WebSocket pusher after each state change (no-op with no subscriber).
     pub_key = f"reframe:{job.job_id}"
-
-    def on_progress(update: dict) -> None:
-        with _lock:
-            for key, value in update.items():
-                setattr(job, key, value)
-        live.publish(pub_key)
+    on_progress = jobs.make_on_progress(job, _store.lock, pub_key)
 
     strategy = req.reframe
     is_outpaint = strategy == "outpaint" and outpaint_engine is not None
@@ -164,16 +108,16 @@ def _run(
             result = reframe_svc.apply(
                 image.convert("RGB"), ratio, strategy, req.pos_x, req.pos_y, req.scale
             )
-            with _lock:
+            with _store.lock:
                 job.phase = "finalizing"
             live.publish(pub_key)
             _save_result(job, req, result, "reframe", "Reframe", steps=0, guidance=0.0, seed=0,
                          sampler="reframe")
-        with _lock:
+        with _store.lock:
             job.status = "done"
         live.publish(pub_key)
     except Exception as exc:  # noqa: BLE001 - surfaced to the UI via job state
-        with _lock:
+        with _store.lock:
             job.status = "error"
             job.error = messages.REFRAME_FAILED.format(detail=str(exc))
         live.publish(pub_key)
@@ -189,12 +133,12 @@ def _run_outpaint(job, req, image, ratio, engine, on_progress, pub_key) -> None:
     across the batch) and freed afterwards. No upscaler runs."""
     base_seed = req.outpaint_seed if req.outpaint_seed is not None else random.randint(0, _SEED_MAX)
     sampler = req.outpaint_sampler or samplers.DEFAULT_SAMPLER
-    with _lock:
+    with _store.lock:
         job.batch_size = req.outpaint_batch
     try:
         for i in range(req.outpaint_batch):
             seed_i = (base_seed + i) % (_SEED_MAX + 1)
-            with _lock:
+            with _store.lock:
                 job.batch_index = i + 1
             result = outpaint_svc.reframe_image(
                 image, ratio, req.outpaint_prompt, on_progress, engine,
@@ -210,7 +154,7 @@ def _run_outpaint(job, req, image, ratio, engine, on_progress, pub_key) -> None:
                 sampler=req.outpaint_sampler,
                 seed=seed_i,
             )
-            with _lock:
+            with _store.lock:
                 job.phase = "finalizing"
             live.publish(pub_key)
             _save_result(
@@ -223,12 +167,13 @@ def _run_outpaint(job, req, image, ratio, engine, on_progress, pub_key) -> None:
 
 
 def _save_result(job, req, result, model_slug, model_name, *, steps, guidance, seed, sampler) -> None:
-    """Persist one reframe result to the gallery and record it on the job (the first
-    image also fills ``image_id`` for single-image compatibility)."""
+    """Resize to a custom target (if any), then persist + record via jobs.save_result."""
     # Custom target resolution: resize to the exact size after the strategy has set
     # the aspect (single choke point for both the PIL and outpaint paths).
     result = reframe_svc.to_exact_size(result, req.target_width, req.target_height)
-    meta = gallery.save(
+    jobs.save_result(
+        _store,
+        job,
         result,
         {
             "model_slug": model_slug,
@@ -243,10 +188,6 @@ def _save_result(job, req, result, model_slug, model_name, *, steps, guidance, s
             "sampler": sampler,
         },
     )
-    with _lock:
-        if job.image_id is None:
-            job.image_id = meta.id
-        job.image_ids.append(meta.id)
 
 
 @router.post("", response_model=ReframeStarted)
@@ -271,18 +212,18 @@ def start_reframe(req: ReframeRequest) -> ReframeStarted:
             raise HTTPException(409, messages.OUTPAINT_MODEL_MISSING)
 
     try:
-        image = _resolve_source(req)
+        image = jobs.resolve_source(req, messages.REFRAME_SOURCE_MISSING)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
     engine_name = outpaint_engine.name if outpaint_engine else "Reframe"
-    with _lock:
-        job = _Job(_new_job_id(), engine_name)
+    with _store.lock:
+        job = jobs.JobState(_store.new_id(), engine_name)
     busy = job_guard.acquire(job.job_id, "reframe")
     if busy is not None:
         raise HTTPException(409, messages.JOB_BUSY.format(kind=busy))
-    with _lock:
-        _jobs[job.job_id] = job
+    with _store.lock:
+        _store.add(job)
 
     thread = threading.Thread(
         target=_run,
@@ -295,8 +236,8 @@ def start_reframe(req: ReframeRequest) -> ReframeStarted:
 
 @router.get("/{job_id}", response_model=BatchProgress)
 def reframe_progress(job_id: str) -> BatchProgress:
-    with _lock:
-        job = _jobs.get(job_id)
+    with _store.lock:
+        job = _store.get(job_id)
         if job is None:
             raise HTTPException(404, messages.JOB_NOT_FOUND.format(job_id=job_id))
         return BatchProgress(

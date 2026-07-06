@@ -1,18 +1,15 @@
 """Multiplexed WebSocket for live updates (replaces client HTTP polling).
 
-One connection at ``/ws`` carries several channels. The client subscribes with
-JSON messages and the server pushes ``{channel, key, data}`` frames, sending a
-channel only when its serialised payload changes (send-on-change). Payloads are
-the exact same models the REST endpoints return, so the client can reuse its
-types — and the REST endpoints stay as a fallback.
+One connection at ``/ws`` carries several channels. Client subscribes with JSON; server
+pushes ``{channel, key, data}`` frames, send-on-change. Payloads = the exact models the
+REST endpoints return, so the client reuses its types; REST stays the fallback.
 
-Push is event-driven: producers (generation/upscale step callbacks, downloader
-state transitions) call ``live.publish(key)`` from their background threads, which
-wakes this connection's queue (see :mod:`app.live`); the pusher then recomputes
-and sends. Two channels can't be event-driven and stay on a short periodic tick:
-``system`` stats (psutil sampling is inherently periodic) and ``download`` byte
-progress (read from on-disk file size, which no producer emits an event for —
-only download *status* transitions are published).
+Push is event-driven: producers (generation/upscale step callbacks, downloader state
+transitions) call ``live.publish(key)`` from background threads → wakes this connection's
+queue (see :mod:`app.live`); the pusher recomputes + sends. Two channels can't be
+event-driven, so stay on a short periodic tick: ``system`` (psutil sampling) and
+``download`` byte progress (on-disk file size, no producer event — only download
+*status* transitions are published).
 
 Channels:
 - ``system``     — resource stats (periodic ~1s tick)

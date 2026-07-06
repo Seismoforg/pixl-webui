@@ -1,14 +1,9 @@
-"""Process-wide single-heavy-job guard.
+"""Process-wide single-heavy-job guard. See ADR 0014.
 
-The generation, upscale, reframe, inpaint and edit routers each run one background
-job at a time in their OWN store — but they all contend for the SAME GPU, and the
-model services coordinate VRAM by unloading each other on load. If two *different*
-job types start at once, those mutual unloads interleave and both heavy pipes can end
-up resident → OOM. This module enforces the invariant the VRAM design assumes: at
-most one heavy job (of any type) runs across the whole process.
-
-Each job router acquires on start (rejecting the request when another job is already
-running) and releases in its ``_run`` ``finally``.
+One GPU; the model services coordinate VRAM by mutual unload-on-load. Two heavy jobs
+of different types starting at once → interleaved unloads → both pipes resident → OOM.
+Invariant: at most one heavy job (any type) across the process. Each job router
+acquires on start (409 when one already runs) and releases in its ``_run`` ``finally``.
 """
 from __future__ import annotations
 

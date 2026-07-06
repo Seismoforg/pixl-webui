@@ -8,7 +8,6 @@ saves the result to the gallery, polled via ``GET /api/upscale/{job_id}``.
 from __future__ import annotations
 
 import threading
-import time
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -17,8 +16,8 @@ from .. import live, messages
 from ..services import (
     downloader,
     fit,
-    gallery,
     job_guard,
+    jobs,
     outpaint as outpaint_svc,
     upscale as upscale_svc,
     upscalers,
@@ -100,52 +99,11 @@ class BatchProgress(UpscaleProgress):
     image_ids: list[str] = []
 
 
-class _Job:
-    def __init__(self, job_id: str, engine_name: str) -> None:
-        self.job_id = job_id
-        self.status = "running"
-        self.phase = "loading"
-        self.current_tile = 0
-        self.total_tiles = 0
-        self.current_step = 0
-        self.total_steps = 0
-        self.its: float | None = None
-        self.engine_name = engine_name
-        self.started_at = time.perf_counter()
-        self.image_id: str | None = None
-        self.error: str | None = None
-
-    def elapsed(self) -> float:
-        return time.perf_counter() - self.started_at
-
-
-_jobs: dict[str, _Job] = {}
-_lock = threading.Lock()
-_counter = 0
-
-
-def _new_job_id() -> str:
-    global _counter
-    _counter += 1
-    return f"ups-{_counter}"
-
-
-def _resolve_source(req: UpscaleRequest):
-    """Load the source PIL image from a gallery id or an uploaded data URL."""
-    from PIL import Image
-
-    if req.image_data:
-        return gallery.decode_data_url(req.image_data, messages.UPSCALE_SOURCE_MISSING)
-    if req.image_id:
-        path = gallery.file_path(req.image_id)
-        if path is None:
-            raise ValueError(messages.IMAGE_NOT_FOUND.format(image_id=req.image_id))
-        return Image.open(path)
-    raise ValueError(messages.UPSCALE_SOURCE_MISSING)
+_store: jobs.JobStore[jobs.JobState] = jobs.JobStore("ups")
 
 
 def _run(
-    job: _Job,
+    job: jobs.JobState,
     engine: upscalers.UpscalerInfo,
     image,
     prompt: str,
@@ -154,21 +112,18 @@ def _run(
 ) -> None:
     # Wakes the WebSocket pusher after each state change (no-op with no subscriber).
     pub_key = f"upscale:{job.job_id}"
-
-    def on_progress(update: dict) -> None:
-        with _lock:
-            for key, value in update.items():
-                setattr(job, key, value)
-        live.publish(pub_key)
+    on_progress = jobs.make_on_progress(job, _store.lock, pub_key)
 
     try:
         result = upscale_svc.upscale(
             engine, image, prompt, tile, on_progress=on_progress, sd_x4_steps=sd_x4_steps
         )
-        with _lock:
+        with _store.lock:
             job.phase = "finalizing"
         live.publish(pub_key)
-        meta = gallery.save(
+        jobs.save_result(
+            _store,
+            job,
             result,
             {
                 "model_slug": engine.slug,
@@ -183,12 +138,11 @@ def _run(
                 "sampler": "upscale",
             },
         )
-        with _lock:
-            job.image_id = meta.id
+        with _store.lock:
             job.status = "done"
         live.publish(pub_key)
     except Exception as exc:  # noqa: BLE001 - surfaced to the UI via job state
-        with _lock:
+        with _store.lock:
             job.status = "error"
             job.error = messages.UPSCALE_FAILED.format(detail=str(exc))
         live.publish(pub_key)
@@ -282,17 +236,17 @@ def start_upscale(req: UpscaleRequest) -> UpscaleStarted:
         raise HTTPException(409, messages.MODEL_NOT_DOWNLOADED.format(slug=engine.slug))
 
     try:
-        image = _resolve_source(req)
+        image = jobs.resolve_source(req, messages.UPSCALE_SOURCE_MISSING)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
-    with _lock:
-        job = _Job(_new_job_id(), engine.name)
+    with _store.lock:
+        job = jobs.JobState(_store.new_id(), engine.name)
     busy = job_guard.acquire(job.job_id, "upscale")
     if busy is not None:
         raise HTTPException(409, messages.JOB_BUSY.format(kind=busy))
-    with _lock:
-        _jobs[job.job_id] = job
+    with _store.lock:
+        _store.add(job)
 
     thread = threading.Thread(
         target=_run,
@@ -305,8 +259,8 @@ def start_upscale(req: UpscaleRequest) -> UpscaleStarted:
 
 @router.get("/{job_id}", response_model=UpscaleProgress)
 def upscale_progress(job_id: str) -> UpscaleProgress:
-    with _lock:
-        job = _jobs.get(job_id)
+    with _store.lock:
+        job = _store.get(job_id)
         if job is None:
             raise HTTPException(404, messages.JOB_NOT_FOUND.format(job_id=job_id))
         return UpscaleProgress(

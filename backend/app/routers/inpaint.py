@@ -1,20 +1,16 @@
 """User-mask inpainting jobs.
 
-``POST /api/inpaint`` repaints a hand-painted region of a source image (a stored
-gallery image or an uploaded data URL) using a selectable inpaint engine and a
-prompt, and saves the result(s) to the gallery at the source resolution. The user
-supplies the mask as a data URL (white = repaint). Polled via
-``GET /api/inpaint/{job_id}``; the progress payload reuses the reframe/upscale job
-shape so the frontend shares the live-stats UI.
-
-Mirrors the reframe router's per-job store + background thread and publishes
-``inpaint:{job_id}`` wakes to the WebSocket pusher.
+``POST /api/inpaint`` — repaint a hand-painted region of a source (gallery id or
+uploaded data URL) via a selectable inpaint engine + prompt; saves result(s) to the
+gallery at source resolution. Mask supplied as a data URL (white = repaint). Polled via
+``GET /api/inpaint/{job_id}`` (BatchProgress shape, shared live-stats UI). Uses the
+shared ``services.jobs`` store; publishes ``inpaint:{job_id}`` wakes to the WebSocket
+pusher.
 """
 from __future__ import annotations
 
 import random
 import threading
-import time
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -26,6 +22,7 @@ from ..services import (
     inpaint as inpaint_svc,
     inpaint_engine,
     job_guard,
+    jobs,
     upscalers,
 )
 from ..services.upscalers import UpscalerInfo
@@ -69,70 +66,21 @@ class InpaintStarted(BaseModel):
     job_id: str
 
 
-class _Job:
-    def __init__(self, job_id: str, engine_name: str) -> None:
-        self.job_id = job_id
-        self.status = "running"
-        self.phase = "loading"
-        self.current_tile = 0
-        self.total_tiles = 0
-        self.current_step = 0
-        self.total_steps = 0
-        self.its: float | None = None
-        self.engine_name = engine_name
-        self.started_at = time.perf_counter()
-        self.image_id: str | None = None
-        self.batch_index = 0
-        self.batch_size = 1
-        self.image_ids: list[str] = []
-        self.error: str | None = None
-
-    def elapsed(self) -> float:
-        return time.perf_counter() - self.started_at
+_store: jobs.JobStore[jobs.JobState] = jobs.JobStore("inpaint")
 
 
-_jobs: dict[str, _Job] = {}
-_lock = threading.Lock()
-_counter = 0
-
-
-def _new_job_id() -> str:
-    global _counter
-    _counter += 1
-    return f"inpaint-{_counter}"
-
-
-def _resolve_source(req: InpaintRequest):
-    """Load the source PIL image from a gallery id or an uploaded data URL."""
-    from PIL import Image
-
-    if req.image_data:
-        return gallery.decode_data_url(req.image_data, messages.INPAINT_SOURCE_MISSING)
-    if req.image_id:
-        path = gallery.file_path(req.image_id)
-        if path is None:
-            raise ValueError(messages.IMAGE_NOT_FOUND.format(image_id=req.image_id))
-        return Image.open(path)
-    raise ValueError(messages.INPAINT_SOURCE_MISSING)
-
-
-def _run(job: _Job, req: InpaintRequest, image, mask, engine: UpscalerInfo) -> None:
+def _run(job: jobs.JobState, req: InpaintRequest, image, mask, engine: UpscalerInfo) -> None:
     pub_key = f"inpaint:{job.job_id}"
-
-    def on_progress(update: dict) -> None:
-        with _lock:
-            for key, value in update.items():
-                setattr(job, key, value)
-        live.publish(pub_key)
+    on_progress = jobs.make_on_progress(job, _store.lock, pub_key)
 
     base_seed = req.seed if req.seed is not None else random.randint(0, _SEED_MAX)
     sampler = req.sampler or samplers.DEFAULT_SAMPLER
-    with _lock:
+    with _store.lock:
         job.batch_size = req.batch
     try:
         for i in range(req.batch):
             seed_i = (base_seed + i) % (_SEED_MAX + 1)
-            with _lock:
+            with _store.lock:
                 job.batch_index = i + 1
             result = inpaint_svc.inpaint_image(
                 image, mask, req.prompt, on_progress, engine,
@@ -148,43 +96,37 @@ def _run(job: _Job, req: InpaintRequest, image, mask, engine: UpscalerInfo) -> N
                 sampler=req.sampler,
                 seed=seed_i,
             )
-            with _lock:
+            with _store.lock:
                 job.phase = "finalizing"
             live.publish(pub_key)
-            _save_result(job, req, result, engine, seed_i, sampler)
-        with _lock:
+            jobs.save_result(
+                _store,
+                job,
+                result,
+                {
+                    "model_slug": engine.slug,
+                    "model_name": engine.name,
+                    "prompt": req.prompt or "Inpaint",
+                    "negative_prompt": req.negative or None,
+                    "steps": req.steps,
+                    "guidance_scale": req.guidance,
+                    "width": result.width,
+                    "height": result.height,
+                    "seed": seed_i,
+                    "sampler": sampler,
+                },
+            )
+        with _store.lock:
             job.status = "done"
         live.publish(pub_key)
     except Exception as exc:  # noqa: BLE001 - surfaced to the UI via job state
-        with _lock:
+        with _store.lock:
             job.status = "error"
             job.error = messages.INPAINT_FAILED.format(detail=str(exc))
         live.publish(pub_key)
     finally:
         inpaint_engine.unload()  # free the inpaint pipe
         job_guard.release(job.job_id)
-
-
-def _save_result(job, req, result, engine: UpscalerInfo, seed: int, sampler: str) -> None:
-    meta = gallery.save(
-        result,
-        {
-            "model_slug": engine.slug,
-            "model_name": engine.name,
-            "prompt": req.prompt or "Inpaint",
-            "negative_prompt": req.negative or None,
-            "steps": req.steps,
-            "guidance_scale": req.guidance,
-            "width": result.width,
-            "height": result.height,
-            "seed": seed,
-            "sampler": sampler,
-        },
-    )
-    with _lock:
-        if job.image_id is None:
-            job.image_id = meta.id
-        job.image_ids.append(meta.id)
 
 
 @router.post("", response_model=InpaintStarted)
@@ -196,18 +138,18 @@ def start_inpaint(req: InpaintRequest) -> InpaintStarted:
         raise HTTPException(409, messages.INPAINT_MODEL_MISSING)
 
     try:
-        image = _resolve_source(req)
+        image = jobs.resolve_source(req, messages.INPAINT_SOURCE_MISSING)
         mask = gallery.decode_data_url(req.mask_data, messages.INPAINT_MASK_MISSING)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
-    with _lock:
-        job = _Job(_new_job_id(), engine.name)
+    with _store.lock:
+        job = jobs.JobState(_store.new_id(), engine.name)
     busy = job_guard.acquire(job.job_id, "inpaint")
     if busy is not None:
         raise HTTPException(409, messages.JOB_BUSY.format(kind=busy))
-    with _lock:
-        _jobs[job.job_id] = job
+    with _store.lock:
+        _store.add(job)
 
     thread = threading.Thread(
         target=_run, args=(job, req, image, mask, engine), daemon=True
@@ -218,8 +160,8 @@ def start_inpaint(req: InpaintRequest) -> InpaintStarted:
 
 @router.get("/{job_id}", response_model=BatchProgress)
 def inpaint_progress(job_id: str) -> BatchProgress:
-    with _lock:
-        job = _jobs.get(job_id)
+    with _store.lock:
+        job = _store.get(job_id)
         if job is None:
             raise HTTPException(404, messages.JOB_NOT_FOUND.format(job_id=job_id))
         return BatchProgress(
