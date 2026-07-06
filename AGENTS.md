@@ -11,6 +11,9 @@ Diffusion family) models on Windows, with a Next.js frontend and a Python
 # File Structure
 - install.ps1        — GPU detection + PyTorch (CUDA/ROCm) + dependency install
 - start.bat          — starts backend (uvicorn) and frontend (next) together
+- test-frontend.bat  — one-click Playwright inspect harness: starts backend + frontend
+                       DEV server + a shared browser you drive; Claude attaches over CDP
+                       to inspect the UI (frontend/e2e)
 - backend/           — FastAPI + diffusers inference API
 - frontend/          — Next.js + MUI UI
 - docs/              — ADRs and technical debt
@@ -20,6 +23,7 @@ Diffusion family) models on Windows, with a Next.js frontend and a Python
 # Key Components
 - install.ps1 — the only supported way to set up the Python environment
 - start.bat   — the standard entry point after install
+- test-frontend.bat — Playwright inspect harness for UI/UX work (see frontend/e2e)
 
 # Dependencies
 Python 3.10–3.13, Node.js 18+, PyTorch (CUDA or ROCm), diffusers, Next.js, MUI.

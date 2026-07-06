@@ -95,3 +95,4 @@ next, react, @mui/material, @mui/icons-material, @mui/material-nextjs,
 - Child: ./src/components (atomic-design component library)
 - Child: ./src/providers (app-level context providers)
 - Child: ./src/lib (typed REST + WebSocket clients, pure helpers)
+- Child: ./e2e (Playwright inspect harness; launched by root test-frontend.bat)

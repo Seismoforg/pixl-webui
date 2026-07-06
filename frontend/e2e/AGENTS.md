@@ -1,0 +1,47 @@
+# Purpose
+Playwright inspect harness so Claude can DRIVE + INSPECT the frontend in a real local
+browser — screenshot (read the PNG) + exact element metrics (box model + computed
+styles) + a11y — to do UX/layout work and self-verify UI changes. Entry point:
+repo-root `test-frontend.bat`.
+
+# Responsibilities
+- One-click: `test-frontend.bat` starts the backend + frontend DEV server (live reload,
+  unlike `start.bat`'s prod build), waits for :3000, then opens the shared browser
+- Launch a shared, headed Chromium the USER drives (persistent profile, CDP on :9222),
+  pointed at the dev server (:3000)
+- On request, attach over CDP to the ACTIVE page and report: screenshot + per-element
+  box/computed-style metrics + optional axe a11y + console/network
+
+# File Structure
+- lib/shared-browser.mjs — launch persistent headed chromium (CDP `--remote-debugging-
+                           port`), open the app, stay alive. Env: APP_URL, CDP_PORT,
+                           HEADLESS=1 (default headed)
+- inspect.mjs            — `connectOverCDP` → active page → screenshot to screens/ +
+                           print metrics JSON for a selector. Flags: `--a11y` (axe
+                           violations), `--console` (console + failed requests via a
+                           reload), `--name <label>`
+- screens/              — screenshot output (gitignored)
+- .profile/             — persistent shared-browser profile (gitignored)
+
+# Key Components
+- shared-browser.mjs — the browser the user drives; must stay running while inspecting
+- inspect.mjs — the reporter; `browser.close()` only disconnects CDP, the user's window
+  stays open. Picks the `localhost:3000` tab, else the last-opened page
+
+# How Claude uses it
+1. Run `test-frontend.bat` (starts backend + frontend dev + the shared window).
+2. User prepares a state, says "look at X".
+3. Claude: `test-frontend.bat inspect "<selector>" [--a11y]` → Read screens/<label>.png +
+   read the metrics → edit CSS (dev server hot-reloads) → re-inspect.
+
+# Deferred (not built — future/on request)
+Headless mock harness (mock backend + snap + deterministic self-drive), regression
+specs (nav/generate/gallery/errors), live real-GPU generation smoke. See
+docs/technical-debt.md.
+
+# Dependencies
+@playwright/test (chromium via `npx playwright install chromium`), @axe-core/playwright.
+
+# Related Modules
+- Parent: ../  (frontend)
+- Drives: the running app (../ frontend served by start.bat)

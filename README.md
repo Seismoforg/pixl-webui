@@ -52,4 +52,18 @@ pixl-webui/
   data/           Local settings incl. HF token (git-ignored)
 ```
 
+## Frontend inspection (Playwright)
+
+For UI/UX work, `test-frontend.bat` is a one-click launcher: it starts the backend and
+the frontend **dev server** (live reload), then opens a shared browser you drive. The
+assistant attaches over CDP to inspect the active page — screenshot plus exact element
+metrics (box model, computed styles) and accessibility.
+
+```powershell
+.\test-frontend.bat
+```
+
+Prepare any state in the window, then ask the assistant to inspect (e.g. a selector on
+the current page). See [frontend/e2e/](frontend/e2e/) for details.
+
 See [docs/](docs/) for architecture and decision records.

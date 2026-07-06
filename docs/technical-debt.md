@@ -1,5 +1,17 @@
 # Technical Debt
 
+## Frontend inspect harness: only the shared-browser core is built  (added 2026-07-06)
+- Problem: The Playwright harness (`frontend/e2e`) ships only the shared-browser inspect
+  core — Claude attaches over CDP to a browser the user drives (`test-frontend.bat`).
+  The planned add-ons are NOT built: a headless mock-backend harness (deterministic
+  self-driven states via `page.route` + `routeWebSocket`), regression specs
+  (nav/generate/gallery/errors), and an opt-in live real-GPU generation smoke.
+- Impact: No automated regression coverage or self-driven (no-user) inspection yet;
+  inspecting needs the user to run `start.bat` + `test-frontend.bat` and drive the browser.
+- Proposed Resolution: Add the mock-backend fixture + `snap` helper + regression/a11y
+  specs and the `@live` generation smoke as a follow-up feature when durable coverage
+  is wanted.
+
 ## Removing a downloaded catalog entry orphans its files  (added 2026-07-05)
 - Problem: The Settings catalog editors edit the curated list only. Deleting an
   entry (or changing its slug) that was already downloaded leaves the weights in

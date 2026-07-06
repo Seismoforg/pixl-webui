@@ -20,6 +20,12 @@ data/
 # Generated images + metadata (project-local gallery)
 outputs/
 
+# Playwright inspect harness (screenshots + shared-browser profile)
+frontend/e2e/screens/
+frontend/e2e/.profile/
+frontend/playwright-report/
+frontend/test-results/
+
 # OS / editor
 Thumbs.db
 .DS_Store
