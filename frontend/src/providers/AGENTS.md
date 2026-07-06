@@ -67,5 +67,5 @@ navigation-surviving state or wraps the tree in a context lives here.
 react, @mui/material, @/lib (api, ws), @/theme, @/i18n
 
 # Related Modules
-- Parent: ../  (frontend/src, via ../../AGENTS.md)
+- Parent: ../../ (frontend)
 - Uses: ../lib (typed API + WebSocket clients), ../theme (theme tokens)

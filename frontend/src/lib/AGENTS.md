@@ -16,6 +16,8 @@ Backend-communication infrastructure and small pure helpers shared across the UI
               `useJobTracker` wraps subscribe + poll-fallback for a single running
               job (shared by the generation, upscale, reframe, inpaint & edit providers)
 - fit.ts    — maps a GPU-fit verdict to a chip color + locale keys
+- formLock.ts — `formLockStyle(locked)`: reset-styled fieldset style that dims + locks
+              a form's controls while a job runs (shared by all 5 feature forms)
 - reframe.ts— pure reframe geometry mirroring the backend (parseRatio / extendSize
               / coverRect + maskFeatherPx / seamFeatherPx softness→feather helpers);
               drives the client-side ReframePreview (incl. the outpaint gradient
@@ -46,5 +48,5 @@ react, @/types (response types). No UI/MUI dependency (fit.ts returns tokens/key
 not components).
 
 # Related Modules
-- Parent: ../  (frontend/src, via ../../AGENTS.md)
+- Parent: ../../ (frontend)
 - Consumed by: ../providers (data + progress), ../components (fit/stats helpers)
