@@ -306,6 +306,48 @@ export const InpaintCanvas = ({
     endStroke();
   };
 
+  // Keyboard painting fallback: focus the surface, move a virtual brush with the
+  // arrow keys (Shift = fine step) and dab with Space/Enter, so the mask is
+  // operable without a pointer/touch device.
+  const KEY_MOVE = 12; // display px per arrow press
+  const dabAtDisplay = useCallback(
+    (dx: number, dy: number) => {
+      const cur = cursorRef.current;
+      if (!cur || !dims) return;
+      const rect = cur.getBoundingClientRect();
+      const scale = dims.w / rect.width;
+      const r = Math.max(1, (brushSize / 2) * scale);
+      dab(dx * scale, dy * scale, r);
+      lastPt.current = null;
+    },
+    [dims, brushSize, dab],
+  );
+  const onFocusSurface = () => {
+    if (hover.current || !displayW || !displayH) return;
+    hover.current = { x: displayW / 2, y: displayH / 2 };
+    drawCursor();
+  };
+  const onKeyDownSurface = (e: React.KeyboardEvent) => {
+    if (disabled || !dims || !displayW || !displayH) return;
+    const pos = hover.current ?? { x: displayW / 2, y: displayH / 2 };
+    const step = e.shiftKey ? 3 : KEY_MOVE;
+    if (e.key === "ArrowUp") pos.y -= step;
+    else if (e.key === "ArrowDown") pos.y += step;
+    else if (e.key === "ArrowLeft") pos.x -= step;
+    else if (e.key === "ArrowRight") pos.x += step;
+    else if (e.key === " " || e.key === "Enter") {
+      dabAtDisplay(pos.x, pos.y);
+      refreshOverlay();
+      exportMask();
+    } else return;
+    e.preventDefault();
+    hover.current = {
+      x: Math.min(displayW, Math.max(0, pos.x)),
+      y: Math.min(displayH, Math.max(0, pos.y)),
+    };
+    drawCursor();
+  };
+
   const clearMask = () => onChange(null);
 
   // Invert the mask: white everywhere minus the current strokes. Filling white then
@@ -378,8 +420,17 @@ export const InpaintCanvas = ({
           border: 1,
           borderColor: "divider",
           bgcolor: "action.hover",
-          minHeight: preview ? undefined : 200,
+          // Reserve the box height up front: a flat 200px until the source's
+          // natural size is known (avoids collapsing to 0 during image decode),
+          // then the exact aspect ratio so the box tracks the displayed image.
+          minHeight: dims ? undefined : 200,
+          aspectRatio: dims ? `${dims.w} / ${dims.h}` : undefined,
           touchAction: "none",
+          "& canvas:focus-visible": {
+            outline: "2px solid",
+            outlineColor: "primary.main",
+            outlineOffset: "-2px",
+          },
         }}
       >
         {preview ? (
@@ -405,8 +456,12 @@ export const InpaintCanvas = ({
             {/* Cursor canvas on top: brush rings + pointer capture. */}
             <canvas
               ref={cursorRef}
-              role="img"
+              role="application"
               aria-label={t("inpaint.canvas.ariaLabel")}
+              aria-disabled={disabled || undefined}
+              tabIndex={disabled ? -1 : 0}
+              onFocus={onFocusSurface}
+              onKeyDown={onKeyDownSurface}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={endStroke}

@@ -31,7 +31,10 @@ export const ConnectionStatus = () => {
             width: 8,
             height: 8,
             borderRadius: "50%",
-            bgcolor: connected ? "success.main" : "text.disabled",
+            // Filled disc when live, hollow ring when offline — a shape difference
+            // (not just color) so the status reads without relying on color vision.
+            bgcolor: connected ? "success.main" : "transparent",
+            border: connected ? "none" : (theme) => `1.5px solid ${theme.palette.text.secondary}`,
             boxShadow: connected ? (theme) => `0 0 0 3px ${theme.palette.success.main}22` : "none",
             flexShrink: 0,
           }}

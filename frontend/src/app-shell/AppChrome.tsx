@@ -15,8 +15,6 @@ import AppBar from "@mui/material/AppBar";
 import Box from "@mui/material/Box";
 import Container from "@mui/material/Container";
 import IconButton from "@mui/material/IconButton";
-import Tab from "@mui/material/Tab";
-import Tabs from "@mui/material/Tabs";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import NextLink from "next/link";
@@ -53,7 +51,6 @@ export const AppChrome = ({ children }: { children: ReactNode }) => {
   const pathname = usePathname();
 
   const activeIndex = NAV.findIndex((n) => pathname.startsWith(n.href));
-  const tabValue = activeIndex === -1 ? false : activeIndex;
 
   // Publish the sticky AppBar's live height as a CSS var so sticky result panels can
   // offset below it (it's responsive: the tab row + status bar change its height), and
@@ -91,7 +88,7 @@ export const AppChrome = ({ children }: { children: ReactNode }) => {
             edge="start"
             onClick={() => setDrawerOpen(true)}
             aria-label={t("nav.menu")}
-            sx={{ display: { xs: "inline-flex", md: "none" }, mr: 0.5 }}
+            sx={{ display: { xs: "inline-flex", md: "none" }, mr: 0.5, p: { xs: 1.25, md: 1 } }}
           >
             <MenuIcon />
           </IconButton>
@@ -99,7 +96,9 @@ export const AppChrome = ({ children }: { children: ReactNode }) => {
           <Box sx={{ flexGrow: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 1.5 }}>
             <Logo size={36} />
             <Box sx={{ minWidth: 0 }}>
-              <Typography variant="h6" component="h1" noWrap>
+              {/* h6 is now a smaller, monotonic type-scale step (see theme.ts); this
+                  title keeps its previous visual size via an explicit override. */}
+              <Typography variant="h6" component="h1" noWrap sx={{ fontSize: "1.15rem" }}>
                 {t("app.title")}
               </Typography>
               <Typography
@@ -114,35 +113,57 @@ export const AppChrome = ({ children }: { children: ReactNode }) => {
           </Box>
 
           <ConnectionStatus />
-          <IconButton onClick={toggle} aria-label={t("nav.toggleTheme")}>
+          <IconButton
+            onClick={toggle}
+            aria-label={t(mode === "dark" ? "nav.switchToLight" : "nav.switchToDark")}
+            sx={{ p: { xs: 1.25, md: 1 } }}
+          >
             {mode === "dark" ? <LightModeIcon /> : <DarkModeIcon />}
           </IconButton>
           <IconButton
             component={NextLink}
             href="/settings"
             aria-label={t("nav.settings")}
+            sx={{ p: { xs: 1.25, md: 1 } }}
           >
             <SettingsIcon />
           </IconButton>
         </Toolbar>
 
-        <Box sx={{ display: { xs: "none", md: "block" } }}>
-          <Tabs value={tabValue} sx={{ px: 2 }}>
-            {NAV.map((n) => {
-              const Icon = n.icon;
-              return (
-                <Tab
-                  key={n.href}
-                  component={NextLink}
-                  href={n.href}
-                  icon={<Icon fontSize="small" />}
-                  iconPosition="start"
-                  label={t(n.key)}
-                  sx={{ minHeight: 48 }}
-                />
-              );
-            })}
-          </Tabs>
+        <Box
+          component="nav"
+          aria-label={t("nav.mainNavigation")}
+          sx={{ display: { xs: "none", md: "flex" }, px: 2, gap: 0.5 }}
+        >
+          {NAV.map((n, i) => {
+            const Icon = n.icon;
+            const active = i === activeIndex;
+            return (
+              <Box
+                key={n.href}
+                component={NextLink}
+                href={n.href}
+                aria-current={active ? "page" : undefined}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  minHeight: 48,
+                  px: 2,
+                  fontSize: (theme) => theme.typography.button.fontSize,
+                  fontWeight: (theme) => theme.typography.button.fontWeight,
+                  color: active ? "primary.main" : "text.secondary",
+                  textDecoration: "none",
+                  borderBottom: 2,
+                  borderColor: active ? "primary.main" : "transparent",
+                  "&:hover": { color: "text.primary" },
+                }}
+              >
+                <Icon fontSize="small" />
+                {t(n.key)}
+              </Box>
+            );
+          })}
         </Box>
 
         <SystemStatusBar />

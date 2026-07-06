@@ -28,6 +28,10 @@ import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { ConfirmDialog } from "@/components/molecules/ConfirmDialog";
 import { LoadingIndicator } from "@/components/molecules/LoadingIndicator";
 import { useTranslations } from "@/i18n";
+import { getPath, setPath, type Draft } from "@/lib/objectPath";
+
+// Dialog field grid: min width before a field wraps to its own row.
+const FIELD_MIN_WIDTH = 220;
 
 export type FieldType = "text" | "multiline" | "number" | "boolean" | "select";
 
@@ -54,23 +58,6 @@ interface CatalogEditorProps<T> {
   secondaryText: (entry: T) => string;
   onSaved?: () => void; // notify the app after a successful save/reset
 }
-
-type Draft = Record<string, unknown>;
-
-const getPath = (obj: Draft, path: string): unknown =>
-  path.split(".").reduce<unknown>(
-    (acc, key) => (acc == null ? undefined : (acc as Draft)[key]),
-    obj,
-  );
-
-const setPath = (obj: Draft, path: string, value: unknown): Draft => {
-  const keys = path.split(".");
-  const next = structuredClone(obj);
-  let cur = next as Draft;
-  for (let i = 0; i < keys.length - 1; i += 1) cur = cur[keys[i]] as Draft;
-  cur[keys[keys.length - 1]] = value;
-  return next;
-};
 
 /**
  * Reusable Settings section for editing a curated JSON catalog (generation models
@@ -128,10 +115,12 @@ export const CatalogEditor = <T,>({
 
   const openAdd = () => {
     setDraft(structuredClone(emptyEntry) as Draft);
+    setError(null);
     setEditing({ mode: "add", index: -1 });
   };
   const openEdit = (index: number) => {
     setDraft(structuredClone(entries[index]) as Draft);
+    setError(null);
     setEditing({ mode: "edit", index });
   };
 
@@ -148,6 +137,14 @@ export const CatalogEditor = <T,>({
   const submit = async () => {
     if (editing === null) return;
     const entry = buildEntry();
+    const newSlug = String(getPath(entry as unknown as Draft, "slug") ?? "").trim();
+    const collides = entries.some(
+      (e, i) => i !== editing.index && String(getPath(e as unknown as Draft, "slug") ?? "").trim() === newSlug,
+    );
+    if (collides) {
+      setError(t("settings.catalog.duplicateSlug"));
+      return;
+    }
     const next =
       editing.mode === "add"
         ? [...entries, entry]
@@ -277,7 +274,7 @@ export const CatalogEditor = <T,>({
         <List dense disablePadding>
           {entries.map((entry, index) => (
             <ListItem
-              key={primaryText(entry) + index}
+              key={String(getPath(entry as unknown as Draft, "slug") ?? index)}
               disableGutters
               secondaryAction={
                 <>
@@ -317,11 +314,19 @@ export const CatalogEditor = <T,>({
             : t("settings.catalog.editTitle")}
         </DialogTitle>
         <DialogContent dividers>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+              {error}
+            </Alert>
+          )}
           <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2, mt: 1 }}>
             {fields.map((f) => (
               <Box
                 key={f.key}
-                sx={{ flex: f.type === "multiline" ? "1 1 100%" : "1 1 220px", minWidth: 0 }}
+                sx={{
+                  flex: f.type === "multiline" ? "1 1 100%" : `1 1 ${FIELD_MIN_WIDTH}px`,
+                  minWidth: 0,
+                }}
               >
                 {renderField(f)}
               </Box>
@@ -346,9 +351,9 @@ export const CatalogEditor = <T,>({
       />
       <ConfirmDialog
         open={pendingReset}
-        title={t("settings.catalog.reset")}
+        title={t("settings.catalog.resetTitle")}
         message={t("settings.catalog.resetConfirm")}
-        confirmLabel={t("settings.catalog.reset")}
+        confirmLabel={t("settings.catalog.resetConfirmAction")}
         onConfirm={doReset}
         onClose={() => setPendingReset(false)}
       />

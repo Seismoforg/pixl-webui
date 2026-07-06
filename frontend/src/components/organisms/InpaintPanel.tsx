@@ -3,14 +3,10 @@
 import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
 import BrushIcon from "@mui/icons-material/Brush";
 import ClearIcon from "@mui/icons-material/Clear";
-import DownloadIcon from "@mui/icons-material/Download";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import LinearProgress from "@mui/material/LinearProgress";
-import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { useCallback, useEffect, useState } from "react";
@@ -20,7 +16,7 @@ import { BrushControls } from "@/components/molecules/BrushControls";
 import { InfoTip } from "@/components/molecules/InfoTip";
 import { GenerationParams } from "@/components/molecules/GenerationParams";
 import { LabeledSlider } from "@/components/molecules/LabeledSlider";
-import { LoadingIndicator } from "@/components/molecules/LoadingIndicator";
+import { EnginePicker } from "@/components/organisms/EnginePicker";
 import { GalleryPicker } from "@/components/organisms/GalleryPicker";
 import { InpaintCanvas } from "@/components/organisms/InpaintCanvas";
 import { InpaintResult } from "@/components/organisms/InpaintResult";
@@ -29,9 +25,11 @@ import { SourcePicker } from "@/components/organisms/SourcePicker";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { formLockStyle } from "@/lib/formLock";
+import { useEngineCatalog } from "@/lib/useEngineCatalog";
+import { useImageSource } from "@/lib/useImageSource";
 import { useInpaint } from "@/providers/InpaintProvider";
 import { trackUpscalerDownload, useDownloads } from "@/providers/DownloadProvider";
-import type { GalleryImage, PromptSnippet, UpscalerEngine } from "@/types";
+import type { PromptSnippet, UpscalerEngine } from "@/types";
 
 interface InpaintPanelProps {
   reloadToken: number;
@@ -93,32 +91,26 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
   } = inpaint;
 
   const downloads = useDownloads();
-  const [engines, setEngines] = useState<UpscalerEngine[]>([]);
+  const { engines, loading: enginesLoading, error: enginesError, reload: reloadEngines } = useEngineCatalog();
   const [snippets, setSnippets] = useState<PromptSnippet[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sourceMeta, setSourceMeta] = useState<GalleryImage | null>(null);
-  const [uploadDims, setUploadDims] = useState<{ w: number; h: number } | null>(null);
-  const [enginesLoading, setEnginesLoading] = useState(true);
   const [defaultEngine, setDefaultEngine] = useState<string | null>(null);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
-  const reloadEngines = useCallback(() => {
-    api
-      .getUpscalers()
-      .then(setEngines)
-      .catch(() => setEngines([]))
-      .finally(() => setEnginesLoading(false));
-  }, []);
+  const { sourceMeta, setUploadDims, sourcePreview, sourceDims } = useImageSource(
+    source,
+    setSource,
+    initialImageId,
+  );
 
   const reloadSnippets = useCallback(() => {
     api.getPromptSnippets().then(setSnippets).catch(() => setSnippets([]));
   }, []);
 
   useEffect(() => {
-    reloadEngines();
     reloadSnippets();
-  }, [reloadEngines, reloadSnippets]);
+  }, [reloadSnippets]);
 
   const inpaintEngines = engines.filter((e) => e.kind === "inpaint");
   const selectedEngine =
@@ -143,30 +135,6 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
       downloaded.find((e) => e.slug === defaultEngine) ?? downloaded[0] ?? inpaintEngines[0];
     setEngine(target.slug);
   }, [inpaintEngines, engine, defaultEngine, settingsLoaded, setEngine]);
-
-  // Preselect a gallery image passed via the deep-link (?image=<id>).
-  useEffect(() => {
-    if (initialImageId) {
-      setSource({ kind: "gallery", imageId: initialImageId, preview: api.imageFileUrl(initialImageId) });
-    }
-  }, [initialImageId]);
-
-  // Load the gallery source's metadata (size + prompt) for the readout + auto-fill.
-  useEffect(() => {
-    setUploadDims(null);
-    if (source?.kind === "gallery") {
-      let active = true;
-      api
-        .getImage(source.imageId)
-        .then((m) => active && setSourceMeta(m))
-        .catch(() => active && setSourceMeta(null));
-      return () => {
-        active = false;
-      };
-    }
-    setSourceMeta(null);
-    return undefined;
-  }, [source]);
 
   // FLUX Fill wants a higher guidance (~30) and more steps (~50) than SD inpaint.
   useEffect(() => {
@@ -226,16 +194,6 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
     });
   };
 
-  const sourcePreview =
-    source?.kind === "gallery" ? source.preview : source?.kind === "upload" ? source.dataUrl : null;
-
-  const sourceDims =
-    source?.kind === "gallery"
-      ? sourceMeta
-        ? { w: sourceMeta.width, h: sourceMeta.height }
-        : null
-      : uploadDims;
-
   const handleClear = () => {
     setSource(null);
     setMaskData(null);
@@ -245,14 +203,18 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
     inpaint.reset();
   };
 
+  const displayError = error ?? jobError ?? (enginesError ? t("inpaint.engineLoadError") : null);
+  const downloadPercent =
+    engineDl && engineDl.status === "downloading" ? engineDl.percent : null;
+
   return (
     <Box>
       <SectionHeading level={2} sx={{ mb: 2 }}>
         {t("inpaint.title")}
       </SectionHeading>
 
-      {(error ?? jobError) && (
-        <Alert severity="error" sx={{ mb: 2 }}>{error ?? jobError}</Alert>
+      {displayError && (
+        <Alert severity="error" sx={{ mb: 2 }}>{displayError}</Alert>
       )}
 
       <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, alignItems: "start" }}>
@@ -269,52 +231,32 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
               />
 
               {/* Inpaint model */}
-              {enginesLoading && inpaintEngines.length === 0 ? (
-                <LoadingIndicator label={t("loading.engines")} minHeight={80} />
-              ) : (
-                inpaintEngines.length > 0 && (
-                  <TextField
-                    select
-                    size="small"
-                    label={t("inpaint.model")}
-                    value={selectedEngine?.slug ?? ""}
-                    onChange={(e) => setEngine(e.target.value)}
-                    helperText={t("inpaint.modelHelp")}
-                    sx={{ minWidth: { xs: "100%", sm: 260 } }}
-                  >
-                    {inpaintEngines.map((e) => (
-                      <MenuItem key={e.slug} value={e.slug}>
-                        {e.name}
-                        {!e.downloaded ? ` — ${t("inpaint.notInstalled")}` : ""}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                )
-              )}
-
-              {needDownload && selectedEngine && (
-                <Box>
-                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
-                    {t("inpaint.needsModel", { size: selectedEngine.approx_size_gb })}
-                  </Typography>
-                  {engineDl?.status === "downloading" ? (
-                    <Box>
-                      <LinearProgress variant="determinate" value={engineDl.percent} />
-                      <Typography variant="caption" color="text.secondary">
-                        {t("inpaint.downloading")} {engineDl.percent}%
-                      </Typography>
-                    </Box>
-                  ) : (
-                    <Button
-                      variant="contained"
-                      size="small"
-                      startIcon={<DownloadIcon />}
-                      onClick={() => startEngineDownload(selectedEngine)}
-                    >
-                      {t("inpaint.download")}
-                    </Button>
-                  )}
-                </Box>
+              {(enginesLoading || inpaintEngines.length > 0) && (
+                <EnginePicker
+                  engine={selectedEngine}
+                  engines={inpaintEngines}
+                  loading={enginesLoading}
+                  downloadPercent={downloadPercent}
+                  onSelect={setEngine}
+                  onDownload={() => selectedEngine && startEngineDownload(selectedEngine)}
+                  showHeading={false}
+                  label={t("inpaint.model")}
+                  notInstalledLabel={t("inpaint.notInstalled")}
+                  helperText={t("inpaint.modelHelp")}
+                  showDetails={false}
+                  needsModelText={
+                    selectedEngine
+                      ? t("inpaint.needsModel", { size: selectedEngine.approx_size_gb })
+                      : undefined
+                  }
+                  downloadLabel={t("inpaint.download")}
+                  downloadingLabel={t("inpaint.downloading")}
+                  downloadButtonSize="small"
+                  loadingMinHeight={80}
+                  fullWidth={false}
+                  fieldSize="small"
+                  fieldSx={{ minWidth: { xs: "100%", sm: 260 } }}
+                />
               )}
 
               {/* Mask editor + brush */}

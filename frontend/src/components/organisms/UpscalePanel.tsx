@@ -22,9 +22,11 @@ import { UpscaleResult } from "@/components/organisms/UpscaleResult";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { formLockStyle } from "@/lib/formLock";
+import { useEngineCatalog } from "@/lib/useEngineCatalog";
+import { useImageSource } from "@/lib/useImageSource";
 import { useUpscale } from "@/providers/UpscaleProvider";
 import { trackUpscalerDownload, useDownloads } from "@/providers/DownloadProvider";
-import type { GalleryImage, PromptSnippet, UpscalerEngine } from "@/types";
+import type { PromptSnippet, UpscalerEngine } from "@/types";
 
 interface UpscalePanelProps {
   reloadToken: number;
@@ -54,26 +56,19 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
   } = upscale;
 
   const downloads = useDownloads();
-  const [engines, setEngines] = useState<UpscalerEngine[]>([]);
+  const { engines, loading: enginesLoading, error: enginesError, reload: reloadEngines } = useEngineCatalog();
   const [snippets, setSnippets] = useState<PromptSnippet[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Metadata for a gallery source (full-res size + seed/prompt/model); upload size
-  // read from the loaded <img> since uploads carry no metadata.
-  const [sourceMeta, setSourceMeta] = useState<GalleryImage | null>(null);
-  const [uploadDims, setUploadDims] = useState<{ w: number; h: number } | null>(null);
-  const [enginesLoading, setEnginesLoading] = useState(true);
   // Preferred default upscaler from Settings (applied only when downloaded).
   const [defaultUpscaler, setDefaultUpscaler] = useState<string | null>(null);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
-  const reloadEngines = useCallback(() => {
-    api
-      .getUpscalers()
-      .then(setEngines)
-      .catch(() => setEngines([]))
-      .finally(() => setEnginesLoading(false));
-  }, []);
+  const { sourceMeta, setUploadDims, sourcePreview, sourceDims } = useImageSource(
+    source,
+    setSource,
+    initialImageId,
+  );
 
   const reloadSnippets = useCallback(() => {
     api
@@ -83,9 +78,8 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
   }, []);
 
   useEffect(() => {
-    reloadEngines();
     reloadSnippets();
-  }, [reloadEngines, reloadSnippets]);
+  }, [reloadSnippets]);
 
   // Load the preferred default upscaler from Settings (best-effort).
   useEffect(() => {
@@ -108,31 +102,6 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
       downloaded.find((e) => e.slug === defaultUpscaler) ?? downloaded[0] ?? selectable[0];
     setEngineSlug(target.slug);
   }, [engines, engineSlug, defaultUpscaler, settingsLoaded, setEngineSlug]);
-
-  // Preselect a gallery image passed via the deep-link (?image=<id>).
-  useEffect(() => {
-    if (initialImageId) {
-      setSource({ kind: "gallery", imageId: initialImageId, preview: api.imageFileUrl(initialImageId) });
-    }
-  }, [initialImageId]);
-
-  // Load the gallery source's metadata (full-res size + seed/prompt/model). Covers
-  // both the picker and the deep-link path. Reset the upload size on every change.
-  useEffect(() => {
-    setUploadDims(null);
-    if (source?.kind === "gallery") {
-      let active = true;
-      api
-        .getImage(source.imageId)
-        .then((m) => active && setSourceMeta(m))
-        .catch(() => active && setSourceMeta(null));
-      return () => {
-        active = false;
-      };
-    }
-    setSourceMeta(null);
-    return undefined;
-  }, [source]);
 
   // Inpaint engines aren't selectable upscalers — they populate the outpaint-model
   // dropdown, which now lives on the Reframe page — so they're filtered out here.
@@ -184,17 +153,7 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
     });
   };
 
-  const sourcePreview =
-    source?.kind === "gallery" ? source.preview : source?.kind === "upload" ? source.dataUrl : null;
-
-  // Full-res size: from metadata for a gallery image (the preview is a downscaled
-  // next/image), from the loaded <img> for an upload.
-  const sourceDims =
-    source?.kind === "gallery"
-      ? sourceMeta
-        ? { w: sourceMeta.width, h: sourceMeta.height }
-        : null
-      : uploadDims;
+  const displayError = error ?? jobError ?? (enginesError ? t("upscale.engineLoadError") : null);
 
   const handleClear = () => {
     setSource(null);
@@ -209,8 +168,8 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
         {t("upscale.title")}
       </SectionHeading>
 
-      {(error ?? jobError) && (
-        <Alert severity="error" sx={{ mb: 2 }}>{error ?? jobError}</Alert>
+      {displayError && (
+        <Alert severity="error" sx={{ mb: 2 }}>{displayError}</Alert>
       )}
 
       <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, alignItems: "start" }}>

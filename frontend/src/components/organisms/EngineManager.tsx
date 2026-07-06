@@ -20,6 +20,7 @@ import Typography from "@mui/material/Typography";
 import { useEffect, useMemo, useState } from "react";
 
 import { trackUpscalerDownload, useDownloads } from "@/providers/DownloadProvider";
+import { MonoText } from "@/components/atoms/MonoText";
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { ConfirmDialog } from "@/components/molecules/ConfirmDialog";
 import { SkeletonList } from "@/components/molecules/SkeletonList";
@@ -38,7 +39,7 @@ import type { DownloadProgress, UpscalerEngine } from "@/types";
 export const EngineManager = () => {
   const t = useTranslations();
   const downloads = useDownloads();
-  const { data, loading, reload } = useAsyncData(() => api.getUpscalers(), []);
+  const { data, loading, error: loadError, reload } = useAsyncData(() => api.getUpscalers(), []);
   const engines = useMemo<UpscalerEngine[]>(() => data ?? [], [data]);
   const [pendingSlug, setPendingSlug] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -120,8 +121,12 @@ export const EngineManager = () => {
         </Alert>
       )}
 
-      {loading && engines.length === 0 ? (
+      {loadError && engines.length === 0 ? (
+        <Alert severity="error">{t("engines.loadError")}</Alert>
+      ) : loading && engines.length === 0 ? (
         <SkeletonList count={3} />
+      ) : engines.length === 0 ? (
+        <Alert severity="info">{t("engines.empty")}</Alert>
       ) : (
         <Stack spacing={3}>
           {section("models.installed", installed)}
@@ -197,18 +202,18 @@ const EngineRow = ({ engine, progress, onDownload, onDelete }: EngineRowProps) =
 
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, alignItems: "center" }}>
           <Chip label={t(`engines.kind.${engine.kind}`)} size="small" color="primary" variant="outlined" />
-          <Chip label={`${engine.scale}×`} size="small" variant="outlined" />
+          <Chip label={<MonoText>{`${engine.scale}×`}</MonoText>} size="small" variant="outlined" />
           {engine.approx_size_gb > 0 && (
             <Chip
               icon={<StorageIcon />}
-              label={`${t("models.size")} ≈ ${engine.approx_size_gb} GB`}
+              label={<MonoText>{`${t("models.size")} ≈ ${engine.approx_size_gb} GB`}</MonoText>}
               size="small"
               variant="outlined"
             />
           )}
           <Chip
             icon={<MemoryIcon />}
-            label={`${t("models.vram")} ≥ ${engine.min_vram_gb} GB`}
+            label={<MonoText>{`${t("models.vram")} ≥ ${engine.min_vram_gb} GB`}</MonoText>}
             size="small"
             variant="outlined"
           />

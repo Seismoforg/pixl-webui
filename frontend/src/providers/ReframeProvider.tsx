@@ -5,16 +5,16 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
 
-import { useActivity } from "@/providers/ActivityProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
-import { clearJob, loadJob, saveJob } from "@/lib/jobPersistence";
+import { clearJob, saveJob } from "@/lib/jobPersistence";
+import { useJobRehydrate, usePublishJobActivity } from "@/lib/jobHooks";
 import { useJobTracker } from "@/lib/ws";
-import { upscaleStatsView } from "@/lib/stats";
 import type { ReframeProgress, ReframeRequest, ReframeStrategy, Sampler } from "@/types";
 import type { UpscaleSource } from "@/providers/UpscaleProvider";
 
@@ -183,40 +183,10 @@ export const ReframeProvider = ({ onReframed, children }: ReframeProviderProps) 
 
   // Re-attach to a job that was still running when the page reloaded (see the
   // generation provider for the rationale).
-  useEffect(() => {
-    const saved = loadJob("reframe");
-    if (!saved) return undefined;
-    let active = true;
-    api
-      .getReframeProgress(saved)
-      .then((p) => {
-        if (!active) return;
-        if (p.status === "running") setJobId(saved);
-        else clearJob("reframe");
-      })
-      .catch(() => active && clearJob("reframe"));
-    return () => {
-      active = false;
-    };
-  }, []);
+  useJobRehydrate("reframe", (id) => api.getReframeProgress(id), setJobId);
 
   // Publish the running job to the shared activity store for the off-route bubble.
-  const { set: setActivity } = useActivity();
-  useEffect(() => {
-    if (!running) {
-      setActivity("reframe", null);
-      return;
-    }
-    const view = upscaleStatsView(progress, t);
-    setActivity("reframe", {
-      id: "reframe",
-      title: t("activity.reframe"),
-      route: "/reframe",
-      status: "running",
-      detail: view.speed ? `${view.label} · ${view.speed}` : view.label,
-      percent: view.percent,
-    });
-  }, [running, progress, setActivity, t]);
+  usePublishJobActivity("reframe", "/reframe", "activity.reframe", running, progress);
 
   const start = useCallback(async (req: ReframeRequest) => {
     setError(null);
@@ -239,58 +209,91 @@ export const ReframeProvider = ({ onReframed, children }: ReframeProviderProps) 
     setProgress(null);
   }, []);
 
-  const value: ReframeContextValue = {
-    source,
-    targetRatio,
-    customWidth,
-    customHeight,
-    reframe,
-    outpaintPrompt,
-    outpaintNegative,
-    outpaintEngine,
-    maskFeather,
-    seamFeather,
-    seedBlur,
-    posX,
-    posY,
-    scale,
-    outpaintSteps,
-    outpaintRefineSteps,
-    outpaintRefine,
-    outpaintGuidance,
-    outpaintSampler,
-    outpaintSeed,
-    outpaintBatch,
-    samplers,
-    setSource,
-    setTargetRatio,
-    setCustomWidth,
-    setCustomHeight,
-    setReframe,
-    setOutpaintPrompt,
-    setOutpaintNegative,
-    setOutpaintEngine,
-    setMaskFeather,
-    setSeamFeather,
-    setSeedBlur,
-    setPosX,
-    setPosY,
-    setScale,
-    setOutpaintSteps,
-    setOutpaintRefineSteps,
-    setOutpaintRefine,
-    setOutpaintGuidance,
-    setOutpaintSampler,
-    setOutpaintSeed,
-    setOutpaintBatch,
-    progress,
-    resultId,
-    resultIds,
-    error,
-    running,
-    start,
-    reset,
-  };
+  const value = useMemo<ReframeContextValue>(
+    () => ({
+      source,
+      targetRatio,
+      customWidth,
+      customHeight,
+      reframe,
+      outpaintPrompt,
+      outpaintNegative,
+      outpaintEngine,
+      maskFeather,
+      seamFeather,
+      seedBlur,
+      posX,
+      posY,
+      scale,
+      outpaintSteps,
+      outpaintRefineSteps,
+      outpaintRefine,
+      outpaintGuidance,
+      outpaintSampler,
+      outpaintSeed,
+      outpaintBatch,
+      samplers,
+      setSource,
+      setTargetRatio,
+      setCustomWidth,
+      setCustomHeight,
+      setReframe,
+      setOutpaintPrompt,
+      setOutpaintNegative,
+      setOutpaintEngine,
+      setMaskFeather,
+      setSeamFeather,
+      setSeedBlur,
+      setPosX,
+      setPosY,
+      setScale,
+      setOutpaintSteps,
+      setOutpaintRefineSteps,
+      setOutpaintRefine,
+      setOutpaintGuidance,
+      setOutpaintSampler,
+      setOutpaintSeed,
+      setOutpaintBatch,
+      progress,
+      resultId,
+      resultIds,
+      error,
+      running,
+      start,
+      reset,
+    }),
+    [
+      source,
+      targetRatio,
+      customWidth,
+      customHeight,
+      reframe,
+      outpaintPrompt,
+      outpaintNegative,
+      outpaintEngine,
+      maskFeather,
+      seamFeather,
+      seedBlur,
+      posX,
+      posY,
+      scale,
+      outpaintSteps,
+      outpaintRefineSteps,
+      outpaintRefine,
+      outpaintGuidance,
+      outpaintSampler,
+      outpaintSeed,
+      outpaintBatch,
+      samplers,
+      progress,
+      resultId,
+      resultIds,
+      error,
+      running,
+      start,
+      reset,
+    ],
+  );
 
   return <ReframeContext.Provider value={value}>{children}</ReframeContext.Provider>;
 };

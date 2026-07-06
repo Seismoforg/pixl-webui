@@ -2,30 +2,29 @@
 
 import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
 import ClearIcon from "@mui/icons-material/Clear";
-import DownloadIcon from "@mui/icons-material/Download";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
-import LinearProgress from "@mui/material/LinearProgress";
-import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { GenerationParams } from "@/components/molecules/GenerationParams";
-import { LoadingIndicator } from "@/components/molecules/LoadingIndicator";
 import { EditResult } from "@/components/organisms/EditResult";
+import { EnginePicker } from "@/components/organisms/EnginePicker";
 import { GalleryPicker } from "@/components/organisms/GalleryPicker";
 import { SourcePicker } from "@/components/organisms/SourcePicker";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { formLockStyle } from "@/lib/formLock";
+import { useEngineCatalog } from "@/lib/useEngineCatalog";
+import { useImageSource } from "@/lib/useImageSource";
 import { useEdit } from "@/providers/EditProvider";
 import { trackUpscalerDownload, useDownloads } from "@/providers/DownloadProvider";
-import type { GalleryImage, UpscalerEngine } from "@/types";
+import type { UpscalerEngine } from "@/types";
 
 interface EditPanelProps {
   reloadToken: number;
@@ -60,24 +59,15 @@ export const EditPanel = ({ reloadToken, initialImageId }: EditPanelProps) => {
   } = edit;
 
   const downloads = useDownloads();
-  const [engines, setEngines] = useState<UpscalerEngine[]>([]);
+  const { engines, loading: enginesLoading, error: enginesError, reload: reloadEngines } = useEngineCatalog();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sourceMeta, setSourceMeta] = useState<GalleryImage | null>(null);
-  const [uploadDims, setUploadDims] = useState<{ w: number; h: number } | null>(null);
-  const [enginesLoading, setEnginesLoading] = useState(true);
 
-  const reloadEngines = useCallback(() => {
-    api
-      .getUpscalers()
-      .then(setEngines)
-      .catch(() => setEngines([]))
-      .finally(() => setEnginesLoading(false));
-  }, []);
-
-  useEffect(() => {
-    reloadEngines();
-  }, [reloadEngines]);
+  const { sourceMeta, setUploadDims, sourcePreview, sourceDims } = useImageSource(
+    source,
+    setSource,
+    initialImageId,
+  );
 
   const editEngines = engines.filter((e) => e.kind === "edit");
   const selectedEngine = editEngines.find((e) => e.slug === engine) ?? editEngines[0] ?? null;
@@ -90,30 +80,6 @@ export const EditPanel = ({ reloadToken, initialImageId }: EditPanelProps) => {
     const target = editEngines.find((e) => e.downloaded) ?? editEngines[0];
     setEngine(target.slug);
   }, [editEngines, engine, setEngine]);
-
-  // Preselect a gallery image passed via the deep-link (?image=<id>).
-  useEffect(() => {
-    if (initialImageId) {
-      setSource({ kind: "gallery", imageId: initialImageId, preview: api.imageFileUrl(initialImageId) });
-    }
-  }, [initialImageId]);
-
-  // Load the gallery source's metadata (size) for the readout.
-  useEffect(() => {
-    setUploadDims(null);
-    if (source?.kind === "gallery") {
-      let active = true;
-      api
-        .getImage(source.imageId)
-        .then((m) => active && setSourceMeta(m))
-        .catch(() => active && setSourceMeta(null));
-      return () => {
-        active = false;
-      };
-    }
-    setSourceMeta(null);
-    return undefined;
-  }, [source]);
 
   const engineDl = selectedEngine ? downloads.progress[selectedEngine.slug] : undefined;
   const needDownload = !!selectedEngine && !selectedEngine.downloaded;
@@ -156,16 +122,6 @@ export const EditPanel = ({ reloadToken, initialImageId }: EditPanelProps) => {
     });
   };
 
-  const sourcePreview =
-    source?.kind === "gallery" ? source.preview : source?.kind === "upload" ? source.dataUrl : null;
-
-  const sourceDims =
-    source?.kind === "gallery"
-      ? sourceMeta
-        ? { w: sourceMeta.width, h: sourceMeta.height }
-        : null
-      : uploadDims;
-
   const handleClear = () => {
     setSource(null);
     setPrompt("");
@@ -173,14 +129,18 @@ export const EditPanel = ({ reloadToken, initialImageId }: EditPanelProps) => {
     edit.reset();
   };
 
+  const displayError = error ?? jobError ?? (enginesError ? t("edit.engineLoadError") : null);
+  const downloadPercent =
+    engineDl && engineDl.status === "downloading" ? engineDl.percent : null;
+
   return (
     <Box>
       <SectionHeading level={2} sx={{ mb: 2 }}>
         {t("edit.title")}
       </SectionHeading>
 
-      {(error ?? jobError) && (
-        <Alert severity="error" sx={{ mb: 2 }}>{error ?? jobError}</Alert>
+      {displayError && (
+        <Alert severity="error" sx={{ mb: 2 }}>{displayError}</Alert>
       )}
 
       <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, alignItems: "start" }}>
@@ -197,52 +157,32 @@ export const EditPanel = ({ reloadToken, initialImageId }: EditPanelProps) => {
               />
 
               {/* Edit model */}
-              {enginesLoading && editEngines.length === 0 ? (
-                <LoadingIndicator label={t("loading.engines")} minHeight={80} />
-              ) : (
-                editEngines.length > 0 && (
-                  <TextField
-                    select
-                    size="small"
-                    label={t("edit.model")}
-                    value={selectedEngine?.slug ?? ""}
-                    onChange={(e) => setEngine(e.target.value)}
-                    helperText={t("edit.modelHelp")}
-                    sx={{ minWidth: { xs: "100%", sm: 260 } }}
-                  >
-                    {editEngines.map((e) => (
-                      <MenuItem key={e.slug} value={e.slug}>
-                        {e.name}
-                        {!e.downloaded ? ` — ${t("edit.notInstalled")}` : ""}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                )
-              )}
-
-              {needDownload && selectedEngine && (
-                <Box>
-                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
-                    {t("edit.needsModel", { size: selectedEngine.approx_size_gb })}
-                  </Typography>
-                  {engineDl?.status === "downloading" ? (
-                    <Box>
-                      <LinearProgress variant="determinate" value={engineDl.percent} />
-                      <Typography variant="caption" color="text.secondary">
-                        {t("edit.downloading")} {engineDl.percent}%
-                      </Typography>
-                    </Box>
-                  ) : (
-                    <Button
-                      variant="contained"
-                      size="small"
-                      startIcon={<DownloadIcon />}
-                      onClick={() => startEngineDownload(selectedEngine)}
-                    >
-                      {t("edit.download")}
-                    </Button>
-                  )}
-                </Box>
+              {(enginesLoading || editEngines.length > 0) && (
+                <EnginePicker
+                  engine={selectedEngine}
+                  engines={editEngines}
+                  loading={enginesLoading}
+                  downloadPercent={downloadPercent}
+                  onSelect={setEngine}
+                  onDownload={() => selectedEngine && startEngineDownload(selectedEngine)}
+                  showHeading={false}
+                  label={t("edit.model")}
+                  notInstalledLabel={t("edit.notInstalled")}
+                  helperText={t("edit.modelHelp")}
+                  showDetails={false}
+                  needsModelText={
+                    selectedEngine
+                      ? t("edit.needsModel", { size: selectedEngine.approx_size_gb })
+                      : undefined
+                  }
+                  downloadLabel={t("edit.download")}
+                  downloadingLabel={t("edit.downloading")}
+                  downloadButtonSize="small"
+                  loadingMinHeight={80}
+                  fullWidth={false}
+                  fieldSize="small"
+                  fieldSx={{ minWidth: { xs: "100%", sm: 260 } }}
+                />
               )}
 
               {/* Instruction prompt */}

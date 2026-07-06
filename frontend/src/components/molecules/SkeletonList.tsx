@@ -2,6 +2,7 @@
 
 import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
+import useMediaQuery from "@mui/material/useMediaQuery";
 
 interface SkeletonListProps {
   /** Number of placeholder rows to render. */
@@ -17,10 +18,19 @@ interface SkeletonListProps {
  * Each row is a full-width rounded block sized to the real row height so the
  * skeleton→content swap doesn't shift layout.
  */
-export const SkeletonList = ({ count = 4, rowHeight = 96, gap = 1.5 }: SkeletonListProps) => (
-  <Stack spacing={gap} aria-hidden>
-    {Array.from({ length: count }).map((_, i) => (
-      <Skeleton key={i} variant="rounded" height={rowHeight} sx={{ width: "100%" }} />
-    ))}
-  </Stack>
-);
+export const SkeletonList = ({ count = 4, rowHeight = 96, gap = 1.5 }: SkeletonListProps) => {
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+  return (
+    <Stack spacing={gap} aria-hidden>
+      {Array.from({ length: count }).map((_, i) => (
+        <Skeleton
+          key={i}
+          variant="rounded"
+          height={rowHeight}
+          animation={prefersReducedMotion ? false : "pulse"}
+          sx={{ width: "100%" }}
+        />
+      ))}
+    </Stack>
+  );
+};

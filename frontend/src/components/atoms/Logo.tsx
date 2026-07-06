@@ -11,6 +11,8 @@ interface LogoProps {
 /**
  * The Pixl app mark (same artwork as app/icon.svg), for use in the UI header.
  * Decorative: hidden from assistive tech since the adjacent app title labels it.
+ * Colors are intentionally fixed brand hex values, not theme tokens — the mark
+ * should not react to light/dark mode.
  */
 export const Logo = ({ size = 32, sx }: LogoProps) => {
   return (

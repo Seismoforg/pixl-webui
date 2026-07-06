@@ -13,7 +13,8 @@ import {
 import { useActivity } from "@/providers/ActivityProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
-import { clearJob, loadJob, saveJob } from "@/lib/jobPersistence";
+import { clearJob, saveJob } from "@/lib/jobPersistence";
+import { useJobRehydrate } from "@/lib/jobHooks";
 import { useJobTracker } from "@/lib/ws";
 import type {
   GalleryImage,
@@ -188,22 +189,7 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
   // Rehydrate a job that was still running when the page reloaded: the backend job
   // keeps going, so re-attach the tracker (which republishes progress + the bubble)
   // if it is still running; otherwise drop the stale id.
-  useEffect(() => {
-    const saved = loadJob("generation");
-    if (!saved) return undefined;
-    let active = true;
-    api
-      .getGenerationProgress(saved)
-      .then((p) => {
-        if (!active) return;
-        if (p.status === "running") setJobId(saved);
-        else clearJob("generation");
-      })
-      .catch(() => active && clearJob("generation"));
-    return () => {
-      active = false;
-    };
-  }, []);
+  useJobRehydrate("generation", (id) => api.getGenerationProgress(id), setJobId);
 
   // Publish the running job to the shared activity store for the off-route bubble.
   const { set: setActivity } = useActivity();
@@ -312,47 +298,75 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
     [downloaded, samplers],
   );
 
-  const value: GenerationContextValue = {
-    slug,
-    prompt,
-    negative,
-    steps,
-    guidance,
-    width,
-    height,
-    seed,
-    sampler,
-    samplers,
-    preview,
-    batch,
-    referenceImage,
-    referenceMeta,
-    referenceMode,
-    strength,
-    ipAdapterScale,
-    setPrompt,
-    setNegative,
-    setSteps,
-    setGuidance,
-    setWidth,
-    setHeight,
-    setSeed,
-    setSampler,
-    setPreview,
-    setBatch,
-    setReferenceImage,
-    setReferenceMeta,
-    setReferenceMode,
-    setStrength,
-    setIpAdapterScale,
-    changeModel,
-    progress,
-    images,
-    error,
-    running,
-    generate,
-    applyPrefill,
-  };
+  const value = useMemo<GenerationContextValue>(
+    () => ({
+      slug,
+      prompt,
+      negative,
+      steps,
+      guidance,
+      width,
+      height,
+      seed,
+      sampler,
+      samplers,
+      preview,
+      batch,
+      referenceImage,
+      referenceMeta,
+      referenceMode,
+      strength,
+      ipAdapterScale,
+      setPrompt,
+      setNegative,
+      setSteps,
+      setGuidance,
+      setWidth,
+      setHeight,
+      setSeed,
+      setSampler,
+      setPreview,
+      setBatch,
+      setReferenceImage,
+      setReferenceMeta,
+      setReferenceMode,
+      setStrength,
+      setIpAdapterScale,
+      changeModel,
+      progress,
+      images,
+      error,
+      running,
+      generate,
+      applyPrefill,
+    }),
+    [
+      slug,
+      prompt,
+      negative,
+      steps,
+      guidance,
+      width,
+      height,
+      seed,
+      sampler,
+      samplers,
+      preview,
+      batch,
+      referenceImage,
+      referenceMeta,
+      referenceMode,
+      strength,
+      ipAdapterScale,
+      changeModel,
+      progress,
+      images,
+      error,
+      running,
+      generate,
+      applyPrefill,
+    ],
+  );
 
   return <GenerationContext.Provider value={value}>{children}</GenerationContext.Provider>;
 }

@@ -1,21 +1,22 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useTheme } from "@mui/material/styles";
 import { Suspense } from "react";
 
-import { useAppData } from "@/providers/AppDataProvider";
+import { LoadingIndicator } from "@/components/molecules/LoadingIndicator";
 import { InpaintPanel } from "@/components/organisms/InpaintPanel";
+import { useImageRouteParams } from "@/lib/useImageRouteParams";
 
 const InpaintPageInner = () => {
-  const { galleryToken } = useAppData();
-  const params = useSearchParams();
-  return <InpaintPanel reloadToken={galleryToken} initialImageId={params.get("image")} />;
+  const { reloadToken, initialImageId } = useImageRouteParams();
+  return <InpaintPanel reloadToken={reloadToken} initialImageId={initialImageId} />;
 };
 
 const InpaintPage = () => {
+  const theme = useTheme();
   // useSearchParams needs a Suspense boundary in the App Router.
   return (
-    <Suspense>
+    <Suspense fallback={<LoadingIndicator minHeight={theme.layout.resultMinHeight} />}>
       <InpaintPageInner />
     </Suspense>
   );

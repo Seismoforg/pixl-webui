@@ -42,6 +42,7 @@ export const NavDrawer = ({ open, onClose, items, activeHref, title }: NavDrawer
                 component={NextLink}
                 href={item.href}
                 selected={active}
+                aria-current={active ? "page" : undefined}
                 onClick={onClose}
               >
                 <ListItemIcon sx={{ minWidth: 40 }}>

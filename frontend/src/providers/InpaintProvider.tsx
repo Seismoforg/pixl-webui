@@ -5,16 +5,16 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
 
-import { useActivity } from "@/providers/ActivityProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
-import { clearJob, loadJob, saveJob } from "@/lib/jobPersistence";
+import { clearJob, saveJob } from "@/lib/jobPersistence";
+import { useJobRehydrate, usePublishJobActivity } from "@/lib/jobHooks";
 import { useJobTracker } from "@/lib/ws";
-import { upscaleStatsView } from "@/lib/stats";
 import type { InpaintProgress, InpaintRequest, Sampler } from "@/types";
 import type { UpscaleSource } from "@/providers/UpscaleProvider";
 
@@ -166,40 +166,10 @@ export const InpaintProvider = ({ onInpainted, children }: InpaintProviderProps)
   );
 
   // Re-attach to a job that was still running when the page reloaded.
-  useEffect(() => {
-    const saved = loadJob("inpaint");
-    if (!saved) return undefined;
-    let active = true;
-    api
-      .getInpaintProgress(saved)
-      .then((p) => {
-        if (!active) return;
-        if (p.status === "running") setJobId(saved);
-        else clearJob("inpaint");
-      })
-      .catch(() => active && clearJob("inpaint"));
-    return () => {
-      active = false;
-    };
-  }, []);
+  useJobRehydrate("inpaint", (id) => api.getInpaintProgress(id), setJobId);
 
   // Publish the running job to the shared activity store for the off-route bubble.
-  const { set: setActivity } = useActivity();
-  useEffect(() => {
-    if (!running) {
-      setActivity("inpaint", null);
-      return;
-    }
-    const view = upscaleStatsView(progress, t);
-    setActivity("inpaint", {
-      id: "inpaint",
-      title: t("activity.inpaint"),
-      route: "/inpaint",
-      status: "running",
-      detail: view.speed ? `${view.label} · ${view.speed}` : view.label,
-      percent: view.percent,
-    });
-  }, [running, progress, setActivity, t]);
+  usePublishJobActivity("inpaint", "/inpaint", "activity.inpaint", running, progress);
 
   const start = useCallback(async (req: InpaintRequest) => {
     setError(null);
@@ -222,52 +192,82 @@ export const InpaintProvider = ({ onInpainted, children }: InpaintProviderProps)
     setProgress(null);
   }, []);
 
-  const value: InpaintContextValue = {
-    source,
-    maskData,
-    engine,
-    prompt,
-    negative,
-    brushSize,
-    brushSoftness,
-    maskFeather,
-    seamFeather,
-    seedBlur,
-    maskExpand,
-    steps,
-    refineSteps,
-    refine,
-    guidance,
-    sampler,
-    seed,
-    batch,
-    samplers,
-    setSource,
-    setMaskData,
-    setEngine,
-    setPrompt,
-    setNegative,
-    setBrushSize,
-    setBrushSoftness,
-    setMaskFeather,
-    setSeamFeather,
-    setSeedBlur,
-    setMaskExpand,
-    setSteps,
-    setRefineSteps,
-    setRefine,
-    setGuidance,
-    setSampler,
-    setSeed,
-    setBatch,
-    progress,
-    resultId,
-    resultIds,
-    error,
-    running,
-    start,
-    reset,
-  };
+  const value = useMemo<InpaintContextValue>(
+    () => ({
+      source,
+      maskData,
+      engine,
+      prompt,
+      negative,
+      brushSize,
+      brushSoftness,
+      maskFeather,
+      seamFeather,
+      seedBlur,
+      maskExpand,
+      steps,
+      refineSteps,
+      refine,
+      guidance,
+      sampler,
+      seed,
+      batch,
+      samplers,
+      setSource,
+      setMaskData,
+      setEngine,
+      setPrompt,
+      setNegative,
+      setBrushSize,
+      setBrushSoftness,
+      setMaskFeather,
+      setSeamFeather,
+      setSeedBlur,
+      setMaskExpand,
+      setSteps,
+      setRefineSteps,
+      setRefine,
+      setGuidance,
+      setSampler,
+      setSeed,
+      setBatch,
+      progress,
+      resultId,
+      resultIds,
+      error,
+      running,
+      start,
+      reset,
+    }),
+    [
+      source,
+      maskData,
+      engine,
+      prompt,
+      negative,
+      brushSize,
+      brushSoftness,
+      maskFeather,
+      seamFeather,
+      seedBlur,
+      maskExpand,
+      steps,
+      refineSteps,
+      refine,
+      guidance,
+      sampler,
+      seed,
+      batch,
+      samplers,
+      progress,
+      resultId,
+      resultIds,
+      error,
+      running,
+      start,
+      reset,
+    ],
+  );
 
   return <InpaintContext.Provider value={value}>{children}</InpaintContext.Provider>;
 };

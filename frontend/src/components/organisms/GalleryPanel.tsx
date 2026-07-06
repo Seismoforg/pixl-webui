@@ -16,12 +16,14 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useEffect, useMemo, useState } from "react";
 
+import { MonoText } from "@/components/atoms/MonoText";
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { ConfirmDialog } from "@/components/molecules/ConfirmDialog";
 import { GalleryCard } from "@/components/molecules/GalleryCard";
 import { SkeletonCardGrid } from "@/components/molecules/SkeletonCardGrid";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import { useAsyncData } from "@/lib/useAsyncData";
 import type { GalleryImage, Sampler } from "@/types";
 
 interface GalleryPanelProps {
@@ -34,23 +36,14 @@ interface GalleryPanelProps {
 export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPanelProps) => {
   const t = useTranslations();
 
-  const [images, setImages] = useState<GalleryImage[]>([]);
+  const { data, loading, error: loadError, reload } = useAsyncData(() => api.getImages(), [reloadToken]);
+  const images = data ?? [];
   const [query, setQuery] = useState("");
   const [modelFilter, setModelFilter] = useState("");
   const [selected, setSelected] = useState<GalleryImage | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [samplers, setSamplers] = useState<Sampler[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    setLoading(true);
-    api
-      .getImages()
-      .then(setImages)
-      .catch(() => setImages([]))
-      .finally(() => setLoading(false));
-  }, [reloadToken]);
 
   useEffect(() => {
     api.getSamplers().then((l) => setSamplers(l.samplers)).catch(() => setSamplers([]));
@@ -80,7 +73,7 @@ export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPa
     setPendingId(null);
     try {
       await api.deleteImage(id);
-      setImages((prev) => prev.filter((img) => img.id !== id));
+      reload();
       setSelected(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -125,7 +118,9 @@ export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPa
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      {loading && images.length === 0 ? (
+      {loadError && images.length === 0 ? (
+        <Alert severity="error">{t("gallery.loadError")}</Alert>
+      ) : loading && images.length === 0 ? (
         <SkeletonCardGrid count={8} lines={2} />
       ) : images.length === 0 ? (
         <Alert severity="info">{t("gallery.empty")}</Alert>
@@ -170,7 +165,11 @@ export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPa
                   component="img"
                   src={api.imageFileUrl(selected.id)}
                   alt={selected.prompt}
-                  sx={{ width: "100%", borderRadius: 1 }}
+                  sx={{
+                    width: "100%",
+                    aspectRatio: `${selected.width} / ${selected.height}`,
+                    borderRadius: 1,
+                  }}
                 />
                 <Stack spacing={1}>
                   <DetailRow label={t("gallery.prompt")} value={selected.prompt} />
@@ -181,11 +180,12 @@ export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPa
                     />
                   )}
                   <DetailRow label={t("gallery.model")} value={selected.model_name} />
-                  <DetailRow label={t("gallery.seed")} value={String(selected.seed)} />
-                  <DetailRow label={t("gallery.steps")} value={String(selected.steps)} />
+                  <DetailRow label={t("gallery.seed")} value={String(selected.seed)} mono />
+                  <DetailRow label={t("gallery.steps")} value={String(selected.steps)} mono />
                   <DetailRow
                     label={t("gallery.guidance")}
                     value={String(selected.guidance_scale)}
+                    mono
                   />
                   <DetailRow
                     label={t("gallery.sampler")}
@@ -194,6 +194,7 @@ export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPa
                   <DetailRow
                     label={t("gallery.size")}
                     value={`${selected.width}×${selected.height}`}
+                    mono
                   />
                   <DetailRow label={t("gallery.created")} value={selected.created} />
                 </Stack>
@@ -242,14 +243,22 @@ export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPa
   );
 }
 
-const DetailRow = ({ label, value }: { label: string; value: string }) => {
+const DetailRow = ({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) => {
   return (
     <Box>
       <Typography variant="caption" color="text.secondary">
         {label}
       </Typography>
       <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
-        {value}
+        {mono ? <MonoText>{value}</MonoText> : value}
       </Typography>
     </Box>
   );

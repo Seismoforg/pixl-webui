@@ -34,6 +34,38 @@ interface PromptSnippetsProps {
   onChanged: () => void;
 }
 
+// i18n keys per `kind`, switched on rather than built as a 5-entry map so only
+// the one key actually needed is looked up.
+const loadLabelKey = (kind: PromptKind): string => {
+  switch (kind) {
+    case "positive":
+      return "generate.snippets.loadPositive";
+    case "negative":
+      return "generate.snippets.loadNegative";
+    case "upscale":
+      return "generate.snippets.loadUpscale";
+    case "outpaint":
+      return "generate.snippets.loadOutpaint";
+    case "outpaint_negative":
+      return "generate.snippets.loadOutpaintNegative";
+  }
+};
+
+const manageTitleKey = (kind: PromptKind): string => {
+  switch (kind) {
+    case "positive":
+      return "generate.snippets.manageTitlePositive";
+    case "negative":
+      return "generate.snippets.manageTitleNegative";
+    case "upscale":
+      return "generate.snippets.manageTitleUpscale";
+    case "outpaint":
+      return "generate.snippets.manageTitleOutpaint";
+    case "outpaint_negative":
+      return "generate.snippets.manageTitleOutpaintNegative";
+  }
+};
+
 /**
  * Compact snippet control shown next to a prompt field: a menu to apply
  * (append) a saved snippet, and a dialog to save the field's current text as a
@@ -54,20 +86,8 @@ export const PromptSnippets = ({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
 
-  const loadLabel: string = {
-    positive: t("generate.snippets.loadPositive"),
-    negative: t("generate.snippets.loadNegative"),
-    upscale: t("generate.snippets.loadUpscale"),
-    outpaint: t("generate.snippets.loadOutpaint"),
-    outpaint_negative: t("generate.snippets.loadOutpaintNegative"),
-  }[kind];
-  const manageTitle: string = {
-    positive: t("generate.snippets.manageTitlePositive"),
-    negative: t("generate.snippets.manageTitleNegative"),
-    upscale: t("generate.snippets.manageTitleUpscale"),
-    outpaint: t("generate.snippets.manageTitleOutpaint"),
-    outpaint_negative: t("generate.snippets.manageTitleOutpaintNegative"),
-  }[kind];
+  const loadLabel = t(loadLabelKey(kind));
+  const manageTitle = t(manageTitleKey(kind));
 
   const apply = (text: string) => {
     onApply(text);

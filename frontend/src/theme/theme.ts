@@ -49,6 +49,11 @@ export const createAppTheme = (mode: ColorMode): Theme => {
     palette: {
       mode,
       primary: { main: primaryMain },
+      // Unused as a text/icon color anywhere in the app today (grep confirms only
+      // `text.secondary` — a different, unrelated token — is referenced); as plain
+      // text on light paper this pink is ≈3.1:1, failing WCAG AA (4.5:1). If it
+      // starts being used for text, give it the same per-mode darkening treatment
+      // as primary/warning/error/info above.
       secondary: { main: "#ec4899" },
       // Light-mode semantic mains darkened so small outlined-chip labels (fit
       // badges: offload/too-large/cpu) clear WCAG AA (4.5:1) on the near-white
@@ -91,8 +96,10 @@ export const createAppTheme = (mode: ColorMode): Theme => {
       h3: { fontSize: "1.15rem", fontWeight: 600, lineHeight: 1.3 },
       h4: { fontSize: "1.05rem", fontWeight: 600, lineHeight: 1.35 },
       h5: { fontSize: "1rem", fontWeight: 600, lineHeight: 1.4 },
-      // h6 also drives MUI DialogTitle + the AppBar title, so keep it near default.
-      h6: { fontSize: "1.15rem", fontWeight: 600, lineHeight: 1.4 },
+      // Kept monotonic (below h5); MUI DialogTitle's default size is restored via
+      // components.MuiDialogTitle below and the AppBar title sets its own size,
+      // so this variant no longer needs to be inflated for either of them.
+      h6: { fontSize: "0.9375rem", fontWeight: 600, lineHeight: 1.4 },
       subtitle1: { fontSize: "1rem", fontWeight: 600, lineHeight: 1.4 },
       subtitle2: { fontSize: "0.8125rem", fontWeight: 600, lineHeight: 1.4 },
       button: { textTransform: "none", fontWeight: 600 },
@@ -116,6 +123,14 @@ export const createAppTheme = (mode: ColorMode): Theme => {
       MuiTextField: {
         defaultProps: { size: "small", fullWidth: true },
       },
+      // DialogTitle defaults to the h6 typography variant; scope its larger size
+      // here instead of inflating the shared h6 variant (which also drives the
+      // AppBar title and would otherwise break the type scale's monotonicity).
+      MuiDialogTitle: {
+        styleOverrides: {
+          root: { fontSize: "1.15rem", lineHeight: 1.4 },
+        },
+      },
       MuiPaper: {
         styleOverrides: {
           root: { backgroundImage: "none" },
@@ -138,7 +153,9 @@ export const createAppTheme = (mode: ColorMode): Theme => {
   });
 
   // Tinted, soft elevation shadows (no pure black on light) so panels can lift off
-  // the page instead of relying only on 1px borders. Overrides just the low levels.
+  // the page instead of relying only on 1px borders. Overrides levels 1-2 (cards),
+  // 8 (Menu's default elevation) and 24 (Dialog's default elevation) — the ones
+  // actually used in the app — leaving the rest at MUI's untinted defaults.
   const shadows = [...base.shadows] as typeof base.shadows;
   shadows[1] = isDark
     ? "0 1px 2px rgba(0,0,0,0.5), 0 4px 14px rgba(0,0,0,0.35)"
@@ -146,5 +163,11 @@ export const createAppTheme = (mode: ColorMode): Theme => {
   shadows[2] = isDark
     ? "0 2px 6px rgba(0,0,0,0.55), 0 10px 28px rgba(0,0,0,0.4)"
     : "0 2px 6px rgba(16,18,27,0.08), 0 10px 28px rgba(16,18,27,0.08)";
+  shadows[8] = isDark
+    ? "0 4px 10px rgba(0,0,0,0.55), 0 16px 40px rgba(0,0,0,0.45)"
+    : "0 4px 10px rgba(16,18,27,0.10), 0 16px 40px rgba(16,18,27,0.12)";
+  shadows[24] = isDark
+    ? "0 8px 20px rgba(0,0,0,0.6), 0 32px 64px rgba(0,0,0,0.5)"
+    : "0 8px 20px rgba(16,18,27,0.14), 0 32px 64px rgba(16,18,27,0.16)";
   return createTheme(base, { shadows });
 }

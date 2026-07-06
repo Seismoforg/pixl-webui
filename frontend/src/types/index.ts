@@ -216,6 +216,11 @@ export interface UpscaleStarted {
   job_id: string;
 }
 
+/** Chosen source image: an existing gallery image, or an uploaded data URL. */
+export type UpscaleSource =
+  | { kind: "gallery"; imageId: string; preview: string }
+  | { kind: "upload"; dataUrl: string };
+
 /** Reframe (aspect-ratio change, no upscaling) request. */
 export interface ReframeRequest {
   image_id?: string | null;
@@ -253,13 +258,17 @@ export interface ReframeRequest {
   outpaint_batch?: number;
 }
 
-/** Reframe job progress = the upscale progress shape plus batch fields (a superset,
- *  so the shared upscale live-stats UI keeps working). */
-export interface ReframeProgress extends UpscaleProgress {
+/** The upscale progress shape plus batch fields (a superset, so the shared
+ *  upscale live-stats UI keeps working). Shared by Reframe/Inpaint/Edit, whose
+ *  jobs all produce a batch of result images. */
+export interface BatchProgress extends UpscaleProgress {
   batch_index: number;
   batch_size: number;
   image_ids: string[];
 }
+
+/** Reframe job progress = the batch progress shape. */
+export interface ReframeProgress extends BatchProgress {}
 
 /** Inpaint (paint-a-mask region fill) request. */
 export interface InpaintRequest {
@@ -286,13 +295,8 @@ export interface InpaintRequest {
   batch?: number;
 }
 
-/** Inpaint job progress = the upscale progress shape plus batch fields (a superset,
- *  so the shared upscale live-stats UI keeps working). */
-export interface InpaintProgress extends UpscaleProgress {
-  batch_index: number;
-  batch_size: number;
-  image_ids: string[];
-}
+/** Inpaint job progress = the batch progress shape. */
+export interface InpaintProgress extends BatchProgress {}
 
 /** Post-Processing (FLUX Kontext) prompt-based image-edit request. */
 export interface EditRequest {
@@ -308,13 +312,8 @@ export interface EditRequest {
   batch?: number;
 }
 
-/** Edit job progress = the upscale progress shape plus batch fields (a superset,
- *  so the shared upscale live-stats UI keeps working). */
-export interface EditProgress extends UpscaleProgress {
-  batch_index: number;
-  batch_size: number;
-  image_ids: string[];
-}
+/** Edit job progress = the batch progress shape. */
+export interface EditProgress extends BatchProgress {}
 
 export type UpscalePhase =
   | "loading"

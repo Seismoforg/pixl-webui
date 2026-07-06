@@ -9,6 +9,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { useEffect, useState } from "react";
 
+import { MonoText } from "@/components/atoms/MonoText";
 import { ResultPlaceholder } from "@/components/molecules/ResultPlaceholder";
 import { Thumbnail } from "@/components/molecules/Thumbnail";
 import { useGeneration } from "@/providers/GenerationProvider";
@@ -19,7 +20,7 @@ import { useTranslations } from "@/i18n";
 export const GenerationResult = () => {
   const t = useTranslations();
   const gen = useGeneration();
-  const { progress, running, images, error } = gen;
+  const { progress, running, images, error, width, height } = gen;
 
   // Which batch image is shown enlarged; clamp when the result set changes.
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -71,13 +72,14 @@ export const GenerationResult = () => {
           sx={{
             maxWidth: "100%",
             maxHeight: "60vh",
+            aspectRatio: `${width} / ${height}`,
             borderRadius: 1,
             imageRendering: "pixelated",
           }}
         />
       )}
       {running && progress && (
-        <Box sx={{ width: "100%", maxWidth: 480 }}>
+        <Box role="status" aria-live="polite" sx={{ width: "100%", maxWidth: 480 }}>
           {progress.batch_size > 1 && (
             <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
               {t("generate.imageOfBatch", {
@@ -96,14 +98,18 @@ export const GenerationResult = () => {
                 ? t("generate.phaseLoading")
                 : progress.phase === "finalizing"
                   ? t("generate.phaseFinalizing")
-                  : t("generate.step", {
-                      current: progress.current_step,
-                      total: progress.total_steps,
-                    })}
+                  : (
+                    <MonoText>
+                      {t("generate.step", {
+                        current: progress.current_step,
+                        total: progress.total_steps,
+                      })}
+                    </MonoText>
+                  )}
             </Typography>
             {progress.phase === "generating" && speedLabel(progress.its) && (
               <Typography variant="body2" color="text.secondary">
-                {speedLabel(progress.its)}
+                <MonoText>{speedLabel(progress.its)}</MonoText>
               </Typography>
             )}
           </Stack>
@@ -113,7 +119,7 @@ export const GenerationResult = () => {
             <LinearProgress />
           )}
           <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
-            {t("generate.seedUsed", { seed: progress.seed })}
+            <MonoText>{t("generate.seedUsed", { seed: progress.seed })}</MonoText>
           </Typography>
           <Typography
             variant="caption"
@@ -136,7 +142,14 @@ export const GenerationResult = () => {
                 component="img"
                 src={images[selected]}
                 alt={t("generate.resultAlt")}
-                sx={{ display: "block", mx: "auto", maxWidth: "100%", maxHeight: "60vh", borderRadius: 1 }}
+                sx={{
+                  display: "block",
+                  mx: "auto",
+                  maxWidth: "100%",
+                  maxHeight: "60vh",
+                  aspectRatio: `${width} / ${height}`,
+                  borderRadius: 1,
+                }}
               />
               {progress && (
                 <Typography
@@ -144,7 +157,7 @@ export const GenerationResult = () => {
                   color="text.secondary"
                   sx={{ mt: 1, display: "block", textAlign: "center" }}
                 >
-                  {t("generate.seedUsed", { seed: progress.seed + selected })}
+                  <MonoText>{t("generate.seedUsed", { seed: progress.seed + selected })}</MonoText>
                 </Typography>
               )}
             </>

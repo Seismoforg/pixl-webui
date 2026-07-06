@@ -52,6 +52,7 @@ export const GalleryCard = ({ image, onOpen, onRegenerate, onUpscale, onDelete }
       <Stack spacing={1} sx={{ p: 1.5, flexGrow: 1 }}>
         <Typography
           variant="body2"
+          title={image.prompt}
           sx={{
             display: "-webkit-box",
             WebkitLineClamp: 2,

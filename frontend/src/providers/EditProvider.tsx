@@ -4,17 +4,16 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
 
-import { useActivity } from "@/providers/ActivityProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
-import { clearJob, loadJob, saveJob } from "@/lib/jobPersistence";
+import { clearJob, saveJob } from "@/lib/jobPersistence";
+import { useJobRehydrate, usePublishJobActivity } from "@/lib/jobHooks";
 import { useJobTracker } from "@/lib/ws";
-import { upscaleStatsView } from "@/lib/stats";
 import type { EditProgress, EditRequest } from "@/types";
 import type { UpscaleSource } from "@/providers/UpscaleProvider";
 
@@ -113,40 +112,10 @@ export const EditProvider = ({ onEdited, children }: EditProviderProps) => {
   );
 
   // Re-attach to a job that was still running when the page reloaded.
-  useEffect(() => {
-    const saved = loadJob("edit");
-    if (!saved) return undefined;
-    let active = true;
-    api
-      .getEditProgress(saved)
-      .then((p) => {
-        if (!active) return;
-        if (p.status === "running") setJobId(saved);
-        else clearJob("edit");
-      })
-      .catch(() => active && clearJob("edit"));
-    return () => {
-      active = false;
-    };
-  }, []);
+  useJobRehydrate("edit", (id) => api.getEditProgress(id), setJobId);
 
   // Publish the running job to the shared activity store for the off-route bubble.
-  const { set: setActivity } = useActivity();
-  useEffect(() => {
-    if (!running) {
-      setActivity("edit", null);
-      return;
-    }
-    const view = upscaleStatsView(progress, t);
-    setActivity("edit", {
-      id: "edit",
-      title: t("activity.edit"),
-      route: "/edit",
-      status: "running",
-      detail: view.speed ? `${view.label} · ${view.speed}` : view.label,
-      percent: view.percent,
-    });
-  }, [running, progress, setActivity, t]);
+  usePublishJobActivity("edit", "/edit", "activity.edit", running, progress);
 
   const start = useCallback(async (req: EditRequest) => {
     setError(null);
@@ -169,29 +138,32 @@ export const EditProvider = ({ onEdited, children }: EditProviderProps) => {
     setProgress(null);
   }, []);
 
-  const value: EditContextValue = {
-    source,
-    engine,
-    prompt,
-    steps,
-    guidance,
-    seed,
-    batch,
-    setSource,
-    setEngine,
-    setPrompt,
-    setSteps,
-    setGuidance,
-    setSeed,
-    setBatch,
-    progress,
-    resultId,
-    resultIds,
-    error,
-    running,
-    start,
-    reset,
-  };
+  const value = useMemo<EditContextValue>(
+    () => ({
+      source,
+      engine,
+      prompt,
+      steps,
+      guidance,
+      seed,
+      batch,
+      setSource,
+      setEngine,
+      setPrompt,
+      setSteps,
+      setGuidance,
+      setSeed,
+      setBatch,
+      progress,
+      resultId,
+      resultIds,
+      error,
+      running,
+      start,
+      reset,
+    }),
+    [source, engine, prompt, steps, guidance, seed, batch, progress, resultId, resultIds, error, running, start, reset],
+  );
 
   return <EditContext.Provider value={value}>{children}</EditContext.Provider>;
 };

@@ -164,20 +164,20 @@ export const DownloadProvider = ({ onFinished, children }: DownloadProviderProps
       ),
     ).then((results) => {
       if (!active) return;
-      const live = results.filter((d): d is PersistedDownload => d !== null);
-      if (live.length === 0) {
+      const liveDownloads = results.filter((d): d is PersistedDownload => d !== null);
+      if (liveDownloads.length === 0) {
         saveDownloads([]);
         return;
       }
       const rebuilt: Record<string, TrackMeta> = {};
       const prog: Record<string, DownloadProgress> = {};
-      for (const d of live) {
+      for (const d of liveDownloads) {
         rebuilt[d.slug] = rebuildMeta(d);
         prog[d.slug] = downloadingState(d.slug);
       }
       setMeta(rebuilt);
       setProgress((prev) => ({ ...prev, ...prog }));
-      saveDownloads(live);
+      saveDownloads(liveDownloads);
     });
     return () => {
       active = false;

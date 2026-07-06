@@ -3,11 +3,9 @@
 import AspectRatioIcon from "@mui/icons-material/AspectRatio";
 import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
 import ClearIcon from "@mui/icons-material/Clear";
-import DownloadIcon from "@mui/icons-material/Download";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import LinearProgress from "@mui/material/LinearProgress";
 import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
@@ -18,7 +16,7 @@ import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { InfoTip } from "@/components/molecules/InfoTip";
 import { GenerationParams } from "@/components/molecules/GenerationParams";
 import { LabeledSlider } from "@/components/molecules/LabeledSlider";
-import { LoadingIndicator } from "@/components/molecules/LoadingIndicator";
+import { EnginePicker } from "@/components/organisms/EnginePicker";
 import { GalleryPicker } from "@/components/organisms/GalleryPicker";
 import { ReframeResult } from "@/components/organisms/ReframeResult";
 import { SnippetPromptField } from "@/components/organisms/SnippetPromptField";
@@ -26,14 +24,11 @@ import { SourcePicker } from "@/components/organisms/SourcePicker";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { formLockStyle } from "@/lib/formLock";
+import { useEngineCatalog } from "@/lib/useEngineCatalog";
+import { useImageSource } from "@/lib/useImageSource";
 import { useReframe } from "@/providers/ReframeProvider";
 import { trackUpscalerDownload, useDownloads } from "@/providers/DownloadProvider";
-import type {
-  GalleryImage,
-  PromptSnippet,
-  ReframeStrategy,
-  UpscalerEngine,
-} from "@/types";
+import type { PromptSnippet, ReframeStrategy, UpscalerEngine } from "@/types";
 
 interface ReframePanelProps {
   reloadToken: number;
@@ -99,26 +94,19 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
   } = reframe;
 
   const downloads = useDownloads();
-  const [engines, setEngines] = useState<UpscalerEngine[]>([]);
+  const { engines, loading: enginesLoading, error: enginesError, reload: reloadEngines } = useEngineCatalog();
   const [snippets, setSnippets] = useState<PromptSnippet[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Metadata for a gallery source (full-res size + seed/prompt/model); upload size
-  // read from the loaded <img> since uploads carry no metadata.
-  const [sourceMeta, setSourceMeta] = useState<GalleryImage | null>(null);
-  const [uploadDims, setUploadDims] = useState<{ w: number; h: number } | null>(null);
-  const [enginesLoading, setEnginesLoading] = useState(true);
   // Preferred default outpaint engine from Settings (applied only when downloaded).
   const [defaultOutpaint, setDefaultOutpaint] = useState<string | null>(null);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
-  const reloadEngines = useCallback(() => {
-    api
-      .getUpscalers()
-      .then(setEngines)
-      .catch(() => setEngines([]))
-      .finally(() => setEnginesLoading(false));
-  }, []);
+  const { sourceMeta, setUploadDims, sourcePreview, sourceDims } = useImageSource(
+    source,
+    setSource,
+    initialImageId,
+  );
 
   const reloadSnippets = useCallback(() => {
     api
@@ -128,9 +116,8 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
   }, []);
 
   useEffect(() => {
-    reloadEngines();
     reloadSnippets();
-  }, [reloadEngines, reloadSnippets]);
+  }, [reloadSnippets]);
 
   // Only inpaint engines are selectable outpaint models.
   const inpaintEngines = engines.filter((e) => e.kind === "inpaint");
@@ -160,31 +147,6 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
       downloaded.find((e) => e.slug === defaultOutpaint) ?? downloaded[0] ?? inpaintEngines[0];
     setOutpaintEngine(target.slug);
   }, [inpaintEngines, outpaintEngine, defaultOutpaint, settingsLoaded, setOutpaintEngine]);
-
-  // Preselect a gallery image passed via the deep-link (?image=<id>).
-  useEffect(() => {
-    if (initialImageId) {
-      setSource({ kind: "gallery", imageId: initialImageId, preview: api.imageFileUrl(initialImageId) });
-    }
-  }, [initialImageId]);
-
-  // Load the gallery source's metadata (full-res size + seed/prompt/model). Covers
-  // both the picker and the deep-link path. Reset the upload size on every change.
-  useEffect(() => {
-    setUploadDims(null);
-    if (source?.kind === "gallery") {
-      let active = true;
-      api
-        .getImage(source.imageId)
-        .then((m) => active && setSourceMeta(m))
-        .catch(() => active && setSourceMeta(null));
-      return () => {
-        active = false;
-      };
-    }
-    setSourceMeta(null);
-    return undefined;
-  }, [source]);
 
   // Auto-fill the outpaint generation params from a gallery source's original
   // metadata (like the prompt auto-fill), so extending an image reuses how it was
@@ -274,18 +236,6 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
     });
   };
 
-  const sourcePreview =
-    source?.kind === "gallery" ? source.preview : source?.kind === "upload" ? source.dataUrl : null;
-
-  // Full-res size: from metadata for a gallery image (the preview is a downscaled
-  // next/image), from the loaded <img> for an upload.
-  const sourceDims =
-    source?.kind === "gallery"
-      ? sourceMeta
-        ? { w: sourceMeta.width, h: sourceMeta.height }
-        : null
-      : uploadDims;
-
   const handleClear = () => {
     setSource(null);
     setOutpaintPrompt("");
@@ -294,14 +244,18 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
     reframe.reset();
   };
 
+  const displayError = error ?? jobError ?? (enginesError ? t("reframe.engineLoadError") : null);
+  const inpaintDownloadPercent =
+    inpaintDl && inpaintDl.status === "downloading" ? inpaintDl.percent : null;
+
   return (
     <Box>
       <SectionHeading level={2} sx={{ mb: 2 }}>
         {t("reframe.title")}
       </SectionHeading>
 
-      {(error ?? jobError) && (
-        <Alert severity="error" sx={{ mb: 2 }}>{error ?? jobError}</Alert>
+      {displayError && (
+        <Alert severity="error" sx={{ mb: 2 }}>{displayError}</Alert>
       )}
 
       <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, alignItems: "start" }}>
@@ -368,6 +322,7 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
                   value={customWidth}
                   onChange={(e) => setCustomWidth(Number(e.target.value))}
                   error={!inRange(customWidth)}
+                  helperText={!inRange(customWidth) ? t("reframe.format.rangeError") : undefined}
                   inputProps={{ min: 64, max: 4096 }}
                   sx={{ maxWidth: 130 }}
                 />
@@ -382,57 +337,41 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
                   onChange={(e) => setCustomHeight(Number(e.target.value))}
                   error={!inRange(customHeight)}
                   inputProps={{ min: 64, max: 4096 }}
-                  helperText={t("reframe.format.customHelp")}
+                  helperText={
+                    !inRange(customHeight) ? t("reframe.format.rangeError") : t("reframe.format.customHelp")
+                  }
                   sx={{ maxWidth: 130 }}
                 />
               </Stack>
             )}
 
-            {outpaint && enginesLoading && inpaintEngines.length === 0 && (
-              <LoadingIndicator label={t("loading.engines")} minHeight={80} />
-            )}
-
-            {outpaint && inpaintEngines.length > 0 && (
-              <TextField
-                select
-                size="small"
-                label={t("reframe.outpaint.model")}
-                value={selectedEngine?.slug ?? ""}
-                onChange={(e) => setOutpaintEngine(e.target.value)}
-                helperText={t("reframe.outpaint.modelHelp")}
-                sx={{ mt: 1.5, minWidth: { xs: "100%", sm: 260 } }}
-              >
-                {inpaintEngines.map((e) => (
-                  <MenuItem key={e.slug} value={e.slug}>
-                    {e.name}
-                    {!e.downloaded ? ` — ${t("reframe.outpaint.notInstalled")}` : ""}
-                  </MenuItem>
-                ))}
-              </TextField>
-            )}
-
-            {needInpaintDownload && selectedEngine&& (
+            {outpaint && (enginesLoading || inpaintEngines.length > 0) && (
               <Box sx={{ mt: 1.5 }}>
-                <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
-                  {t("reframe.outpaint.needsModel", { size: selectedEngine.approx_size_gb })}
-                </Typography>
-                {inpaintDl?.status === "downloading" ? (
-                  <Box>
-                    <LinearProgress variant="determinate" value={inpaintDl.percent} />
-                    <Typography variant="caption" color="text.secondary">
-                      {t("reframe.outpaint.downloading")} {inpaintDl.percent}%
-                    </Typography>
-                  </Box>
-                ) : (
-                  <Button
-                    variant="contained"
-                    size="small"
-                    startIcon={<DownloadIcon />}
-                    onClick={() => startEngineDownload(selectedEngine)}
-                  >
-                    {t("reframe.outpaint.download")}
-                  </Button>
-                )}
+                <EnginePicker
+                  engine={selectedEngine}
+                  engines={inpaintEngines}
+                  loading={enginesLoading}
+                  downloadPercent={inpaintDownloadPercent}
+                  onSelect={setOutpaintEngine}
+                  onDownload={() => selectedEngine && startEngineDownload(selectedEngine)}
+                  showHeading={false}
+                  label={t("reframe.outpaint.model")}
+                  notInstalledLabel={t("reframe.outpaint.notInstalled")}
+                  helperText={t("reframe.outpaint.modelHelp")}
+                  showDetails={false}
+                  needsModelText={
+                    selectedEngine
+                      ? t("reframe.outpaint.needsModel", { size: selectedEngine.approx_size_gb })
+                      : undefined
+                  }
+                  downloadLabel={t("reframe.outpaint.download")}
+                  downloadingLabel={t("reframe.outpaint.downloading")}
+                  downloadButtonSize="small"
+                  loadingMinHeight={80}
+                  fullWidth={false}
+                  fieldSize="small"
+                  fieldSx={{ minWidth: { xs: "100%", sm: 260 } }}
+                />
               </Box>
             )}
           </Box>

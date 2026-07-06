@@ -19,9 +19,24 @@ Backend-communication infrastructure and small pure helpers shared across the UI
 - formLock.ts — `formLockStyle(locked)`: reset-styled fieldset style that dims + locks
               a form's controls while a job runs (shared by all 5 feature forms)
 - reframe.ts— pure reframe geometry mirroring the backend (parseRatio / extendSize
-              / coverRect + maskFeatherPx / seamFeatherPx softness→feather helpers);
-              drives the client-side ReframePreview (incl. the outpaint gradient
-              overlay) so it matches the server without a generation run
+              / coverRect + maskFeatherPx / seamFeatherPx softness→feather helpers)
+              + the canvas draw helpers (drawCover / drawExtend / drawFeatherBand)
+              extracted from ReframePreview; drives the client-side ReframePreview
+              (incl. the outpaint gradient overlay) so it matches the server without
+              a generation run
+- modelFamily.ts — pure model-family capability checks (supportsStyleTransfer /
+              supportsSamplerChoice) keyed by family (SD 1.5 / SDXL / FLUX / SD 3.x)
+- objectPath.ts — generic dotted-path get/set (getPath/setPath + Draft type) for
+              the declarative CatalogEditor
+- jobHooks.ts — shared job-lifecycle hooks used by the 5 feature providers:
+              `useJobRehydrate` (re-attach a still-running job after reload) and
+              `usePublishJobActivity` (publish the running job to the activity store;
+              Upscale/Reframe/Inpaint/Edit — Generation keeps its own phase-text effect)
+- useEngineCatalog.ts / useImageSource.ts — shared panel hooks: engine-catalog fetch
+              (`{engines, loading, error, reload}`, error distinct from empty) and the
+              deep-link source preselect + gallery-metadata fetch (used by the 4 panels)
+- useImageRouteParams.ts — parses the `?image=` deep-link + gallery reload token from
+              the shared route glue (upscale/reframe/inpaint/edit pages; call inside Suspense)
 - inpaint.ts— inpaint feather math (reuses maskFeatherPx/seamFeatherPx + seedBlurPx)
               + `renderOverlay` (composites the mask-gradient / composite-seam /
               seed-blur layers onto the InpaintCanvas overlay so the feather sliders

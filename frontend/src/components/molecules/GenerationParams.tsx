@@ -7,9 +7,9 @@ import Stack from "@mui/material/Stack";
 import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
 
-import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { InfoTip } from "@/components/molecules/InfoTip";
 import { LabeledSlider } from "@/components/molecules/LabeledSlider";
+import { SectionHeadingWithInfo } from "@/components/molecules/SectionHeadingWithInfo";
 import { useTranslations } from "@/i18n";
 
 /** Optional sampler dropdown; omitted (FLUX/edit) → no sampler control. */
@@ -70,10 +70,7 @@ export const GenerationParams = ({
 
   return (
     <Box>
-      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-        <SectionHeading level={3} variant="subtitle2">{k("title")}</SectionHeading>
-        <InfoTip text={k("help")} />
-      </Box>
+      <SectionHeadingWithInfo title={k("title")} help={k("help")} />
       <Stack spacing={1.5}>
         {sampler && (
           <TextField
@@ -101,18 +98,14 @@ export const GenerationParams = ({
         />
         {refine && (
           <>
-            <Box>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
               <FormControlLabel
                 control={
                   <Switch checked={refine.checked} onChange={(e) => refine.onChange(e.target.checked)} />
                 }
-                label={
-                  <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
-                    {k("refine")}
-                    <InfoTip text={k("refineHelp")} sx={{ fontSize: 16 }} />
-                  </Box>
-                }
+                label={k("refine")}
               />
+              <InfoTip text={k("refineHelp")} sx={{ fontSize: 16 }} />
             </Box>
             {refine.checked && (
               <LabeledSlider

@@ -41,7 +41,10 @@
     "edit": "Post Processing",
     "gallery": "Gallery",
     "settings": "Settings",
-    "toggleTheme": "Toggle light/dark mode"
+    "toggleTheme": "Toggle light/dark mode",
+    "mainNavigation": "Main navigation",
+    "switchToLight": "Switch to light mode",
+    "switchToDark": "Switch to dark mode"
   },
   "generate": {
     "sections": {
@@ -148,22 +151,25 @@
     "sampler": "Sampler",
     "size": "Size",
     "created": "Created",
-    "upscale": "Upscale"
+    "upscale": "Upscale",
+    "loadError": "Couldn't load the gallery."
+  },
+  "sourcePicker": {
+    "title": "Source image",
+    "fromGallery": "From gallery",
+    "upload": "Upload",
+    "none": "No source image selected yet."
   },
   "upscale": {
     "title": "Upscale",
     "error": "Upscaling failed.",
+    "engineLoadError": "Couldn't load upscaler engines. Try reloading the page.",
     "engine": {
       "title": "Upscaler",
       "download": "Download engine",
       "downloading": "Downloading…",
-      "downloaded": "Ready"
-    },
-    "source": {
-      "title": "Source image",
-      "fromGallery": "From gallery",
-      "upload": "Upload",
-      "none": "No source image selected yet."
+      "downloaded": "Ready",
+      "notInstalled": "not installed"
     },
     "prompt": {
       "label": "Upscaler prompt (optional)",
@@ -203,12 +209,15 @@
     },
     "picker": {
       "title": "Choose an image from the gallery",
-      "empty": "No images in the gallery yet."
+      "empty": "No images in the gallery yet.",
+      "loadError": "Couldn't load images.",
+      "select": "Select this image"
     }
   },
   "reframe": {
     "title": "Reframe",
     "error": "Reframing failed.",
+    "engineLoadError": "Couldn't load outpaint engines. Try reloading the page.",
     "format": {
       "title": "Target format",
       "help": "Change the image to a target aspect ratio, or pick Custom for an exact resolution. The strategy decides how the extra area is handled. Preset ratios don't upscale; a custom size may, to hit the exact pixels.",
@@ -217,7 +226,8 @@
       "custom": "Custom…",
       "width": "Width",
       "height": "Height",
-      "customHelp": "Exact output size in pixels (64–4096). May upscale to hit it."
+      "customHelp": "Exact output size in pixels (64–4096). May upscale to hit it.",
+      "rangeError": "Must be between 64 and 4096 px."
     },
     "strategy": {
       "cover": "Cover (crop)",
@@ -302,6 +312,7 @@
   },
   "inpaint": {
     "title": "Inpaint",
+    "engineLoadError": "Couldn't load inpaint engines. Try reloading the page.",
     "model": "Inpaint model",
     "modelHelp": "The inpaint model used to repaint the masked area. Manage models on the Models page.",
     "notInstalled": "not installed",
@@ -318,9 +329,9 @@
       "invert": "Invert",
       "clear": "Clear mask",
       "source": "Source image",
-      "ariaLabel": "Mask paint surface — drag to paint the area to regenerate",
+      "ariaLabel": "Mask paint surface. Drag to paint, or move the brush with the arrow keys and press Space to paint the area to regenerate.",
       "empty": "Pick a source image to start painting a mask.",
-      "hint": "Drag on the image to paint the mask. Use Erase to remove parts."
+      "hint": "Drag on the image to paint the mask, or focus it and use the arrow keys plus Space. Use Erase to remove parts."
     },
     "brush": {
       "title": "Brush",
@@ -482,6 +493,9 @@
       "editTitle": "Edit entry",
       "deleteConfirm": "Remove this entry from the catalog?",
       "resetConfirm": "Discard your edits and restore the bundled default catalog?",
+      "resetTitle": "Reset catalog?",
+      "resetConfirmAction": "Reset",
+      "duplicateSlug": "A catalog entry with this slug already exists.",
       "fields": {
         "slug": "Slug (unique id)",
         "name": "Name",
@@ -531,11 +545,13 @@
       "auto": "Auto (first downloaded)",
       "model": "Default generation model",
       "upscaler": "Default upscaler",
-      "outpaint": "Default outpaint model"
+      "outpaint": "Default outpaint model",
+      "loadError": "Couldn't load some models or engines; the defaults list may be incomplete."
     }
   },
   "edit": {
     "title": "Post Processing",
+    "engineLoadError": "Couldn't load edit engines. Try reloading the page.",
     "model": "Edit model",
     "modelHelp": "FLUX.1 Kontext edits your image from a written instruction. Downloaded on demand.",
     "notInstalled": "not installed",
@@ -582,6 +598,8 @@
     "title": "Upscale & outpaint models",
     "subtitle": "Engines used for AI upscaling and outpainting. The curated list is edited in Settings.",
     "confirmDelete": "Delete this engine from disk?",
+    "loadError": "Couldn't load engines.",
+    "empty": "No engines available.",
     "kind": {
       "realesrgan": "Real-ESRGAN",
       "sd_x4": "SD x4 upscaler",

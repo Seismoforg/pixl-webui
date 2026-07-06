@@ -5,6 +5,7 @@ import Slider from "@mui/material/Slider";
 import Typography from "@mui/material/Typography";
 import { useId } from "react";
 
+import { MonoText } from "@/components/atoms/MonoText";
 import { InfoTip } from "@/components/molecules/InfoTip";
 
 interface LabeledSliderProps {
@@ -38,7 +39,7 @@ export const LabeledSlider = ({
           {info && <InfoTip text={info} sx={{ fontSize: 16 }} />}
         </Box>
         <Typography variant="body2" fontWeight="medium">
-          {value}
+          <MonoText>{value}</MonoText>
         </Typography>
       </Box>
       <Slider

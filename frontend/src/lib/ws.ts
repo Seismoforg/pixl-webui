@@ -128,13 +128,16 @@ export const useLive = <T>(
   onData: (data: T) => void,
   fallback?: Fallback<T>,
 ): void => {
+  const cb = useRef({ onData, fallback });
+  cb.current = { onData, fallback };
   useEffect(() => {
     if (!key) return undefined;
-    const unsub = live.subscribe(key, msg, (d) => onData(d as T));
+    const handle = (d: T) => cb.current.onData(d);
+    const unsub = live.subscribe(key, msg, (d) => handle(d as T));
     let timer: ReturnType<typeof setInterval> | null = null;
     if (fallback) {
       const tick = () => {
-        if (!live.isConnected()) fallback.fetch().then(onData).catch(() => {});
+        if (!live.isConnected()) cb.current.fallback?.fetch().then(handle).catch(() => {});
       };
       tick();
       timer = setInterval(tick, fallback.intervalMs);
@@ -143,17 +146,24 @@ export const useLive = <T>(
       unsub();
       if (timer) clearInterval(timer);
     };
-    // Only re-run when the channel key changes; msg/onData/fallback are captured.
+    // Only re-run when the channel key changes; msg is captured, onData/fallback
+    // are read through the ref above so they never go stale.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 }
 
+// Number of consecutive REST-fallback poll failures tolerated before a job is
+// declared lost. The fallback only runs while the WS is down, so a single
+// transient blip (one dropped request) must not orphan a running job.
+const MAX_POLL_FAILURES = 3;
+
 /**
  * Track a single running job over its live channel, with a REST poll fallback
  * while the socket is down. `onUpdate` receives every progress payload (push or
- * poll); `onError` fires when a fallback poll request throws. Callbacks are held
- * in a ref so the subscription only resets when `jobId` changes (pass null to
- * disable). Shared by the generation and upscale providers.
+ * poll); `onError` fires once `MAX_POLL_FAILURES` consecutive fallback polls
+ * throw in a row (reset on any success), not on the first blip. Callbacks are
+ * held in a ref so the subscription only resets when `jobId` changes (pass null
+ * to disable). Shared by the generation and upscale providers.
  */
 export const useJobTracker = <T>(
   jobId: string | null,
@@ -171,12 +181,21 @@ export const useJobTracker = <T>(
     const unsub = live.subscribe(`${channel}:${jobId}`, { channel, job_id: jobId }, (d) =>
       handle(d as T),
     );
+    let failures = 0;
     const id = setInterval(() => {
       if (live.isConnected()) return;
       cb.current
         .fetchProgress(jobId)
-        .then(handle)
-        .catch((err) => cb.current.onError(err instanceof Error ? err.message : String(err)));
+        .then((d) => {
+          failures = 0;
+          handle(d);
+        })
+        .catch((err) => {
+          failures += 1;
+          if (failures >= MAX_POLL_FAILURES) {
+            cb.current.onError(err instanceof Error ? err.message : String(err));
+          }
+        });
     }, pollMs);
     return () => {
       unsub();

@@ -5,6 +5,7 @@ import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
+import { MonoText } from "@/components/atoms/MonoText";
 import { useTranslations } from "@/i18n";
 import type { GalleryImage } from "@/types";
 
@@ -28,11 +29,23 @@ export const SourceInfo = ({ dimensions, meta, dense = false }: SourceInfoProps)
     <Stack spacing={0.5} sx={{ mt: dense ? 0.5 : 1 }}>
       <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
         {dimensions && (
-          <Chip label={`${dimensions.w}×${dimensions.h}`} size="small" variant="outlined" />
+          <Chip
+            label={<MonoText>{`${dimensions.w}×${dimensions.h}`}</MonoText>}
+            size="small"
+            variant="outlined"
+          />
         )}
         {meta && <Chip label={meta.model_name} size="small" variant="outlined" />}
         {meta && (
-          <Chip label={`${t("gallery.seed")} ${meta.seed}`} size="small" variant="outlined" />
+          <Chip
+            label={
+              <>
+                {t("gallery.seed")} <MonoText>{meta.seed}</MonoText>
+              </>
+            }
+            size="small"
+            variant="outlined"
+          />
         )}
       </Box>
       {meta?.prompt && (

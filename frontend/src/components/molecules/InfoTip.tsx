@@ -21,7 +21,15 @@ export const InfoTip = ({ text, sx }: InfoTipProps) => {
       <IconButton
         aria-label={text}
         size="small"
-        sx={{ p: 0.25, fontSize: 18, color: "text.secondary", ...sx }}
+        sx={{
+          p: 0.75,
+          fontSize: 18,
+          color: "text.secondary",
+          // Bump the hit area to ~44px on touch (icon stays visually small) so the
+          // most-reused interactive atom clears the touch-target size guideline.
+          "@media (pointer: coarse)": { padding: "13px" },
+          ...sx,
+        }}
       >
         <InfoOutlinedIcon fontSize="inherit" />
       </IconButton>

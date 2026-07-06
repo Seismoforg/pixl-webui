@@ -11,7 +11,7 @@ import Stack from "@mui/material/Stack";
 import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { LoadingIndicator } from "@/components/molecules/LoadingIndicator";
@@ -34,13 +34,25 @@ const PerfSwitch = ({
   checked: boolean;
   onChange: (checked: boolean) => void;
 }) => {
+  const helpId = useId();
   return (
     <Box>
       <FormControlLabel
-        control={<Switch checked={checked} onChange={(e) => onChange(e.target.checked)} />}
+        control={
+          <Switch
+            checked={checked}
+            onChange={(e) => onChange(e.target.checked)}
+            inputProps={{ "aria-describedby": helpId }}
+          />
+        }
         label={label}
       />
-      <Typography variant="caption" color="text.secondary" sx={{ display: "block", ml: 6, mt: -0.5 }}>
+      <Typography
+        id={helpId}
+        variant="caption"
+        color="text.secondary"
+        sx={{ display: "block", ml: 6, mt: -0.5 }}
+      >
         {help}
       </Typography>
     </Box>
@@ -78,6 +90,7 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
   // Downloaded entries to populate the default dropdowns.
   const [models, setModels] = useState<ModelEntry[]>([]);
   const [engines, setEngines] = useState<UpscalerEngine[]>([]);
+  const [defaultsError, setDefaultsError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(false);
@@ -103,8 +116,14 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
       .catch(() => setError(true))
       .finally(() => setLoading(false));
     // Downloaded models/engines populate the default dropdowns (best-effort).
-    api.getModels().then(setModels).catch(() => setModels([]));
-    api.getUpscalers().then(setEngines).catch(() => setEngines([]));
+    api.getModels().then(setModels).catch(() => {
+      setModels([]);
+      setDefaultsError(true);
+    });
+    api.getUpscalers().then(setEngines).catch(() => {
+      setEngines([]);
+      setDefaultsError(true);
+    });
   }, []);
 
   const downloadedModels = models.filter((m) => m.downloaded);
@@ -262,6 +281,11 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
             {t("settings.defaults.help")}
           </Typography>
+          {defaultsError && (
+            <Alert severity="warning" sx={{ mb: 1.5 }}>
+              {t("settings.defaults.loadError")}
+            </Alert>
+          )}
           <Stack spacing={2}>
             {defaultSelect(t("settings.defaults.model"), defModel, setDefModel, downloadedModels)}
             {defaultSelect(

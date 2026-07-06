@@ -87,6 +87,7 @@ export const ModelListItem = ({ model, progress, onDownload, onDelete }: ModelLi
           <Typography
             variant="body2"
             color="text.secondary"
+            title={model.description}
             sx={{
               overflow: "hidden",
               textOverflow: "ellipsis",

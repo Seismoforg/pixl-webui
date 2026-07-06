@@ -38,14 +38,14 @@ export const SourcePicker = ({
   return (
     <Box>
       <SectionHeading level={3} sx={{ mb: 1.5 }}>
-        {t("upscale.source.title")}
+        {t("sourcePicker.title")}
       </SectionHeading>
       <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
         <Button variant="outlined" onClick={onPickFromGallery}>
-          {t("upscale.source.fromGallery")}
+          {t("sourcePicker.fromGallery")}
         </Button>
         <Button component="label" role={undefined} variant="outlined" startIcon={<UploadIcon />}>
-          {t("upscale.source.upload")}
+          {t("sourcePicker.upload")}
           <input
             type="file"
             accept="image/*"
@@ -62,7 +62,7 @@ export const SourcePicker = ({
           <Box
             component="img"
             src={preview}
-            alt={t("upscale.source.title")}
+            alt={t("sourcePicker.title")}
             onLoad={(e) => {
               const img = e.currentTarget;
               onUploadDims({ w: img.naturalWidth, h: img.naturalHeight });
@@ -70,26 +70,22 @@ export const SourcePicker = ({
             sx={{ maxWidth: "100%", maxHeight: 220, borderRadius: 1, display: "block" }}
           />
         ) : (
-          <Image
-            src={preview}
-            alt={t("upscale.source.title")}
-            width={0}
-            height={0}
-            sizes="(max-width: 600px) 90vw, 400px"
-            style={{
-              width: "auto",
-              height: "auto",
-              maxWidth: "100%",
-              maxHeight: 220,
-              borderRadius: 4,
-              display: "block",
-              objectFit: "contain",
-            }}
-          />
+          // Fixed-height container reserves the layout space up front (avoids CLS
+          // as the optimized variant loads); `fill` + objectFit letterboxes any
+          // source aspect ratio inside it.
+          <Box sx={{ position: "relative", width: "100%", height: 220, borderRadius: 1, overflow: "hidden" }}>
+            <Image
+              src={preview}
+              alt={t("sourcePicker.title")}
+              fill
+              sizes="(max-width: 600px) 90vw, 400px"
+              style={{ objectFit: "contain" }}
+            />
+          </Box>
         )
       ) : (
         <Typography variant="body2" color="text.secondary">
-          {t("upscale.source.none")}
+          {t("sourcePicker.none")}
         </Typography>
       )}
       <SourceInfo dimensions={dims} meta={meta} />

@@ -19,6 +19,10 @@ Atomic-design React component library for the Pixl WebUI frontend: presentationa
 
 ## molecules/
 - LabeledSlider — labelled slider
+- FieldWithInfo — a form field (TextField/select) + trailing InfoTip in one row;
+  the shared wrapper for GenerationForm's fields
+- SectionHeadingWithInfo — SectionHeading + InfoTip header row (GenerationParams,
+  BrushControls)
 - BrushControls — brush size + softness sliders (inpaint mask editor)
 - GenerationParams — shared sampler/steps/refine/guidance/batch/seed block;
   presentational, keyed by an i18n `keyPrefix`; reused by Reframe/Inpaint/Edit
@@ -59,7 +63,11 @@ Atomic-design React component library for the Pixl WebUI frontend: presentationa
   Defaults section (default model/upscaler/outpaint engine) + system info
 - CatalogEditor (+ CuratedModelsEditor / CuratedEnginesEditor) — edit a curated JSON
   catalog via a declarative `FieldSpec[]` dialog + reset; each change PUTs the whole list
-- EnginePicker — upscale engine picker
+- EnginePicker — shared engine picker (upscale/outpaint/inpaint/edit); defaults
+  reproduce the Upscale look, compact callers override label/helperText/showDetails
+- BatchImageResult — shared sticky batch-image result panel (icon/keyPrefix/running/
+  progress/resultIds + overlay slots); UpscaleResult/ReframeResult/InpaintResult/
+  EditResult are thin wrappers over it
 - SystemStatusBar — polls /api/system/stats; CPU/RAM/GPU/VRAM meters on every page
 - ActivityOverlay — one shared overlay: floating bubble per off-route running activity;
   tap navigates there

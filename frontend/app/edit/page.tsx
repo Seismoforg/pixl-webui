@@ -1,21 +1,22 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useTheme } from "@mui/material/styles";
 import { Suspense } from "react";
 
-import { useAppData } from "@/providers/AppDataProvider";
+import { LoadingIndicator } from "@/components/molecules/LoadingIndicator";
 import { EditPanel } from "@/components/organisms/EditPanel";
+import { useImageRouteParams } from "@/lib/useImageRouteParams";
 
 const EditPageInner = () => {
-  const { galleryToken } = useAppData();
-  const params = useSearchParams();
-  return <EditPanel reloadToken={galleryToken} initialImageId={params.get("image")} />;
+  const { reloadToken, initialImageId } = useImageRouteParams();
+  return <EditPanel reloadToken={reloadToken} initialImageId={initialImageId} />;
 };
 
 const EditPage = () => {
+  const theme = useTheme();
   // useSearchParams needs a Suspense boundary in the App Router.
   return (
-    <Suspense>
+    <Suspense fallback={<LoadingIndicator minHeight={theme.layout.resultMinHeight} />}>
       <EditPageInner />
     </Suspense>
   );

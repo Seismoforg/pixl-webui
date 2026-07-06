@@ -8,6 +8,7 @@ import TextField from "@mui/material/TextField";
 import { useMemo, useState } from "react";
 
 import { useDownloads } from "@/providers/DownloadProvider";
+import { MonoText } from "@/components/atoms/MonoText";
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { ConfirmDialog } from "@/components/molecules/ConfirmDialog";
 import { ModelListItem } from "@/components/molecules/ModelListItem";
@@ -123,7 +124,7 @@ export const ModelManager = ({ models, loading, onChanged }: ModelManagerProps) 
           variant="subtitle2"
           sx={{ mb: 1.5, color: "text.secondary" }}
         >
-          {t(titleKey)} ({entries.length})
+          {t(titleKey)} (<MonoText>{entries.length}</MonoText>)
         </SectionHeading>
         <Stack spacing={1.5}>
           {entries.map((model) => (

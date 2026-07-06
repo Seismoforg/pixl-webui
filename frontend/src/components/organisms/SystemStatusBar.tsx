@@ -24,8 +24,6 @@ export const SystemStatusBar = () => {
     { fetch: api.getSystemStats, intervalMs: 2000 },
   );
 
-  if (!stats) return null;
-
   return (
     <Box
       sx={{
@@ -37,7 +35,9 @@ export const SystemStatusBar = () => {
       }}
     >
       {/* CSS grid (not a flex-wrap Stack): even gaps, tidy 2x2 on mobile, one row
-          from sm up. Cells are minWidth:0 so values never force overflow. */}
+          from sm up. Cells are minWidth:0 so values never force overflow. Rendered
+          with zeroed meters before the first `stats` arrive so the row's height
+          is reserved up front (no pop-in / layout shift). */}
       <Box
         role="group"
         aria-label={t("status.title")}
@@ -48,20 +48,22 @@ export const SystemStatusBar = () => {
           gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", sm: "repeat(4, minmax(0, 1fr))" },
         }}
       >
-        <Meter label={t("status.cpu")} percent={stats.cpu_percent} />
+        <Meter label={t("status.cpu")} percent={stats?.cpu_percent ?? null} />
         <Meter
           label={t("status.ram")}
-          percent={stats.ram_percent}
-          detail={`${stats.ram_used_gb} / ${stats.ram_total_gb} GB`}
+          percent={stats?.ram_percent ?? null}
+          detail={stats ? `${stats.ram_used_gb} / ${stats.ram_total_gb} GB` : undefined}
         />
-        <Meter label={t("status.gpu")} percent={stats.gpu_percent} />
+        <Meter label={t("status.gpu")} percent={stats?.gpu_percent ?? null} />
         <Meter
           label={t("status.vram")}
-          percent={stats.vram_percent}
+          percent={stats?.vram_percent ?? null}
           detail={
-            stats.vram_total_gb != null
+            stats && stats.vram_total_gb != null
               ? `${stats.vram_used_gb} / ${stats.vram_total_gb} GB`
-              : t("status.na")
+              : stats
+                ? t("status.na")
+                : undefined
           }
         />
       </Box>

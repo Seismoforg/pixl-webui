@@ -36,7 +36,21 @@ export const CuratedModelsEditor = () => {
       { key: "slug", label: f("slug"), type: "text" },
       { key: "name", label: f("name"), type: "text" },
       { key: "repo_id", label: f("repoId"), type: "text" },
-      { key: "family", label: f("family"), type: "text" },
+      {
+        key: "family",
+        label: f("family"),
+        type: "select",
+        // Mirrors backend/app/catalog.py's `family` comment (the only families
+        // the pipeline loader / capability rules understand).
+        options: [
+          { value: "SD 1.5", label: "SD 1.5" },
+          { value: "SDXL", label: "SDXL" },
+          { value: "FLUX", label: "FLUX" },
+          { value: "SD 3.x", label: "SD 3.x" },
+        ],
+      },
+      // Free-form HuggingFace pipeline tag; every curated entry currently uses
+      // "text-to-image" and no fixed enum is documented, so this stays text.
       { key: "pipeline_tag", label: f("pipelineTag"), type: "text" },
       { key: "description", label: f("description"), type: "multiline" },
       { key: "gated", label: f("gated"), type: "boolean" },

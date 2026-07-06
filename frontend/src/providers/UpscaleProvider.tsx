@@ -5,22 +5,22 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
 
-import { useActivity } from "@/providers/ActivityProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
-import { clearJob, loadJob, saveJob } from "@/lib/jobPersistence";
+import { clearJob, saveJob } from "@/lib/jobPersistence";
+import { useJobRehydrate, usePublishJobActivity } from "@/lib/jobHooks";
 import { useJobTracker } from "@/lib/ws";
-import { upscaleStatsView } from "@/lib/stats";
-import type { UpscaleProgress, UpscaleRequest } from "@/types";
+import type { UpscaleProgress, UpscaleRequest, UpscaleSource } from "@/types";
 
-/** Chosen source image: an existing gallery image, or an uploaded data URL. */
-export type UpscaleSource =
-  | { kind: "gallery"; imageId: string; preview: string }
-  | { kind: "upload"; dataUrl: string };
+// Re-exported for existing importers (Reframe/Inpaint/Edit providers); the
+// canonical definition now lives in types/index.ts alongside the other shared
+// job/progress shapes.
+export type { UpscaleSource } from "@/types";
 
 /**
  * Holds the upscale job lifecycle (running job + polling loop) AND the form
@@ -117,40 +117,10 @@ export const UpscaleProvider = ({ onUpscaled, children }: UpscaleProviderProps) 
 
   // Re-attach to a job that was still running when the page reloaded (see the
   // generation provider for the rationale).
-  useEffect(() => {
-    const saved = loadJob("upscale");
-    if (!saved) return undefined;
-    let active = true;
-    api
-      .getUpscaleProgress(saved)
-      .then((p) => {
-        if (!active) return;
-        if (p.status === "running") setJobId(saved);
-        else clearJob("upscale");
-      })
-      .catch(() => active && clearJob("upscale"));
-    return () => {
-      active = false;
-    };
-  }, []);
+  useJobRehydrate("upscale", (id) => api.getUpscaleProgress(id), setJobId);
 
   // Publish the running job to the shared activity store for the off-route bubble.
-  const { set: setActivity } = useActivity();
-  useEffect(() => {
-    if (!running) {
-      setActivity("upscale", null);
-      return;
-    }
-    const view = upscaleStatsView(progress, t);
-    setActivity("upscale", {
-      id: "upscale",
-      title: t("activity.upscale"),
-      route: "/upscale",
-      status: "running",
-      detail: view.speed ? `${view.label} · ${view.speed}` : view.label,
-      percent: view.percent,
-    });
-  }, [running, progress, setActivity, t]);
+  usePublishJobActivity("upscale", "/upscale", "activity.upscale", running, progress);
 
   const start = useCallback(async (req: UpscaleRequest) => {
     setError(null);
@@ -171,24 +141,27 @@ export const UpscaleProvider = ({ onUpscaled, children }: UpscaleProviderProps) 
     setProgress(null);
   }, []);
 
-  const value: UpscaleContextValue = {
-    engineSlug,
-    source,
-    prompt,
-    tile,
-    sdX4Steps,
-    setEngineSlug,
-    setSource,
-    setPrompt,
-    setTile,
-    setSdX4Steps,
-    progress,
-    resultId,
-    error,
-    running,
-    start,
-    reset,
-  };
+  const value = useMemo<UpscaleContextValue>(
+    () => ({
+      engineSlug,
+      source,
+      prompt,
+      tile,
+      sdX4Steps,
+      setEngineSlug,
+      setSource,
+      setPrompt,
+      setTile,
+      setSdX4Steps,
+      progress,
+      resultId,
+      error,
+      running,
+      start,
+      reset,
+    }),
+    [engineSlug, source, prompt, tile, sdX4Steps, progress, resultId, error, running, start, reset],
+  );
 
   return <UpscaleContext.Provider value={value}>{children}</UpscaleContext.Provider>;
 }

@@ -19,12 +19,13 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { ConfirmDialog } from "@/components/molecules/ConfirmDialog";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import { useAsyncData } from "@/lib/useAsyncData";
 import type { PromptKind, PromptSnippet } from "@/types";
 
 type EditTarget = { mode: "add" | "edit"; kind: PromptKind; id?: string };
@@ -36,11 +37,8 @@ type EditTarget = { mode: "add" | "edit"; kind: PromptKind; id?: string };
  */
 export const PromptSnippetManager = () => {
   const t = useTranslations();
-  const [snippets, setSnippets] = useState<PromptSnippet[]>([]);
-  const reload = useCallback(() => {
-    api.getPromptSnippets().then(setSnippets).catch(() => setSnippets([]));
-  }, []);
-  useEffect(() => reload(), [reload]);
+  const { data, reload } = useAsyncData(() => api.getPromptSnippets(), []);
+  const snippets = data ?? [];
 
   const [editing, setEditing] = useState<EditTarget | null>(null);
   const [name, setName] = useState("");

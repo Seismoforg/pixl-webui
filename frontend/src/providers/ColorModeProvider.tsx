@@ -45,7 +45,7 @@ export const ColorModeProvider = ({ children }: { children: ReactNode }) => {
     } catch {
       // localStorage unavailable (private mode / blocked) — fall through to system.
     }
-    if (window.matchMedia?.("(prefers-color-scheme: light)").matches) setMode("light");
+    if (window.matchMedia?.("(prefers-color-scheme: light)")?.matches) setMode("light");
   }, []);
 
   // Persist an explicit toggle so the choice survives a reload.

@@ -10,16 +10,10 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
+import { useMemo, type FormEvent, type ReactNode } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
+import { FieldWithInfo } from "@/components/molecules/FieldWithInfo";
 import { InfoTip } from "@/components/molecules/InfoTip";
 import { LabeledSlider } from "@/components/molecules/LabeledSlider";
 import { PromptSnippets } from "@/components/organisms/PromptSnippets";
@@ -28,7 +22,9 @@ import { useGeneration } from "@/providers/GenerationProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { formLockStyle } from "@/lib/formLock";
-import type { ModelEntry, PromptSnippet } from "@/types";
+import { supportsSamplerChoice, supportsStyleTransfer } from "@/lib/modelFamily";
+import { useAsyncData } from "@/lib/useAsyncData";
+import type { ModelEntry } from "@/types";
 
 interface GenerationFormProps {
   downloaded: ModelEntry[];
@@ -55,11 +51,11 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
   const t = useTranslations();
   const gen = useGeneration();
 
-  const [snippets, setSnippets] = useState<PromptSnippet[]>([]);
-  const reloadSnippets = useCallback(() => {
-    api.getPromptSnippets().then(setSnippets).catch(() => setSnippets([]));
-  }, []);
-  useEffect(() => reloadSnippets(), [reloadSnippets]);
+  const { data: snippetsData, reload: reloadSnippets } = useAsyncData(
+    () => api.getPromptSnippets(),
+    [],
+  );
+  const snippets = snippetsData ?? [];
 
   const positiveSnippets = useMemo(
     () => snippets.filter((s) => s.kind === "positive"),
@@ -71,17 +67,17 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
   );
 
   // The IP-Adapter "style" mode only works on SD 1.5 / SDXL.
-  const styleSupported = useMemo(() => {
-    const fam = downloaded.find((m) => m.slug === gen.slug)?.family;
-    return fam === "SD 1.5" || fam === "SDXL";
-  }, [downloaded, gen.slug]);
+  const styleSupported = useMemo(
+    () => supportsStyleTransfer(downloaded.find((m) => m.slug === gen.slug)?.family),
+    [downloaded, gen.slug],
+  );
 
   // Flow-matching families (FLUX / SD 3.x) keep their native scheduler, so the
   // sampler selection has no effect — hide the control for them.
-  const samplerSupported = useMemo(() => {
-    const fam = downloaded.find((m) => m.slug === gen.slug)?.family;
-    return fam !== "FLUX" && fam !== "SD 3.x";
-  }, [downloaded, gen.slug]);
+  const samplerSupported = useMemo(
+    () => supportsSamplerChoice(downloaded.find((m) => m.slug === gen.slug)?.family),
+    [downloaded, gen.slug],
+  );
 
   const canSubmit = !gen.running && gen.prompt.trim() !== "";
   const handleSubmit = (e: FormEvent) => {
@@ -98,7 +94,7 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
         <fieldset disabled={gen.running} style={formLockStyle(gen.running)}>
           <Stack spacing={3}>
         <FormSection title={t("generate.sections.model")}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+          <FieldWithInfo info={t("generate.info.model")}>
             <TextField
               select
               label={t("generate.model")}
@@ -112,15 +108,14 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
                 </MenuItem>
               ))}
             </TextField>
-            <InfoTip text={t("generate.info.model")} />
-          </Box>
+          </FieldWithInfo>
         </FormSection>
 
         <Divider />
 
         <FormSection title={t("generate.sections.prompt")}>
           <Box>
-            <Box sx={{ display: "flex", alignItems: "flex-start", gap: 0.5 }}>
+            <FieldWithInfo info={t("generate.info.prompt")} align="flex-start" infoSx={{ mt: 1 }}>
               <TextField
                 label={t("generate.prompt")}
                 placeholder={t("generate.promptPlaceholder")}
@@ -131,8 +126,7 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
                 required
                 fullWidth
               />
-              <InfoTip text={t("generate.info.prompt")} sx={{ mt: 1 }} />
-            </Box>
+            </FieldWithInfo>
             <PromptSnippets
               kind="positive"
               snippets={positiveSnippets}
@@ -143,7 +137,11 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
           </Box>
 
           <Box>
-            <Box sx={{ display: "flex", alignItems: "flex-start", gap: 0.5 }}>
+            <FieldWithInfo
+              info={t("generate.info.negativePrompt")}
+              align="flex-start"
+              infoSx={{ mt: 1 }}
+            >
               <TextField
                 label={t("generate.negativePrompt")}
                 value={gen.negative}
@@ -152,8 +150,7 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
                 minRows={2}
                 fullWidth
               />
-              <InfoTip text={t("generate.info.negativePrompt")} sx={{ mt: 1 }} />
-            </Box>
+            </FieldWithInfo>
             <PromptSnippets
               kind="negative"
               snippets={negativeSnippets}
@@ -174,7 +171,7 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
 
         <FormSection title={t("generate.sections.parameters")}>
           {samplerSupported && (
-            <Box sx={{ display: "flex", alignItems: "flex-start", gap: 0.5 }}>
+            <FieldWithInfo info={t("generate.info.sampler")} align="flex-start" infoSx={{ mt: 1.5 }}>
               <TextField
                 select
                 label={t("generate.sampler")}
@@ -189,8 +186,7 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
                   </MenuItem>
                 ))}
               </TextField>
-              <InfoTip text={t("generate.info.sampler")} sx={{ mt: 1.5 }} />
-            </Box>
+            </FieldWithInfo>
           )}
 
           <LabeledSlider
@@ -224,7 +220,7 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
 
         <FormSection title={t("generate.sections.output")}>
           <Box sx={{ display: "flex", gap: 2 }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flex: 1 }}>
+            <FieldWithInfo info={t("generate.info.size")} sx={{ flex: 1 }}>
               <TextField
                 label={t("generate.width")}
                 type="number"
@@ -232,9 +228,8 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
                 onChange={(e) => gen.setWidth(Number(e.target.value))}
                 fullWidth
               />
-              <InfoTip text={t("generate.info.size")} />
-            </Box>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flex: 1 }}>
+            </FieldWithInfo>
+            <FieldWithInfo info={t("generate.info.size")} sx={{ flex: 1 }}>
               <TextField
                 label={t("generate.height")}
                 type="number"
@@ -242,11 +237,10 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
                 onChange={(e) => gen.setHeight(Number(e.target.value))}
                 fullWidth
               />
-              <InfoTip text={t("generate.info.size")} />
-            </Box>
+            </FieldWithInfo>
           </Box>
 
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+          <FieldWithInfo info={t("generate.info.seed")}>
             <TextField
               label={t("generate.seed")}
               placeholder={t("generate.seedPlaceholder")}
@@ -255,8 +249,7 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
               onChange={(e) => gen.setSeed(e.target.value)}
               sx={{ flexGrow: 1 }}
             />
-            <InfoTip text={t("generate.info.seed")} />
-          </Box>
+          </FieldWithInfo>
 
           <FormControlLabel
             control={

@@ -3,9 +3,8 @@
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 
-import { SectionHeading } from "@/components/atoms/SectionHeading";
-import { InfoTip } from "@/components/molecules/InfoTip";
 import { LabeledSlider } from "@/components/molecules/LabeledSlider";
+import { SectionHeadingWithInfo } from "@/components/molecules/SectionHeadingWithInfo";
 import { useTranslations } from "@/i18n";
 
 interface BrushControlsProps {
@@ -20,10 +19,7 @@ export const BrushControls = ({ size, softness, onSize, onSoftness }: BrushContr
   const t = useTranslations();
   return (
     <Box>
-      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-        <SectionHeading level={3} variant="subtitle2">{t("inpaint.brush.title")}</SectionHeading>
-        <InfoTip text={t("inpaint.brush.help")} />
-      </Box>
+      <SectionHeadingWithInfo title={t("inpaint.brush.title")} help={t("inpaint.brush.help")} />
       <Stack spacing={1.5}>
         <LabeledSlider
           label={t("inpaint.brush.size")}

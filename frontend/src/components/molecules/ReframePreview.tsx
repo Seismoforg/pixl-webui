@@ -2,12 +2,12 @@
 
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
-import { alpha, useTheme, type Theme } from "@mui/material/styles";
+import { useTheme } from "@mui/material/styles";
 import { useEffect, useRef } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { useTranslations } from "@/i18n";
-import { coverRect, extendSize, maskFeatherPx, parseRatio, seamFeatherPx } from "@/lib/reframe";
+import { drawCover, drawExtend, extendSize, parseRatio } from "@/lib/reframe";
 import type { ReframeStrategy } from "@/types";
 
 interface ReframePreviewProps {
@@ -31,154 +31,8 @@ interface ReframePreviewProps {
   overlay?: boolean;
 }
 
-// Cap the canvas backing store so the draw stays cheap (INP) regardless of the
-// source resolution (a one-shot draw per input change); kept high so the scaled
-// display stays crisp.
-const MAX_DIM = 760;
 // Cap the DISPLAYED width so the preview doesn't stretch across the whole column.
 const DISPLAY_MAX_W = 520;
-
-/** Paint a soft alpha band hugging a rect's four edges — inward (into the rect,
- * for the mask gradient) or outward (into the surrounding border, for the seam
- * fade) — so the drawn width visualizes the configured feather. Backing-store px. */
-const drawFeatherBand = (
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  band: number,
-  base: string,
-  peak: number,
-  inward: boolean,
-) => {
-  if (band < 1) return;
-  const solid = alpha(base, peak);
-  const clear = alpha(base, 0);
-  const s = inward ? 1 : -1;
-  const edges = [
-    { gx0: 0, gy0: y, gx1: 0, gy1: y + s * band, rx: x, ry: inward ? y : y - band, rw: w, rh: band },
-    { gx0: 0, gy0: y + h, gx1: 0, gy1: y + h - s * band, rx: x, ry: inward ? y + h - band : y + h, rw: w, rh: band },
-    { gx0: x, gy0: 0, gx1: x + s * band, gy1: 0, rx: inward ? x : x - band, ry: y, rw: band, rh: h },
-    { gx0: x + w, gy0: 0, gx1: x + w - s * band, gy1: 0, rx: inward ? x + w - band : x + w, ry: y, rw: band, rh: h },
-  ];
-  for (const e of edges) {
-    const g = ctx.createLinearGradient(e.gx0, e.gy0, e.gx1, e.gy1);
-    g.addColorStop(0, solid);
-    g.addColorStop(1, clear);
-    ctx.fillStyle = g;
-    ctx.fillRect(e.rx, e.ry, e.rw, e.rh);
-  }
-};
-
-/** Draw the "new area added" strategies (outpaint / edge / contain): the source
- * sits centred in an extended-ratio frame and the border is the generated/filled
- * region. */
-const drawExtend = (
-  ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
-  cw: number,
-  ch: number,
-  w: number,
-  h: number,
-  outpaint: boolean,
-  theme: Theme,
-  maskSoftness: number,
-  seamSoftness: number,
-  posX: number,
-  posY: number,
-  overlay: boolean,
-) => {
-  const k = Math.min(1, MAX_DIM / Math.max(cw, ch));
-  const bw = Math.round(cw * k);
-  const bh = Math.round(ch * k);
-  const canvas = ctx.canvas;
-  canvas.width = bw;
-  canvas.height = bh;
-
-  // Source placement at the chosen position (0.5 = centred, matching the backend).
-  const sx = (cw - w) * posX * k;
-  const sy = (ch - h) * posY * k;
-  const sw = w * k;
-  const sh = h * k;
-
-  // Base + tint: the whole frame reads as "new area"; the source leaves the tint
-  // showing only in the generated/filled border. In overlay mode (laid over the
-  // real result image) we skip the source image and instead punch the source
-  // region transparent, so only the frame decorations sit over the result.
-  if (overlay) {
-    ctx.clearRect(0, 0, bw, bh);
-    ctx.fillStyle = alpha(theme.palette.primary.main, 0.22);
-    ctx.fillRect(0, 0, bw, bh);
-    ctx.clearRect(sx, sy, sw, sh);
-  } else {
-    ctx.fillStyle = theme.palette.background.default;
-    ctx.fillRect(0, 0, bw, bh);
-    ctx.fillStyle = alpha(theme.palette.primary.main, 0.22);
-    ctx.fillRect(0, 0, bw, bh);
-    ctx.drawImage(img, sx, sy, sw, sh);
-  }
-
-  // For outpaint, visualize the configured blend widths: the mask gradient band
-  // fading inward into the kept source, and the seam fade spreading outward into
-  // the generated border. The band widths mirror the backend feather derivation.
-  if (outpaint) {
-    const primary = theme.palette.primary.main;
-    drawFeatherBand(ctx, sx, sy, sw, sh, maskFeatherPx(cw, ch, maskSoftness) * k, primary, 0.4, true);
-    drawFeatherBand(ctx, sx, sy, sw, sh, seamFeatherPx(w, h, seamSoftness) * k, primary, 0.28, false);
-  }
-
-  // Seam between kept source and generated border.
-  ctx.lineWidth = 2;
-  ctx.setLineDash([6, 4]);
-  ctx.strokeStyle = theme.palette.primary.main;
-  ctx.strokeRect(sx + 1, sy + 1, sw - 2, sh - 2);
-  ctx.setLineDash([]);
-};
-
-/** Draw the `cover` strategy: the frame is a centred crop, so show the full
- * source and dim the margins that will be cropped away. */
-const drawCover = (
-  ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
-  w: number,
-  h: number,
-  rw: number,
-  rh: number,
-  theme: Theme,
-  posX: number,
-  posY: number,
-  overlay: boolean,
-) => {
-  const k = Math.min(1, MAX_DIM / Math.max(w, h));
-  const bw = Math.round(w * k);
-  const bh = Math.round(h * k);
-  const canvas = ctx.canvas;
-  canvas.width = bw;
-  canvas.height = bh;
-
-  const keep = coverRect(w, h, rw, rh, posX, posY);
-  // Non-overlay: draw the source, dim it, restore the kept region to full
-  // brightness. Overlay: skip the image and punch the kept region transparent so
-  // only the dimmed cropped-away margins + kept outline sit over the result.
-  if (overlay) {
-    ctx.clearRect(0, 0, bw, bh);
-    ctx.fillStyle = alpha(theme.palette.common.black, 0.55);
-    ctx.fillRect(0, 0, bw, bh);
-    ctx.clearRect(keep.x * k, keep.y * k, keep.w * k, keep.h * k);
-  } else {
-    ctx.drawImage(img, 0, 0, bw, bh);
-    ctx.fillStyle = alpha(theme.palette.common.black, 0.55);
-    ctx.fillRect(0, 0, bw, bh);
-    ctx.drawImage(img, keep.x, keep.y, keep.w, keep.h, keep.x * k, keep.y * k, keep.w * k, keep.h * k);
-  }
-
-  ctx.lineWidth = 2;
-  ctx.setLineDash([6, 4]);
-  ctx.strokeStyle = theme.palette.primary.main;
-  ctx.strokeRect(keep.x * k + 1, keep.y * k + 1, keep.w * k - 2, keep.h * k - 2);
-  ctx.setLineDash([]);
-};
 
 /**
  * Static canvas preview of the reframe layout: how the target-ratio frame will
