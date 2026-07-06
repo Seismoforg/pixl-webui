@@ -6,8 +6,8 @@ import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
-import Typography from "@mui/material/Typography";
 
+import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { InfoTip } from "@/components/molecules/InfoTip";
 import { LabeledSlider } from "@/components/molecules/LabeledSlider";
 import { useTranslations } from "@/i18n";
@@ -71,7 +71,7 @@ export const GenerationParams = ({
   return (
     <Box>
       <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-        <Typography variant="subtitle2">{k("title")}</Typography>
+        <SectionHeading level={3} variant="subtitle2">{k("title")}</SectionHeading>
         <InfoTip text={k("help")} />
       </Box>
       <Stack spacing={1.5}>

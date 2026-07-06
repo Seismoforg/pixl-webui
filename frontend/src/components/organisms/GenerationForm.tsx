@@ -41,7 +41,7 @@ const appendPrompt = (current: string, addition: string): string =>
 const FormSection = ({ title, children }: { title: string; children: ReactNode }) => {
   return (
     <Box component="section">
-      <SectionHeading level={3} sx={{ mb: 1.5 }}>
+      <SectionHeading level={2} variant="h3" sx={{ mb: 1.5 }}>
         {title}
       </SectionHeading>
       <Stack spacing={2}>{children}</Stack>

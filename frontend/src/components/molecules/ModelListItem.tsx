@@ -60,7 +60,7 @@ export const ModelListItem = ({ model, progress, onDownload, onDelete }: ModelLi
         {/* Identity + origin */}
         <Box sx={{ minWidth: 0, flexGrow: 1 }}>
           <Box sx={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 0.75 }}>
-            <Typography variant="subtitle1" fontWeight="medium" sx={{ mr: 0.5 }}>
+            <Typography component="span" variant="subtitle1" fontWeight="medium" sx={{ mr: 0.5 }}>
               {model.name}
             </Typography>
             {model.gated && (

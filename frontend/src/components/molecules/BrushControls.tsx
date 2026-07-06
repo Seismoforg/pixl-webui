@@ -2,8 +2,8 @@
 
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
-import Typography from "@mui/material/Typography";
 
+import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { InfoTip } from "@/components/molecules/InfoTip";
 import { LabeledSlider } from "@/components/molecules/LabeledSlider";
 import { useTranslations } from "@/i18n";
@@ -21,7 +21,7 @@ export const BrushControls = ({ size, softness, onSize, onSoftness }: BrushContr
   return (
     <Box>
       <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-        <Typography variant="subtitle2">{t("inpaint.brush.title")}</Typography>
+        <SectionHeading level={3} variant="subtitle2">{t("inpaint.brush.title")}</SectionHeading>
         <InfoTip text={t("inpaint.brush.help")} />
       </Box>
       <Stack spacing={1.5}>

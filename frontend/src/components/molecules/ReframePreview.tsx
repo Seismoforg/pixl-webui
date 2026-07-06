@@ -5,6 +5,7 @@ import Typography from "@mui/material/Typography";
 import { alpha, useTheme, type Theme } from "@mui/material/styles";
 import { useEffect, useRef } from "react";
 
+import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { useTranslations } from "@/i18n";
 import { coverRect, extendSize, maskFeatherPx, parseRatio, seamFeatherPx } from "@/lib/reframe";
 import type { ReframeStrategy } from "@/types";
@@ -270,9 +271,9 @@ export const ReframePreview = ({
 
   return (
     <Box>
-      <Typography variant="subtitle2" sx={{ mb: 1 }}>
+      <SectionHeading level={3} variant="subtitle2" sx={{ mb: 1 }}>
         {t("reframe.preview.label")}
-      </Typography>
+      </SectionHeading>
       {preview && dims && ratio ? (
         <>
           <Box

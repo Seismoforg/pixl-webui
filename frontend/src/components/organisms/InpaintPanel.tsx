@@ -320,7 +320,7 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
               {/* Mask editor + brush */}
               <Box>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-                  <Typography variant="subtitle2">{t("inpaint.mask.title")}</Typography>
+                  <SectionHeading level={3} variant="subtitle2">{t("inpaint.mask.title")}</SectionHeading>
                   <InfoTip text={t("inpaint.mask.help")} />
                 </Box>
                 <InpaintCanvas
@@ -347,7 +347,7 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
               {/* Feather tuning — mask gradient / composite seam / seed blur. */}
               <Box>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-                  <Typography variant="subtitle2">{t("inpaint.tuning.title")}</Typography>
+                  <SectionHeading level={3} variant="subtitle2">{t("inpaint.tuning.title")}</SectionHeading>
                   <InfoTip text={t("inpaint.tuning.help")} />
                 </Box>
                 {/* One-tap presets that set the three sliders for common jobs. */}

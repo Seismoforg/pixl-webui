@@ -45,7 +45,7 @@ export const ActivityBubble = ({ activity, onClick }: ActivityBubbleProps) => {
       }}
     >
       <Stack spacing={1}>
-        <Typography variant="subtitle2">{activity.title}</Typography>
+        <Typography component="p" variant="subtitle2">{activity.title}</Typography>
         {activity.detail && (
           <Typography variant="body2" color={error ? "error" : "text.secondary"}>
             {activity.detail}

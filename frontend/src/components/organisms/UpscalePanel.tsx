@@ -254,7 +254,7 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
           {selectedEngine?.kind === "sd_x4" && (
             <Box>
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-                <Typography variant="subtitle2">{t("upscale.steps.label")}</Typography>
+                <SectionHeading level={3} variant="subtitle2">{t("upscale.steps.label")}</SectionHeading>
                 <InfoTip text={t("upscale.steps.help")} />
               </Box>
               <TextField
@@ -271,7 +271,7 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
           {/* Tiling option */}
           <Box>
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-              <Typography variant="subtitle2">{t("upscale.tiling.label")}</Typography>
+              <SectionHeading level={3} variant="subtitle2">{t("upscale.tiling.label")}</SectionHeading>
               <InfoTip text={t("upscale.tiling.help")} />
             </Box>
             <ToggleButtonGroup

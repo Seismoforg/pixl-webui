@@ -103,6 +103,7 @@ const Meter = ({
       <LinearProgress
         variant="determinate"
         value={percent != null ? Math.min(100, value) : 0}
+        aria-label={label}
         sx={{ height: 4, borderRadius: 2 }}
       />
     </Box>

@@ -321,7 +321,7 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
           {/* Target format / reframe */}
           <Box>
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-              <Typography variant="subtitle2">{t("reframe.format.title")}</Typography>
+              <SectionHeading level={3} variant="subtitle2">{t("reframe.format.title")}</SectionHeading>
               <InfoTip text={t("reframe.format.help")} />
             </Box>
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
@@ -441,7 +441,7 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
               cover) which part of the crop is kept. */}
           <Box>
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-              <Typography variant="subtitle2">{t("reframe.position.title")}</Typography>
+              <SectionHeading level={3} variant="subtitle2">{t("reframe.position.title")}</SectionHeading>
               <InfoTip text={t("reframe.position.help")} />
             </Box>
             <Stack spacing={1.5}>
@@ -478,7 +478,7 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
           {outpaint && (
             <Box>
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-                <Typography variant="subtitle2">{t("reframe.outpaint.tuning")}</Typography>
+                <SectionHeading level={3} variant="subtitle2">{t("reframe.outpaint.tuning")}</SectionHeading>
                 <InfoTip text={t("reframe.outpaint.tuningHelp")} />
               </Box>
               <Stack spacing={1.5}>

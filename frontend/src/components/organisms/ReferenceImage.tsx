@@ -85,7 +85,7 @@ export const ReferenceImage = ({ styleSupported }: ReferenceImageProps) => {
 
       {gen.referenceImage === null ? (
         <Stack direction="row" spacing={1}>
-          <Button component="label" variant="outlined" startIcon={<UploadIcon />} size="small">
+          <Button component="label" role={undefined} variant="outlined" startIcon={<UploadIcon />} size="small">
             {t("generate.reference.upload")}
             <input
               type="file"

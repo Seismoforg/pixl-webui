@@ -44,7 +44,7 @@ export const SourcePicker = ({
         <Button variant="outlined" onClick={onPickFromGallery}>
           {t("upscale.source.fromGallery")}
         </Button>
-        <Button component="label" variant="outlined" startIcon={<UploadIcon />}>
+        <Button component="label" role={undefined} variant="outlined" startIcon={<UploadIcon />}>
           {t("upscale.source.upload")}
           <input
             type="file"

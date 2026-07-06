@@ -1,6 +1,6 @@
 "use client";
 
-import { createTheme, type Theme } from "@mui/material/styles";
+import { alpha, createTheme, lighten, type Theme } from "@mui/material/styles";
 
 export type ColorMode = "light" | "dark";
 
@@ -31,13 +31,17 @@ declare module "@mui/material/styles" {
  */
 export const createAppTheme = (mode: ColorMode): Theme => {
   const isDark = mode === "dark";
+  // Indigo deep enough that white text on the contained button clears WCAG AA
+  // (contrast ~5.5:1); the previous #6366f1 was ~4.47:1.
+  const primaryMain = "#5457e0";
+  // Same indigo lifted for use as text/border on the dark paper, where the base
+  // primary.main only reaches ~3.3:1 (fails AA) as an outlined-chip label.
+  const primaryOnDark = lighten(primaryMain, 0.35);
 
   return createTheme({
     palette: {
       mode,
-      // Indigo deep enough that white text on the contained button clears WCAG AA
-      // (contrast ~5.5:1); the previous #6366f1 was ~4.47:1.
-      primary: { main: "#5457e0" },
+      primary: { main: primaryMain },
       secondary: { main: "#ec4899" },
       // A cohesive surface + divider set per mode so panels, borders and the page
       // background read as one system rather than ad-hoc greys.
@@ -82,6 +86,19 @@ export const createAppTheme = (mode: ColorMode): Theme => {
           root: { backgroundImage: "none" },
         },
       },
+      // Dark mode: lift the outlined-primary chip label/border off the base
+      // indigo (~3.3:1 on paper, fails AA) to the lighter shade (~5.6:1). Light
+      // mode already passes, so leave it untouched.
+      MuiChip: isDark
+        ? {
+            styleOverrides: {
+              outlinedPrimary: {
+                color: primaryOnDark,
+                borderColor: alpha(primaryOnDark, 0.7),
+              },
+            },
+          }
+        : {},
     },
   });
 }
