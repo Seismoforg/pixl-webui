@@ -167,7 +167,7 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
   const device = system?.device;
 
   return (
-    <Paper variant="outlined" sx={{ p: 3, maxWidth: 560 }}>
+    <Paper variant="outlined" sx={{ p: 3 }}>
       <SectionHeading level={2} sx={{ mb: 2 }}>
         {t("settings.title")}
       </SectionHeading>

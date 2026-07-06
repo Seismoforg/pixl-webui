@@ -233,7 +233,7 @@ export const CatalogEditor = <T,>({
   };
 
   return (
-    <Paper variant="outlined" sx={{ p: 3, maxWidth: 560 }}>
+    <Paper variant="outlined" sx={{ p: 3 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
         <SectionHeading level={2}>{title}</SectionHeading>
         <Stack direction="row" spacing={1}>

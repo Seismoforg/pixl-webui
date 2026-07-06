@@ -154,7 +154,7 @@ export const PromptSnippetManager = () => {
   );
 
   return (
-    <Paper variant="outlined" sx={{ p: 3, maxWidth: 560 }}>
+    <Paper variant="outlined" sx={{ p: 3 }}>
       <SectionHeading level={2} sx={{ mb: 2 }}>
         {t("settings.snippets.title")}
       </SectionHeading>
