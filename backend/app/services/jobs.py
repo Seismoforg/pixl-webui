@@ -25,6 +25,16 @@ from . import gallery
 SEED_MAX = 2**32 - 1
 
 
+class PhaseTimings(BaseModel):
+    """Per-image wall-clock breakdown (seconds), mirroring generation's breakdown so the
+    frontend can render it identically. ``generate`` is the denoise/process phase."""
+
+    load: float
+    generate: float
+    decode: float
+    total: float
+
+
 class UpscaleProgress(BaseModel):
     job_id: str
     status: str  # "running" | "done" | "error"
@@ -36,6 +46,9 @@ class UpscaleProgress(BaseModel):
     its: float | None  # iterations/second (SD x4 steps); None until measurable
     elapsed: float  # seconds since the job started
     engine_name: str
+    # One breakdown per finished image, aligned with image_ids (batch jobs append one
+    # per variant; single-image jobs have at most one).
+    timings: list[PhaseTimings] = []
     image_id: str | None = None
     error: str | None = None
 
@@ -71,9 +84,39 @@ class JobState:
         self.batch_size = 1
         self.image_ids: list[str] = []
         self.error: str | None = None
+        # Per-image phase markers (perf_counter) + the accumulated breakdown. The GPU is
+        # synced in the step callback (callbacks.gpu_sync), so these reflect real compute.
+        self.load_started_at: float | None = time.perf_counter()
+        self.first_step_at: float | None = None
+        self.decode_started_at: float | None = None
+        self.image_timings: list[dict] = []
 
     def elapsed(self) -> float:
         return time.perf_counter() - self.started_at
+
+    def start_image(self) -> None:
+        """Reset the per-image phase markers — call at the start of each batch variant."""
+        self.load_started_at = time.perf_counter()
+        self.first_step_at = None
+        self.decode_started_at = None
+
+    def mark_decode(self) -> None:
+        """Stamp the decode-phase start (once) — the transition to 'finalizing'."""
+        if self.decode_started_at is None:
+            self.decode_started_at = time.perf_counter()
+
+    def record_image_timing(self) -> None:
+        """Append this image's load/generate/decode/total breakdown from the markers."""
+        done = time.perf_counter()
+        load_at = self.load_started_at or done
+        proc_at = self.first_step_at or done
+        dec_at = self.decode_started_at or done
+        self.image_timings.append({
+            "load": max(0.0, proc_at - load_at),
+            "generate": max(0.0, dec_at - proc_at),
+            "decode": max(0.0, done - dec_at),
+            "total": max(0.0, done - load_at),
+        })
 
 
 class _Identified(Protocol):
@@ -129,6 +172,17 @@ def make_on_progress(job: JobState, lock: threading.Lock, pub_key: str) -> Calla
         with lock:
             for key, value in update.items():
                 setattr(job, key, value)
+            # Stamp the phase markers off the same updates (GPU already synced by the
+            # step callback): the first denoise step, and the decode start. Decode is
+            # stamped at the LAST step (before the service's internal VAE decode) so the
+            # decode phase captures that decode — mirroring generation. A "finalizing"
+            # phase (upscale reports it) also stamps it; pure-PIL flows with no steps get
+            # it from the router's mark_decode().
+            cur, tot = update.get("current_step"), update.get("total_steps")
+            if job.first_step_at is None and (cur or 0) >= 1:
+                job.first_step_at = time.perf_counter()
+            if update.get("phase") == "finalizing" or (cur is not None and tot and cur >= tot):
+                job.mark_decode()
         live.publish(pub_key)
 
     return on_progress
@@ -142,6 +196,7 @@ def save_result(store: JobStore[JobState], job: JobState, result, meta: dict) ->
         if job.image_id is None:
             job.image_id = saved.id
         job.image_ids.append(saved.id)
+        job.record_image_timing()
 
 
 def to_upscale_progress(job: JobState) -> UpscaleProgress:
@@ -158,6 +213,7 @@ def to_upscale_progress(job: JobState) -> UpscaleProgress:
         its=job.its,
         elapsed=round(job.elapsed(), 1),
         engine_name=job.engine_name,
+        timings=[PhaseTimings(**t) for t in job.image_timings],
         image_id=job.image_id,
         error=job.error,
     )

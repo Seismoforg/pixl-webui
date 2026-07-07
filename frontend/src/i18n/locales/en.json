@@ -243,7 +243,13 @@
       "finalizing": "Finalizing…",
       "tile": "Tile {current}/{total}",
       "step": "Step {current}/{total}",
-      "elapsed": "{value}s"
+      "elapsed": "{value}s",
+      "timing": {
+        "load": "Load {value}",
+        "process": "Process {value}",
+        "decode": "Decode {value}",
+        "total": "Total {value}"
+      }
     },
     "overlay": {
       "title": "Upscaling"

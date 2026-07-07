@@ -61,6 +61,7 @@ def _run(job: jobs.JobState, req: EditRequest, image, engine: UpscalerInfo) -> N
             seed_i = (base_seed + i) % (jobs.SEED_MAX + 1)
             with _store.lock:
                 job.batch_index = i + 1
+                job.start_image()
             result = edit_svc.edit_image(
                 image, req.prompt, on_progress, engine,
                 steps=req.steps,
@@ -69,6 +70,7 @@ def _run(job: jobs.JobState, req: EditRequest, image, engine: UpscalerInfo) -> N
             )
             with _store.lock:
                 job.phase = "finalizing"
+                job.mark_decode()
             live.publish(pub_key)
             jobs.save_result(
                 _store,

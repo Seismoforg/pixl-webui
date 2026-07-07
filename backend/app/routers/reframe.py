@@ -108,6 +108,7 @@ def _run(
             )
             with _store.lock:
                 job.phase = "finalizing"
+                job.mark_decode()
             live.publish(pub_key)
             _save_result(job, req, result, "reframe", "Reframe", steps=0, guidance=0.0, seed=0,
                          sampler="reframe")
@@ -138,6 +139,7 @@ def _run_outpaint(job, req, image, ratio, engine, on_progress, pub_key) -> None:
             seed_i = (base_seed + i) % (jobs.SEED_MAX + 1)
             with _store.lock:
                 job.batch_index = i + 1
+                job.start_image()
             result = outpaint_svc.reframe_image(
                 image, ratio, req.outpaint_prompt, on_progress, engine,
                 mask_softness=req.mask_softness,
@@ -154,6 +156,7 @@ def _run_outpaint(job, req, image, ratio, engine, on_progress, pub_key) -> None:
             )
             with _store.lock:
                 job.phase = "finalizing"
+                job.mark_decode()
             live.publish(pub_key)
             _save_result(
                 job, req, result, engine.slug, engine.name,

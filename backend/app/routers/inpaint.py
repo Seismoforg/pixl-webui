@@ -80,6 +80,7 @@ def _run(job: jobs.JobState, req: InpaintRequest, image, mask, engine: UpscalerI
             seed_i = (base_seed + i) % (jobs.SEED_MAX + 1)
             with _store.lock:
                 job.batch_index = i + 1
+                job.start_image()
             result = inpaint_svc.inpaint_image(
                 image, mask, req.prompt, on_progress, engine,
                 mask_softness=req.mask_softness,
@@ -96,6 +97,7 @@ def _run(job: jobs.JobState, req: InpaintRequest, image, mask, engine: UpscalerI
             )
             with _store.lock:
                 job.phase = "finalizing"
+                job.mark_decode()
             live.publish(pub_key)
             jobs.save_result(
                 _store,

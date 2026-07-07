@@ -424,6 +424,7 @@ export interface UpscaleProgress {
   its: number | null; // iterations/second (SD x4 steps); null until measurable
   elapsed: number; // seconds since the job started
   engine_name: string;
+  timings: PhaseTimings[]; // per-finished-image breakdown, aligned with the batch grid
   image_id: string | null;
   error: string | null;
 }

@@ -7,6 +7,7 @@ import Typography from "@mui/material/Typography";
 
 import { MonoText } from "@/components/atoms/MonoText";
 import { useTranslations } from "@/i18n";
+import { formatDuration } from "@/lib/duration";
 import { upscaleStatsView } from "@/lib/stats";
 import type { UpscaleProgress } from "@/types";
 
@@ -14,6 +15,9 @@ import type { UpscaleProgress } from "@/types";
 export const UpscaleStats = ({ progress }: { progress: UpscaleProgress | null }) => {
   const t = useTranslations();
   const view = upscaleStatsView(progress, t);
+  // Per-phase breakdown of the most recent finished image (load / process / decode /
+  // total), like the generation tab. Empty for flows without a breakdown (e.g. compare).
+  const timing = progress?.timings.at(-1);
 
   return (
     <Box sx={{ mb: 2 }}>
@@ -37,6 +41,16 @@ export const UpscaleStats = ({ progress }: { progress: UpscaleProgress | null })
         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
           {progress.engine_name}
         </Typography>
+      )}
+      {timing && (
+        <MonoText variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
+          {[
+            t("upscale.stats.timing.load", { value: formatDuration(timing.load) }),
+            t("upscale.stats.timing.process", { value: formatDuration(timing.generate) }),
+            t("upscale.stats.timing.decode", { value: formatDuration(timing.decode) }),
+            t("upscale.stats.timing.total", { value: formatDuration(timing.total) }),
+          ].join(" · ")}
+        </MonoText>
       )}
     </Box>
   );
