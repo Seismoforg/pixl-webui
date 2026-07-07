@@ -568,5 +568,30 @@ def generate(
             )
         )
 
-    result = run_pipe(**kwargs)
-    return result.images[0], effective_sampler
+    # FLUX: decode via output_type="latent" instead of letting the pipeline decode
+    # inline. The full VAE decode is pathologically slow on some GPUs under CPU
+    # offload — the resident quantized transformer starves the decode of VRAM so the
+    # conv kernels fall back to a slow path (8-45s). Returning latents lets the
+    # pipeline offload the transformer through its OWN hook first (denoise stays
+    # full-speed, no hook desync), then we decode with the GPU freed (~2s at full VAE
+    # quality). Other families fit the GPU / decode fast, so they keep the inline path.
+    if model.family == "FLUX":
+        latents = run_pipe(**kwargs, output_type="latent").images
+        image = _decode_flux_latents(run_pipe, latents, width, height)
+    else:
+        image = run_pipe(**kwargs).images[0]
+    return image, effective_sampler
+
+
+def _decode_flux_latents(pipe, latents, width: int, height: int):
+    """Decode FLUX latents to a PIL image, mirroring FluxPipeline's own post-denoise
+    decode (unpack the packed latents, undo the scale/shift, VAE-decode, postprocess).
+    Called after the pipeline has offloaded the transformer, so the VAE decode runs
+    with the GPU freed."""
+    import torch
+
+    latents = pipe._unpack_latents(latents, height, width, pipe.vae_scale_factor)
+    latents = (latents / pipe.vae.config.scaling_factor) + pipe.vae.config.shift_factor
+    with torch.no_grad():
+        image = pipe.vae.decode(latents, return_dict=False)[0]
+    return pipe.image_processor.postprocess(image, output_type="pil")[0]

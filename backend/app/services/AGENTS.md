@@ -82,7 +82,12 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             validators (rocBLAS/hipBLASLt version) no longer match the runtime; post apply_perf
             runs apply_compile. Also applies the sampler via samplers.apply_sampler,
             guarded by pipe.scheduler.compatibles (FLUX/SD3 kept intact); step callback
-            optionally decodes a throttled live preview
+            optionally decodes a throttled live preview. FLUX decodes via
+            `output_type="latent"` + `_decode_flux_latents` (manual unpack/scale +
+            vae.decode) so the pipeline offloads the transformer through its own hook
+            FIRST — the inline VAE decode is pathologically slow under CPU offload on
+            some GPUs (resident quantized transformer starves it of VRAM → ~8-45s);
+            decoding after the offload frees the GPU → ~2s at full quality
 - prompt_embeds.py — CLIP prompt_embeds via compel (SD 1.5/SDXL) so >77-token prompts
             aren't truncated + A1111 weighting works; pos/neg padded equal (compel SDXL
             padding is broken). best-effort → None (plain prompt) on missing/failed.
