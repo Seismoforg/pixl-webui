@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -13,6 +14,7 @@ import {
 import { useActivity } from "@/providers/ActivityProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import { formatDuration } from "@/lib/duration";
 import { clearJob, saveJob } from "@/lib/jobPersistence";
 import { useJobRehydrate } from "@/lib/jobHooks";
 import { useJobTracker } from "@/lib/ws";
@@ -195,6 +197,26 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
   // if it is still running; otherwise drop the stale id.
   useJobRehydrate("generation", (id) => api.getGenerationProgress(id), setJobId);
 
+  // Live total-elapsed for the running image, ticked client-side (re-anchored per
+  // batch image) so the off-route bubble keeps counting during the decode tail
+  // where the backend sends no step callbacks. 1 s cadence keeps re-publishes light.
+  const [elapsed, setElapsed] = useState(0);
+  const elapsedStart = useRef<number | null>(null);
+  const batchIndex = progress?.batch_index;
+  useEffect(() => {
+    if (!running) {
+      elapsedStart.current = null;
+      setElapsed(0);
+      return;
+    }
+    elapsedStart.current = Date.now();
+    setElapsed(0);
+    const id = setInterval(() => {
+      if (elapsedStart.current !== null) setElapsed((Date.now() - elapsedStart.current) / 1000);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [running, batchIndex]);
+
   // Publish the running job to the shared activity store for the off-route bubble.
   const { set: setActivity } = useActivity();
   useEffect(() => {
@@ -215,6 +237,7 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
       percent =
         progress.total_steps > 0 ? (progress.current_step / progress.total_steps) * 100 : null;
     }
+    detail = `${detail} · ${formatDuration(elapsed)}`;
     setActivity("generation", {
       id: "generation",
       title: t("activity.generation"),
@@ -223,7 +246,7 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
       detail,
       percent,
     });
-  }, [running, progress, setActivity, t]);
+  }, [running, progress, elapsed, setActivity, t]);
 
   const changeModel = useCallback(
     (nextSlug: string) => {

@@ -56,6 +56,15 @@ class SamplerList(BaseModel):
     default: str
 
 
+class PhaseTimings(BaseModel):
+    """Per-image wall-clock breakdown (seconds): how long each phase took."""
+
+    load: float  # model load + prompt encoding (until the first denoising step)
+    generate: float  # the denoising steps
+    decode: float  # VAE decode of the latents into the final image ("finalizing")
+    total: float  # load + generate + decode
+
+
 class GenerationProgress(BaseModel):
     job_id: str
     status: str  # "running" | "done" | "error"
@@ -68,6 +77,8 @@ class GenerationProgress(BaseModel):
     batch_size: int
     batch_index: int  # 1-based index of the image currently generating
     image_ids: list[str] = []  # accumulates as each batch image finishes
+    # One timing breakdown per finished image, aligned with image_ids.
+    timings: list[PhaseTimings] = []
     preview: str | None = None  # data URL of the latest in-progress frame
     image_id: str | None = None  # first image (kept for single-image compatibility)
     error: str | None = None
@@ -93,6 +104,8 @@ class _Job:
         self.batch_index = 0
         # Gallery ids of finished batch images, in order (grows during the batch).
         self.image_ids: list[str] = []
+        # Per-image phase breakdown, aligned with image_ids (see PhaseTimings).
+        self.image_timings: list[dict] = []
         # Latest live preview frame (data URL); only the most recent is kept.
         self.preview: str | None = None
         self.error: str | None = None
@@ -100,6 +113,10 @@ class _Job:
         # reported speed. ``first_step_at`` covers the elapsed time for the steps
         # taken *after* the first one.
         self.first_step_at: float | None = None
+        # Per-image phase markers (perf_counter), reset each batch round: the image
+        # started, the last step finished (decode start), and the image was saved.
+        self.load_started_at: float | None = None
+        self.decode_started_at: float | None = None
 
     def its(self) -> float | None:
         if self.first_step_at is None or self.current_step <= 1:
@@ -127,8 +144,14 @@ def _run(job: _Job, req: GenerateRequest, model, init_image) -> None:
             completed = min(completed, job.total_steps)
             job.current_step = completed
             # After the last denoising step the pipeline runs the VAE decode; flag
-            # that tail so the UI can show a distinct "finalizing" phase.
-            job.phase = "finalizing" if completed >= job.total_steps else "generating"
+            # that tail so the UI can show a distinct "finalizing" phase, and stamp
+            # its start so the decode duration can be measured.
+            if completed >= job.total_steps:
+                job.phase = "finalizing"
+                if job.decode_started_at is None:
+                    job.decode_started_at = time.perf_counter()
+            else:
+                job.phase = "generating"
         live.publish(key)
 
     def on_preview(data_url: str) -> None:
@@ -145,6 +168,8 @@ def _run(job: _Job, req: GenerateRequest, model, init_image) -> None:
                 job.batch_index = i + 1
                 job.current_step = 0
                 job.first_step_at = None
+                job.decode_started_at = None
+                job.load_started_at = time.perf_counter()
                 job.phase = "loading"
                 job.preview = None
             live.publish(key)
@@ -185,9 +210,24 @@ def _run(job: _Job, req: GenerateRequest, model, init_image) -> None:
                     "loras": [f"{lora.slug}@{lora.weight}" for lora in req.loras],
                 },
             )
+            done_at = time.perf_counter()
             with _store.lock:
                 job.current_step = job.total_steps
                 job.image_ids.append(meta.id)
+                # Build this image's phase breakdown from the perf_counter markers.
+                # Every marker is set by this point (loop start / first step / last
+                # step); fall back to done_at so a duration is never negative.
+                load_at = job.load_started_at or done_at
+                gen_at = job.first_step_at or done_at
+                dec_at = job.decode_started_at or done_at
+                job.image_timings.append(
+                    {
+                        "load": max(0.0, gen_at - load_at),
+                        "generate": max(0.0, dec_at - gen_at),
+                        "decode": max(0.0, done_at - dec_at),
+                        "total": max(0.0, done_at - load_at),
+                    }
+                )
             live.publish(key)
 
         with _store.lock:
@@ -281,6 +321,7 @@ def generation_progress(job_id: str) -> GenerationProgress:
             batch_size=job.batch_size,
             batch_index=job.batch_index,
             image_ids=list(job.image_ids),
+            timings=[PhaseTimings(**t) for t in job.image_timings],
             preview=job.preview,
             image_id=job.image_ids[0] if job.image_ids else None,
             error=job.error,

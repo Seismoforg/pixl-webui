@@ -7,13 +7,14 @@ import LinearProgress from "@mui/material/LinearProgress";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { MonoText } from "@/components/atoms/MonoText";
 import { ResultPlaceholder } from "@/components/molecules/ResultPlaceholder";
 import { Thumbnail } from "@/components/molecules/Thumbnail";
 import { useGeneration } from "@/providers/GenerationProvider";
 import { useTranslations } from "@/i18n";
+import { formatDuration } from "@/lib/duration";
 
 /** The result column of the generation view: live per-step preview + progress
  *  while running, an error alert, or the finished (batch) images. */
@@ -27,6 +28,27 @@ export const GenerationResult = () => {
   useEffect(() => {
     if (selectedIndex >= images.length) setSelectedIndex(0);
   }, [images.length, selectedIndex]);
+
+  // Live total-elapsed for the in-flight image. Ticked client-side (re-anchored per
+  // batch image) so the number keeps moving during the decode tail, where the
+  // backend sends no step callbacks. Authoritative per-phase durations come from
+  // progress.timings once each image finishes.
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef<number | null>(null);
+  const batchIndex = progress?.batch_index;
+  useEffect(() => {
+    if (!running) {
+      startRef.current = null;
+      setElapsed(0);
+      return;
+    }
+    startRef.current = Date.now();
+    setElapsed(0);
+    const id = setInterval(() => {
+      if (startRef.current !== null) setElapsed((Date.now() - startRef.current) / 1000);
+    }, 200);
+    return () => clearInterval(id);
+  }, [running, batchIndex]);
 
   const speedLabel = (its: number | null): string | null => {
     if (its === null || its <= 0) return null;
@@ -113,9 +135,19 @@ export const GenerationResult = () => {
           ) : (
             <LinearProgress />
           )}
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
-            <MonoText>{t("generate.seedUsed", { seed: progress.seed })}</MonoText>
-          </Typography>
+          <Stack
+            direction="row"
+            justifyContent="space-between"
+            sx={{ mt: 1 }}
+            color="text.secondary"
+          >
+            <Typography variant="caption">
+              <MonoText>{t("generate.seedUsed", { seed: progress.seed })}</MonoText>
+            </Typography>
+            <Typography variant="caption">
+              <MonoText>{t("generate.elapsed", { value: formatDuration(elapsed) })}</MonoText>
+            </Typography>
+          </Stack>
           <Typography
             variant="caption"
             color="text.secondary"
@@ -155,6 +187,32 @@ export const GenerationResult = () => {
                   sx={{ mt: 1, display: "block", textAlign: "center" }}
                 >
                   <MonoText>{t("generate.seedUsed", { seed: progress.seed + selected })}</MonoText>
+                </Typography>
+              )}
+              {/* Per-phase timing breakdown for the selected image (load / generate /
+                  decode / total), so a slow phase (e.g. VAE decode) is visible. */}
+              {progress?.timings[selected] && (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: "block", textAlign: "center" }}
+                >
+                  <MonoText>
+                    {[
+                      t("generate.timing.load", {
+                        value: formatDuration(progress.timings[selected].load),
+                      }),
+                      t("generate.timing.generate", {
+                        value: formatDuration(progress.timings[selected].generate),
+                      }),
+                      t("generate.timing.decode", {
+                        value: formatDuration(progress.timings[selected].decode),
+                      }),
+                      t("generate.timing.total", {
+                        value: formatDuration(progress.timings[selected].total),
+                      }),
+                    ].join(" · ")}
+                  </MonoText>
                 </Typography>
               )}
             </>

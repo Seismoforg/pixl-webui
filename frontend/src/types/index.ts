@@ -191,6 +191,14 @@ export type GenerationStatus = "running" | "done" | "error";
 
 export type GenerationPhase = "loading" | "generating" | "finalizing";
 
+/** Per-image wall-clock breakdown (seconds): how long each phase took. */
+export interface PhaseTimings {
+  load: number; // model load + prompt encoding, until the first denoising step
+  generate: number; // the denoising steps
+  decode: number; // VAE decode into the final image ("finalizing")
+  total: number; // load + generate + decode
+}
+
 export interface GenerationProgress {
   job_id: string;
   status: GenerationStatus;
@@ -203,6 +211,7 @@ export interface GenerationProgress {
   batch_size: number;
   batch_index: number; // 1-based index of the image currently generating
   image_ids: string[]; // finished batch images, in order
+  timings: PhaseTimings[]; // one breakdown per finished image, aligned with image_ids
   preview: string | null; // data URL of the latest in-progress frame
   image_id: string | null;
   error: string | null;

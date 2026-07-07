@@ -113,6 +113,13 @@
     "seedUsed": "Seed {seed}",
     "phaseLoading": "Loading model…",
     "phaseFinalizing": "Decoding image…",
+    "elapsed": "Elapsed {value}",
+    "timing": {
+      "load": "Load {value}",
+      "generate": "Generate {value}",
+      "decode": "Decode {value}",
+      "total": "Total {value}"
+    },
     "snippets": {
       "loadPositive": "Snippets",
       "loadNegative": "Snippets",
