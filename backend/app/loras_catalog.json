@@ -28,5 +28,155 @@
     "description": "Latent-consistency accelerator for SD 1.5 — few-step generation. Pair with the LCM sampler and low guidance (~1).",
     "trigger": null,
     "approx_size_gb": 0.13
+  },
+  {
+    "slug": "lora--ikea-instructions-xl",
+    "repo_id": "ostris/ikea-instructions-lora-sdxl",
+    "filename": "ikea_instructions_xl_v1_5.safetensors",
+    "name": "IKEA Instructions XL",
+    "family": "SDXL",
+    "description": "Turns any subject into a deadpan IKEA-manual assembly diagram. No trigger needed — prompt the object plainly.",
+    "trigger": null,
+    "approx_size_gb": 0.19
+  },
+  {
+    "slug": "lora--3d-render-xl",
+    "repo_id": "goofyai/3d_render_style_xl",
+    "filename": "3d_render_style_xl.safetensors",
+    "name": "3D Render Style XL",
+    "family": "SDXL",
+    "description": "Clean stylised 3D-render look for SDXL. Add the trigger to the prompt.",
+    "trigger": "3d style",
+    "approx_size_gb": 0.09
+  },
+  {
+    "slug": "lora--papercut-xl",
+    "repo_id": "TheLastBen/Papercut_SDXL",
+    "filename": "papercut.safetensors",
+    "name": "Papercut XL",
+    "family": "SDXL",
+    "description": "Layered paper-cut / kirigami style for SDXL. Add the trigger to the prompt.",
+    "trigger": "papercut",
+    "approx_size_gb": 0.34
+  },
+  {
+    "slug": "lora--toy-face-xl",
+    "repo_id": "CiroN2022/toy-face",
+    "filename": "toy_face_sdxl.safetensors",
+    "name": "Toy Face XL",
+    "family": "SDXL",
+    "description": "Cute plastic toy-figure faces for SDXL. Add the trigger to the prompt.",
+    "trigger": "toy_face",
+    "approx_size_gb": 0.17
+  },
+  {
+    "slug": "lora--line-manga-xl",
+    "repo_id": "artificialguybr/LineAniRedmond-LinearMangaSDXL-V2",
+    "filename": "LineAniRedmondV2-Lineart-LineAniAF.safetensors",
+    "name": "Line Art Manga XL",
+    "family": "SDXL",
+    "description": "Clean black-and-white manga line-art for SDXL. Add the trigger to the prompt.",
+    "trigger": "LineAniAF, lineart",
+    "approx_size_gb": 0.17
+  },
+  {
+    "slug": "lora--graphic-novel-xl",
+    "repo_id": "blink7630/graphic-novel-illustration",
+    "filename": "Graphic_Novel_Illustration-000007.safetensors",
+    "name": "Graphic Novel Illustration XL",
+    "family": "SDXL",
+    "description": "Dark, gritty graphic-novel illustration style for SDXL. Add the trigger to the prompt.",
+    "trigger": "graphic novel illustration",
+    "approx_size_gb": 0.46
+  },
+  {
+    "slug": "lora--flux-super-realism",
+    "repo_id": "strangerzonehf/Flux-Super-Realism-LoRA",
+    "filename": "super-realism.safetensors",
+    "name": "FLUX Super Realism",
+    "family": "FLUX",
+    "description": "Photorealism boost for FLUX. Works on the non-GGUF flux-dev / flux-schnell bases only (LoRAs can't apply to GGUF). Add the trigger to the prompt.",
+    "trigger": "Super Realism",
+    "approx_size_gb": 0.61
+  },
+  {
+    "slug": "lora--flux-frosting-lane",
+    "repo_id": "alvdansen/frosting_lane_flux",
+    "filename": "flux_dev_frostinglane_araminta_k.safetensors",
+    "name": "FLUX Frosting Lane",
+    "family": "FLUX",
+    "description": "Whimsical hand-drawn storybook illustration style for FLUX. Non-GGUF flux-dev / flux-schnell only. Add the trigger to the prompt.",
+    "trigger": "frstingln illustration",
+    "approx_size_gb": 0.17
+  },
+  {
+    "slug": "lora--flux-softserve-anime",
+    "repo_id": "alvdansen/softserve_anime",
+    "filename": "flux_dev_softstyle_araminta_k.safetensors",
+    "name": "FLUX Softserve Anime",
+    "family": "FLUX",
+    "description": "Soft, painterly anime style for FLUX. Non-GGUF flux-dev / flux-schnell only. Add the trigger to the prompt.",
+    "trigger": "sftsrv style",
+    "approx_size_gb": 0.69
+  },
+  {
+    "slug": "lora--flux-anime",
+    "repo_id": "prithivMLmods/Canopus-LoRA-Flux-Anime",
+    "filename": "Canopus-Anime-Character-Art-FluxDev-LoRA.safetensors",
+    "name": "FLUX Anime Character",
+    "family": "FLUX",
+    "description": "Anime character art for FLUX. Non-GGUF flux-dev / flux-schnell only. Add the trigger to the prompt.",
+    "trigger": "Anime",
+    "approx_size_gb": 0.61
+  },
+  {
+    "slug": "lora--flux-vintage-ads",
+    "repo_id": "multimodalart/vintage-ads-flux",
+    "filename": "vintage-ads-flux-1350.safetensors",
+    "name": "FLUX Vintage Ads",
+    "family": "FLUX",
+    "description": "Retro mid-century advertisement style for FLUX. Non-GGUF flux-dev / flux-schnell only. Prefix the prompt with the trigger.",
+    "trigger": "a vintage ad of",
+    "approx_size_gb": 0.17
+  },
+  {
+    "slug": "lora--ghibli-sd15",
+    "repo_id": "artificialguybr/studioghibli-redmond-1-5v-studio-ghibli-lora-for-liberteredmond-sd-1-5",
+    "filename": "StudioGhibliRedmond-15V-LiberteRedmond-StdGBRedmAF-StudioGhibli.safetensors",
+    "name": "Studio Ghibli SD 1.5",
+    "family": "SD 1.5",
+    "description": "Soft hand-painted Studio-Ghibli anime style for SD 1.5. Add the trigger to the prompt.",
+    "trigger": "Studio Ghibli",
+    "approx_size_gb": 0.04
+  },
+  {
+    "slug": "lora--clay-animation-sd15",
+    "repo_id": "artificialguybr/clayanimationredmond-1-5-version-clay-animation-lora-for-sd-1-5",
+    "filename": "ClayAnimationRedmond15-ClayAnimation-Clay.safetensors",
+    "name": "Clay Animation SD 1.5",
+    "family": "SD 1.5",
+    "description": "Stop-motion clay/plasticine look for SD 1.5. Add the trigger to the prompt.",
+    "trigger": "Clay Animation",
+    "approx_size_gb": 0.04
+  },
+  {
+    "slug": "lora--cute-cartoon-sd15",
+    "repo_id": "artificialguybr/cutecartoon-redmond-1-5v-cute-cartoon-lora-for-liberteredmond-sd-1-5",
+    "filename": "CuteCartoon15V-LiberteRedmodModel-Cartoon-CuteCartoonAF.safetensors",
+    "name": "Cute Cartoon SD 1.5",
+    "family": "SD 1.5",
+    "description": "Rounded, friendly cute-cartoon style for SD 1.5. Add the trigger to the prompt.",
+    "trigger": "CuteCartoonAF",
+    "approx_size_gb": 0.08
+  },
+  {
+    "slug": "lora--coloring-book-sd15",
+    "repo_id": "artificialguybr/coloringbook-redmond-1-5v-coloring-book-lora-for-liberteredmond-sd-1-5",
+    "filename": "ColoringBookRedmond15V-LiberteRedmond-ColoringBookAF.safetensors",
+    "name": "Coloring Book SD 1.5",
+    "family": "SD 1.5",
+    "description": "Clean black-outline coloring-book line art for SD 1.5. Add the trigger to the prompt.",
+    "trigger": "ColoringBookAF",
+    "approx_size_gb": 0.08
   }
 ]

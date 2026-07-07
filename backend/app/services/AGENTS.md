@@ -65,7 +65,9 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
 - pipeline.py — diffusers load/cache + generation (step callback); cached img2img pipe
             (from_pipe) + IP-Adapter load/unload for style. LoRA: `_apply_loras` loads +
             `set_adapters` blends the requested `(slug, weight)` list on the base pipe
-            (family-matched, downloaded, non-GGUF; idempotent when unchanged),
+            (family-matched, downloaded, non-GGUF; idempotent when unchanged) via
+            `_load_one_lora` (falls back to a UNet-only load when a kohya LoRA's
+            text-encoder weights trip this diffusers version's rank parser),
             `_ensure_no_loras` clears them; reset on model switch. GGUF entries → `_load_gguf`:
             transformer built from local `.gguf` (GGUFQuantizationConfig, bf16), passed
             into family from_pretrained (Flux/StableDiffusion3), CPU-offloaded (bounds

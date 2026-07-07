@@ -296,13 +296,38 @@ def _apply_loras(pipe, model: ModelInfo, requested: list[tuple[str, float]]) -> 
     # Reload from scratch: unload everything, then load + activate the wanted set.
     _ensure_no_loras(pipe)
     for slug, _weight, info in resolved:
-        pipe.load_lora_weights(
-            str(config.model_dir(slug)), weight_name=info.filename, adapter_name=slug
-        )
+        _load_one_lora(pipe, slug, info.filename)
     pipe.set_adapters(
         [slug for slug, _w, _i in resolved], [weight for _s, weight, _i in resolved]
     )
     _loaded_loras.update(wanted)
+
+
+def _load_one_lora(pipe, slug: str, filename: str) -> None:
+    """Load one LoRA onto ``pipe`` under adapter name ``slug``, resiliently.
+
+    Some kohya-format LoRAs carry text-encoder weights that this diffusers version
+    can't map back to CLIP module names (its own converter emits legacy attn-proc
+    keys the peft-based text-encoder loader then fails to rank), raising an
+    ``IndexError`` deep in ``get_peft_kwargs``. Fall back to loading the UNet weights
+    only — the style lives in the UNet; dropping the text-encoder part just softens
+    the trigger word — so the LoRA still applies instead of failing the whole run.
+    """
+    lora_dir = config.model_dir(slug)
+    try:
+        pipe.load_lora_weights(str(lora_dir), weight_name=filename, adapter_name=slug)
+    except IndexError:
+        # The UNet half may already be registered under ``slug``; clear it first so
+        # the retry doesn't collide on the adapter name.
+        try:
+            pipe.delete_adapters(slug)
+        except Exception:  # noqa: BLE001 - best-effort cleanup before the retry
+            pass
+        from safetensors.torch import load_file
+
+        state = load_file(str(lora_dir / filename))
+        unet_only = {k: v for k, v in state.items() if not k.startswith("lora_te")}
+        pipe.load_lora_weights(unet_only, adapter_name=slug)
 
 
 def _supported_kwargs(pipe, kwargs: dict) -> dict:
