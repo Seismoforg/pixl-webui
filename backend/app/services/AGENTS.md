@@ -122,8 +122,12 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             `effective_negative`. GGUF → `_load_flux_fill_gguf` (GGUF transformer +
             FluxFillPipeline + CPU offload; Flux drops negative, passes explicit
             height/width); non-GGUF FLUX Fill → `_load_flux_fill` (fp16 transformer
-            NF4/int8-quantized per effective level, else fp16; CPU offload); other
-            non-GGUF → AutoPipelineForInpainting. Only one inpaint pipe loaded at a time;
+            NF4/int8-quantized per effective level, else fp16; CPU offload); Z-Image
+            (engine_family "Z-Image") → `_load_zimage_inpaint` (ZImageInpaintPipeline,
+            NF4-resident, reuses the shared z-image-turbo weights); other non-GGUF →
+            AutoPipelineForInpainting. `is_zimage` — flow-matching like FLUX, so the
+            inpaint/outpaint services fold it into `is_flux` (crisp mask, no negative,
+            explicit size). Only one inpaint pipe loaded at a time;
             `pipeline.unload()`/`upscale.unload()` before load (VRAM-coordinated)
 - inpaint.py — user-mask inpainting: repaint the white-masked region with an `inpaint`
             engine. `_padded_box` crops a padded box (`mask_expand` knob grows the region

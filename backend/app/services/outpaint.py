@@ -50,7 +50,9 @@ def reframe_image(
     canvases; when false the upscaled composition is used directly."""
     report({"phase": "loading"})
     pipe = inpaint_engine.load(engine)
-    is_flux = inpaint_engine.is_flux(pipe)
+    # Z-Image is flow-matching like FLUX → same crisp-mask / native-scheduler / no-
+    # negative / 1024-native path; treat both under `is_flux`.
+    is_flux = inpaint_engine.is_flux(pipe) or inpaint_engine.is_zimage(pipe)
     if sampler and not is_flux:
         samplers.apply_sampler(pipe, sampler)
     cap = inpaint_engine.working_cap(engine, is_flux)

@@ -137,7 +137,9 @@ def inpaint_image(
     cw, ch = crop_img.size
 
     pipe = inpaint_engine.load(engine)
-    is_flux = inpaint_engine.is_flux(pipe)
+    # Z-Image is flow-matching like FLUX → same crisp-mask / native-scheduler / no-
+    # negative / 1024-native / align-16 path; treat both under `is_flux`.
+    is_flux = inpaint_engine.is_flux(pipe) or inpaint_engine.is_zimage(pipe)
     if sampler and not is_flux:
         samplers.apply_sampler(pipe, sampler)
     cap = inpaint_engine.working_cap(engine, is_flux)

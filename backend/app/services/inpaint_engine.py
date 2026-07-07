@@ -21,6 +21,7 @@ from ..config import load_settings
 from ..device import (
     get_compute_dtype,
     get_dtype,
+    get_torch_device,
     load_gguf_pipe,
     load_quantized_pipe,
     make_generator,
@@ -80,6 +81,13 @@ def is_flux(pipe) -> bool:
     return type(pipe).__name__.startswith("Flux")
 
 
+def is_zimage(pipe) -> bool:
+    """True when the loaded pipe is a Z-Image (Inpaint) pipeline. Z-Image is
+    flow-matching like FLUX, so callers treat it the same (crisp mask, native
+    scheduler, explicit size, no negative)."""
+    return type(pipe).__name__.startswith("ZImage")
+
+
 def working_cap(engine: UpscalerInfo, is_flux_pipe: bool) -> int:
     """Family working long-side cap for ``engine`` (FLUX / SDXL / SD 1.x)."""
     if is_flux_pipe:
@@ -118,6 +126,8 @@ def load(engine: UpscalerInfo):
     model_path = config.model_dir(engine.slug)
     if engine.is_gguf:
         pipe = _load_flux_fill_gguf(engine, model_path)
+    elif quantize.engine_family(engine) == "Z-Image":
+        pipe = _load_zimage_inpaint(engine, model_path)
     elif quantize.engine_family(engine) == "FLUX":
         pipe = _load_flux_fill(engine, model_path)
     else:
@@ -170,6 +180,36 @@ def _load_flux_fill(engine: UpscalerInfo, model_path):
         str(model_path), torch_dtype=get_compute_dtype(),
         variant=engine.variant, use_safetensors=engine.use_safetensors,
     )
+    return place_offloaded(pipe)
+
+
+def _load_zimage_inpaint(engine: UpscalerInfo, model_path):
+    """Build a Z-Image inpaint/outpaint pipe from the shared Z-Image weights. NF4
+    shrinks the transformer so the pipe fits 16 GB resident (no offload shuffle);
+    fp16 keeps bf16. Placed by the fit verdict — resident when it fits, else offload."""
+    from diffusers import ZImageInpaintPipeline, ZImageTransformer2DModel
+
+    dtype = get_compute_dtype()
+    level = fit.effective_level(engine.slug, engine.min_vram_gb, "Z-Image")
+    quant_cfg = quantize.quant_config(level, "Z-Image") if level != "fp16" else None
+    if quant_cfg is not None:
+        transformer = ZImageTransformer2DModel.from_pretrained(
+            str(model_path), subfolder="transformer", quantization_config=quant_cfg, torch_dtype=dtype
+        )
+        pipe = ZImageInpaintPipeline.from_pretrained(
+            str(model_path), transformer=transformer, torch_dtype=dtype
+        )
+    else:
+        pipe = ZImageInpaintPipeline.from_pretrained(
+            str(model_path), torch_dtype=dtype, use_safetensors=engine.use_safetensors
+        )
+    fits_gpu = (
+        get_torch_device() == "cuda"
+        and fit.assess_for(engine.min_vram_gb, "Z-Image", engine.approx_size_gb, level).verdict
+        == "fits_gpu"
+    )
+    if get_torch_device() == "cpu" or fits_gpu:
+        return pipe.to(get_torch_device())
     return place_offloaded(pipe)
 
 

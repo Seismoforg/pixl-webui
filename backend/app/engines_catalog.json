@@ -85,6 +85,23 @@
     "defaults": { "steps": 28, "guidance_scale": 30.0, "refine_steps": 8 }
   },
   {
+    "slug": "z-image-turbo",
+    "kind": "inpaint",
+    "name": "Z-Image Turbo (outpaint)",
+    "description": "Fast 6B outpaint/inpaint. NF4 → fits ~16 GB resident, ~9 steps. Reuses the Z-Image Turbo generation weights (no extra download).",
+    "repo_id": "Tongyi-MAI/Z-Image-Turbo",
+    "filename": null,
+    "scale": 1,
+    "approx_size_gb": 20.0,
+    "min_vram_gb": 20.0,
+    "prompt_capable": true,
+    "variant": null,
+    "use_safetensors": true,
+    "gguf_repo_id": null,
+    "gguf_filename": null,
+    "defaults": { "steps": 9, "guidance_scale": 0.0, "refine_steps": 0 }
+  },
+  {
     "slug": "edit--flux-kontext",
     "kind": "edit",
     "name": "FLUX.1 Kontext dev",

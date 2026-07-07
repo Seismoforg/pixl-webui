@@ -56,6 +56,8 @@ def engine_family(engine) -> str | None:
         return None
     kind = getattr(engine, "kind", "")
     repo = getattr(engine, "repo_id", "").lower()
+    if "z-image" in repo:
+        return "Z-Image"
     if kind == "edit" or "flux" in repo:
         return "FLUX"
     return None
