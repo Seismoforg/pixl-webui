@@ -29,12 +29,8 @@ const GalleryPage = () => {
   );
 
   return (
-    <GalleryPanel
-      onRegenerate={onRegenerate}
-      onUpscale={onUpscale}
-      reloadToken={galleryToken}
-    />
+    <GalleryPanel onRegenerate={onRegenerate} onUpscale={onUpscale} reloadToken={galleryToken} />
   );
-}
+};
 
 export default GalleryPage;

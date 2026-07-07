@@ -76,14 +76,41 @@ export const ReframePreview = ({
         drawCover(ctx, img, w, h, rw, rh, theme, posX, posY, overlay);
       } else {
         const [cw, ch] = extendSize(w, h, rw, rh, scale);
-        drawExtend(ctx, img, cw, ch, w, h, strategy === "outpaint", theme, maskSoftness, seamSoftness, posX, posY, overlay);
+        drawExtend(
+          ctx,
+          img,
+          cw,
+          ch,
+          w,
+          h,
+          strategy === "outpaint",
+          theme,
+          maskSoftness,
+          seamSoftness,
+          posX,
+          posY,
+          overlay,
+        );
       }
     };
     img.src = preview;
     return () => {
       img.onload = null;
     };
-  }, [preview, w, h, targetRatio, strategy, theme, maskSoftness, seamSoftness, posX, posY, scale, overlay]);
+  }, [
+    preview,
+    w,
+    h,
+    targetRatio,
+    strategy,
+    theme,
+    maskSoftness,
+    seamSoftness,
+    posX,
+    posY,
+    scale,
+    overlay,
+  ]);
 
   // Aspect ratio of the whole frame — reserved up front so the canvas never
   // shifts layout as the image decodes.

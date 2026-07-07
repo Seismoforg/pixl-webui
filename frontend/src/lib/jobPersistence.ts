@@ -8,8 +8,7 @@
 
 const PREFIX = "pixl.activity.";
 
-const canUse = (): boolean =>
-  typeof window !== "undefined" && !!window.localStorage;
+const canUse = (): boolean => typeof window !== "undefined" && !!window.localStorage;
 
 /** The active job id for a feature ("generation" | "upscale" | "reframe"). */
 export const loadJob = (key: string): string | null => {

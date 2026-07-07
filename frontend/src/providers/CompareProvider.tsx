@@ -87,7 +87,10 @@ export const CompareProvider = ({ onCompared, children }: CompareProviderProps) 
   // Seed the base sampler from the backend default once (the provider never
   // unmounts, so this runs a single time and later edits persist).
   useEffect(() => {
-    api.getSamplers().then((s) => setSampler((cur) => cur || s.default)).catch(() => undefined);
+    api
+      .getSamplers()
+      .then((s) => setSampler((cur) => cur || s.default))
+      .catch(() => undefined);
   }, []);
 
   const [jobId, setJobId] = useState<string | null>(null);
@@ -174,8 +177,22 @@ export const CompareProvider = ({ onCompared, children }: CompareProviderProps) 
       reset,
     }),
     [
-      slug, prompt, negative, width, height, steps, guidance, seed, sampler, axes,
-      progress, resultIds, error, running, start, reset,
+      slug,
+      prompt,
+      negative,
+      width,
+      height,
+      steps,
+      guidance,
+      seed,
+      sampler,
+      axes,
+      progress,
+      resultIds,
+      error,
+      running,
+      start,
+      reset,
     ],
   );
 

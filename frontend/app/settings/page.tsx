@@ -20,6 +20,6 @@ const SettingsPage = () => {
       <PromptSnippetManager />
     </Stack>
   );
-}
+};
 
 export default SettingsPage;

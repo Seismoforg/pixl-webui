@@ -27,4 +27,4 @@ export const SectionHeading = ({ children, level, variant, sx }: SectionHeadingP
       {children}
     </Typography>
   );
-}
+};

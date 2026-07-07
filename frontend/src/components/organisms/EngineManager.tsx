@@ -146,7 +146,7 @@ export const EngineManager = () => {
       />
     </Box>
   );
-}
+};
 
 interface EngineRowProps {
   engine: UpscalerEngine;
@@ -201,7 +201,12 @@ const EngineRow = ({ engine, progress, onDownload, onDelete }: EngineRowProps) =
         </Box>
 
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, alignItems: "center" }}>
-          <Chip label={t(`engines.kind.${engine.kind}`)} size="small" color="primary" variant="outlined" />
+          <Chip
+            label={t(`engines.kind.${engine.kind}`)}
+            size="small"
+            color="primary"
+            variant="outlined"
+          />
           <Chip label={<MonoText>{`${engine.scale}×`}</MonoText>} size="small" variant="outlined" />
           {engine.approx_size_gb > 0 && (
             <Chip
@@ -218,7 +223,12 @@ const EngineRow = ({ engine, progress, onDownload, onDelete }: EngineRowProps) =
             variant="outlined"
           />
           <Tooltip title={fitTooltip}>
-            <Chip label={t(fitMeta.labelKey)} size="small" color={fitMeta.color} variant="outlined" />
+            <Chip
+              label={t(fitMeta.labelKey)}
+              size="small"
+              color={fitMeta.color}
+              variant="outlined"
+            />
           </Tooltip>
         </Box>
 
@@ -270,4 +280,4 @@ const EngineRow = ({ engine, progress, onDownload, onDelete }: EngineRowProps) =
       )}
     </Paper>
   );
-}
+};

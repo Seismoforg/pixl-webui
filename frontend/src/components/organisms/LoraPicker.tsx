@@ -41,10 +41,7 @@ export const LoraPicker = ({ family, onAppendPrompt }: LoraPickerProps) => {
 
   const { data, loading, error, reload } = useAsyncData(() => api.getLoras(), []);
   const loras = useMemo(() => data ?? [], [data]);
-  const compatible = useMemo(
-    () => loras.filter((l) => l.family === family),
-    [loras, family],
-  );
+  const compatible = useMemo(() => loras.filter((l) => l.family === family), [loras, family]);
 
   const [dlError, setDlError] = useState<string | null>(null);
 
@@ -69,9 +66,7 @@ export const LoraPicker = ({ family, onAppendPrompt }: LoraPickerProps) => {
 
   const toggle = (slug: string) =>
     gen.setLoras(
-      isOn(slug)
-        ? gen.loras.filter((l) => l.slug !== slug)
-        : [...gen.loras, { slug, weight: 1.0 }],
+      isOn(slug) ? gen.loras.filter((l) => l.slug !== slug) : [...gen.loras, { slug, weight: 1.0 }],
     );
   const setWeight = (slug: string, weight: number) =>
     gen.setLoras(gen.loras.map((l) => (l.slug === slug ? { ...l, weight } : l)));
@@ -86,7 +81,12 @@ export const LoraPicker = ({ family, onAppendPrompt }: LoraPickerProps) => {
   };
 
   if (loading) return <LoadingIndicator minHeight={80} label={t("lora.loading")} />;
-  if (error) return <Typography color="error" variant="body2">{t("lora.loadError")}</Typography>;
+  if (error)
+    return (
+      <Typography color="error" variant="body2">
+        {t("lora.loadError")}
+      </Typography>
+    );
   if (family === undefined) return null;
   if (compatible.length === 0) {
     return (
@@ -101,25 +101,32 @@ export const LoraPicker = ({ family, onAppendPrompt }: LoraPickerProps) => {
       <Typography variant="body2" color="text.secondary">
         {t("lora.help")}
       </Typography>
-      {dlError && <Typography color="error" variant="body2">{dlError}</Typography>}
+      {dlError && (
+        <Typography color="error" variant="body2">
+          {dlError}
+        </Typography>
+      )}
 
       {compatible.map((lora) => {
         const dl = downloads.progress[lora.slug];
         const downloading = dl?.status === "downloading";
         const on = isOn(lora.slug);
         return (
-          <Box
-            key={lora.slug}
-            sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 1.5 }}
-          >
+          <Box key={lora.slug} sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 1.5 }}>
             <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1, flexWrap: "wrap" }}>
               {lora.downloaded ? (
                 <FormControlLabel
                   sx={{ mr: "auto" }}
-                  control={<Checkbox checked={on} onChange={() => toggle(lora.slug)} size="small" />}
+                  control={
+                    <Checkbox checked={on} onChange={() => toggle(lora.slug)} size="small" />
+                  }
                   label={
                     <Box>
-                      <Typography variant="body2" component="span" sx={{ fontWeight: "fontWeightMedium" }}>
+                      <Typography
+                        variant="body2"
+                        component="span"
+                        sx={{ fontWeight: "fontWeightMedium" }}
+                      >
                         {lora.name}
                       </Typography>
                       {lora.description && (
@@ -194,9 +201,11 @@ export const LoraPicker = ({ family, onAppendPrompt }: LoraPickerProps) => {
 
       {gen.loras.length > 0 && (
         <Typography variant="caption" color="text.secondary">
-          {t("lora.activeCount").split(/(\{count\})/).map((part, i) =>
-            part === "{count}" ? <MonoText key={i}>{gen.loras.length}</MonoText> : part,
-          )}
+          {t("lora.activeCount")
+            .split(/(\{count\})/)
+            .map((part, i) =>
+              part === "{count}" ? <MonoText key={i}>{gen.loras.length}</MonoText> : part,
+            )}
         </Typography>
       )}
     </Stack>

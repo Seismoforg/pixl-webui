@@ -243,8 +243,7 @@ export interface UpscaleStarted {
 
 /** Chosen source image: an existing gallery image, or an uploaded data URL. */
 export type UpscaleSource =
-  | { kind: "gallery"; imageId: string; preview: string }
-  | { kind: "upload"; dataUrl: string };
+  { kind: "gallery"; imageId: string; preview: string } | { kind: "upload"; dataUrl: string };
 
 /** Reframe (aspect-ratio change, no upscaling) request. */
 export interface ReframeRequest {
@@ -370,13 +369,7 @@ export interface EditRequest {
 export interface EditProgress extends BatchProgress {}
 
 export type UpscalePhase =
-  | "loading"
-  | "upscaling"
-  | "outpainting"
-  | "inpainting"
-  | "editing"
-  | "comparing"
-  | "finalizing";
+  "loading" | "upscaling" | "outpainting" | "inpainting" | "editing" | "comparing" | "finalizing";
 
 export interface UpscaleProgress {
   job_id: string;

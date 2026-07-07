@@ -139,7 +139,9 @@ export const CatalogEditor = <T,>({
     const entry = buildEntry();
     const newSlug = String(getPath(entry as unknown as Draft, "slug") ?? "").trim();
     const collides = entries.some(
-      (e, i) => i !== editing.index && String(getPath(e as unknown as Draft, "slug") ?? "").trim() === newSlug,
+      (e, i) =>
+        i !== editing.index &&
+        String(getPath(e as unknown as Draft, "slug") ?? "").trim() === newSlug,
     );
     if (collides) {
       setError(t("settings.catalog.duplicateSlug"));
@@ -183,9 +185,7 @@ export const CatalogEditor = <T,>({
       return (
         <FormControlLabel
           key={f.key}
-          control={
-            <Switch checked={Boolean(raw)} onChange={(e) => onChange(e.target.checked)} />
-          }
+          control={<Switch checked={Boolean(raw)} onChange={(e) => onChange(e.target.checked)} />}
           label={f.label}
         />
       );
@@ -216,14 +216,10 @@ export const CatalogEditor = <T,>({
         label={f.label}
         type={f.type === "number" ? "number" : "text"}
         value={f.type === "number" ? Number(raw ?? 0) : String(raw ?? "")}
-        onChange={(e) =>
-          onChange(f.type === "number" ? Number(e.target.value) : e.target.value)
-        }
+        onChange={(e) => onChange(f.type === "number" ? Number(e.target.value) : e.target.value)}
         multiline={f.type === "multiline"}
         minRows={f.type === "multiline" ? 2 : undefined}
-        inputProps={
-          f.type === "number" ? { min: f.min, max: f.max, step: f.step ?? 1 } : undefined
-        }
+        inputProps={f.type === "number" ? { min: f.min, max: f.max, step: f.step ?? 1 } : undefined}
         fullWidth
       />
     );

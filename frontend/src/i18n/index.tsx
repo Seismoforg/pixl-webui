@@ -20,14 +20,12 @@ const resolve = (dict: unknown, path: string): string => {
     .split(".")
     .reduce<unknown>((acc, key) => (acc as Record<string, unknown>)?.[key], dict);
   return typeof value === "string" ? value : path;
-}
+};
 
 const interpolate = (text: string, vars?: Vars): string => {
   if (!vars) return text;
-  return text.replace(/\{(\w+)\}/g, (_, key) =>
-    key in vars ? String(vars[key]) : `{${key}}`,
-  );
-}
+  return text.replace(/\{(\w+)\}/g, (_, key) => (key in vars ? String(vars[key]) : `{${key}}`));
+};
 
 interface I18nContextValue {
   locale: Locale;
@@ -40,7 +38,7 @@ export const useTranslations = () => {
   const ctx = useContext(I18nContext);
   if (!ctx) throw new Error("useTranslations must be used within I18nProvider");
   return ctx.t;
-}
+};
 
 export const I18nProvider = ({
   locale = defaultLocale,
@@ -58,4 +56,4 @@ export const I18nProvider = ({
   );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
-}
+};

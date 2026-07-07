@@ -33,4 +33,4 @@ export const Logo = ({ size = 32, sx }: LogoProps) => {
       <path d="M5.5 25.5 L12 16 L16 21 L20 15.5 L26.5 25.5 Z" fill="#fff" />
     </Box>
   );
-}
+};

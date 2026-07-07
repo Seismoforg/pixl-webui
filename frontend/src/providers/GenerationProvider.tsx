@@ -87,7 +87,7 @@ export const useGeneration = () => {
   const ctx = useContext(GenerationContext);
   if (!ctx) throw new Error("useGeneration must be used within GenerationProvider");
   return ctx;
-}
+};
 
 interface GenerationProviderProps {
   models: ModelEntry[];
@@ -212,7 +212,8 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
       detail = t("generate.phaseFinalizing");
     } else {
       detail = t("generate.step", { current: progress.current_step, total: progress.total_steps });
-      percent = progress.total_steps > 0 ? (progress.current_step / progress.total_steps) * 100 : null;
+      percent =
+        progress.total_steps > 0 ? (progress.current_step / progress.total_steps) * 100 : null;
     }
     setActivity("generation", {
       id: "generation",
@@ -378,4 +379,4 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
   );
 
   return <GenerationContext.Provider value={value}>{children}</GenerationContext.Provider>;
-}
+};

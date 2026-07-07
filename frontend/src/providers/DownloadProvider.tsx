@@ -13,11 +13,7 @@ import {
 import { useActivity } from "@/providers/ActivityProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
-import {
-  loadDownloads,
-  saveDownloads,
-  type PersistedDownload,
-} from "@/lib/jobPersistence";
+import { loadDownloads, saveDownloads, type PersistedDownload } from "@/lib/jobPersistence";
 import { live } from "@/lib/ws";
 import type { DownloadProgress, LoraEntry, UpscalerEngine } from "@/types";
 
@@ -47,7 +43,7 @@ export const useDownloads = () => {
   const ctx = useContext(DownloadContext);
   if (!ctx) throw new Error("useDownloads must be used within DownloadProvider");
   return ctx;
-}
+};
 
 /**
  * Start an upscale/outpaint engine download and register it with the download
@@ -248,7 +244,12 @@ export const DownloadProvider = ({ onFinished, children }: DownloadProviderProps
     );
     const id = setInterval(() => {
       if (live.isConnected()) return;
-      slugs.forEach((s) => metaRef.current[s]?.fetch().then(handle).catch(() => {}));
+      slugs.forEach((s) =>
+        metaRef.current[s]
+          ?.fetch()
+          .then(handle)
+          .catch(() => {}),
+      );
     }, POLL_MS);
     return () => {
       unsubs.forEach((u) => u());
@@ -271,7 +272,7 @@ export const DownloadProvider = ({ onFinished, children }: DownloadProviderProps
         route: m.route,
         status: failed ? "error" : "running",
         detail: failed
-          ? p.error ?? t("activity.downloadFailed")
+          ? (p.error ?? t("activity.downloadFailed"))
           : t("activity.downloadPercent", { value: p.percent }),
         percent: failed ? null : p.total_bytes ? p.percent : null,
         onRetry: failed ? () => retryDownload(slug) : undefined,
@@ -284,4 +285,4 @@ export const DownloadProvider = ({ onFinished, children }: DownloadProviderProps
   return (
     <DownloadContext.Provider value={{ progress, track }}>{children}</DownloadContext.Provider>
   );
-}
+};

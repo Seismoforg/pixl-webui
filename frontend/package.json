@@ -5,7 +5,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "lint": "next lint",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"app/**/*.tsx\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"app/**/*.tsx\""
   },
   "dependencies": {
     "@emotion/cache": "^11.13.0",
@@ -24,6 +27,9 @@
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^14.2.35",
+    "prettier": "^3.9.4",
     "typescript": "^5.5.4"
   }
 }

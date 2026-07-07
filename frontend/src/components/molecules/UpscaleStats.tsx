@@ -18,7 +18,9 @@ export const UpscaleStats = ({ progress }: { progress: UpscaleProgress | null })
   return (
     <Box sx={{ mb: 2 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="baseline" sx={{ mb: 0.5 }}>
-        <Typography variant="body2" color="text.secondary">{view.label}</Typography>
+        <Typography variant="body2" color="text.secondary">
+          {view.label}
+        </Typography>
         {progress && (
           <MonoText variant="caption" color="text.secondary">
             {view.speed ? `${view.speed} · ` : ""}

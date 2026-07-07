@@ -17,10 +17,7 @@ interface AsyncData<T> {
  * from a superseded request (deps change / unmount) are ignored, so the last
  * request wins and no state is set after unmount.
  */
-export const useAsyncData = <T>(
-  fetcher: () => Promise<T>,
-  deps: unknown[] = [],
-): AsyncData<T> => {
+export const useAsyncData = <T>(fetcher: () => Promise<T>, deps: unknown[] = []): AsyncData<T> => {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +30,8 @@ export const useAsyncData = <T>(
     const id = ++reqId.current;
     setLoading(true);
     setError(null);
-    fetcherRef.current()
+    fetcherRef
+      .current()
       .then((result) => {
         if (id !== reqId.current) return;
         setData(result);

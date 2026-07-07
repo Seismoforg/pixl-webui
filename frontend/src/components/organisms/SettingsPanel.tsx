@@ -57,7 +57,7 @@ const PerfSwitch = ({
       </Typography>
     </Box>
   );
-}
+};
 
 const InfoRow = ({ label, value }: { label: string; value: string }) => {
   return (
@@ -70,7 +70,7 @@ const InfoRow = ({ label, value }: { label: string; value: string }) => {
       </Typography>
     </Box>
   );
-}
+};
 
 export const SettingsPanel = ({ system }: SettingsPanelProps) => {
   const t = useTranslations();
@@ -116,14 +116,20 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
       .catch(() => setError(true))
       .finally(() => setLoading(false));
     // Downloaded models/engines populate the default dropdowns (best-effort).
-    api.getModels().then(setModels).catch(() => {
-      setModels([]);
-      setDefaultsError(true);
-    });
-    api.getUpscalers().then(setEngines).catch(() => {
-      setEngines([]);
-      setDefaultsError(true);
-    });
+    api
+      .getModels()
+      .then(setModels)
+      .catch(() => {
+        setModels([]);
+        setDefaultsError(true);
+      });
+    api
+      .getUpscalers()
+      .then(setEngines)
+      .catch(() => {
+        setEngines([]);
+        setDefaultsError(true);
+      });
   }, []);
 
   const downloadedModels = models.filter((m) => m.downloaded);
@@ -193,144 +199,144 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
       {loading ? (
         <LoadingIndicator label={t("loading.settings")} />
       ) : (
-      <Stack spacing={3}>
-        <TextField
-          label={t("settings.hfToken")}
-          type="password"
-          value={token}
-          onChange={(e) => {
-            setToken(e.target.value);
-            setSaved(false);
-          }}
-          helperText={t("settings.hfTokenHelp")}
-          autoComplete="off"
-        />
-
-        <Divider />
-
-        <Box>
-          <SectionHeading level={3} variant="subtitle2" sx={{ mb: 1 }}>
-            {t("settings.performance.title")}
-          </SectionHeading>
-          <Stack>
-            <PerfSwitch
-              label={t("settings.performance.vaeTiling")}
-              help={t("settings.performance.vaeTilingHelp")}
-              checked={perf.vae_tiling}
-              onChange={setFlag("vae_tiling")}
-            />
-            <PerfSwitch
-              label={t("settings.performance.vaeSlicing")}
-              help={t("settings.performance.vaeSlicingHelp")}
-              checked={perf.vae_slicing}
-              onChange={setFlag("vae_slicing")}
-            />
-            <PerfSwitch
-              label={t("settings.performance.xformers")}
-              help={t("settings.performance.xformersHelp")}
-              checked={perf.xformers}
-              onChange={setFlag("xformers")}
-            />
-            <PerfSwitch
-              label={t("settings.performance.torchCompile")}
-              help={t("settings.performance.torchCompileHelp")}
-              checked={perf.torch_compile}
-              onChange={setFlag("torch_compile")}
-            />
-            <TextField
-              label={t("settings.performance.sdX4Steps")}
-              helperText={t("settings.performance.sdX4StepsHelp")}
-              type="number"
-              value={sdX4Steps}
-              onChange={(e) => {
-                setSdX4Steps(Number(e.target.value));
-                setSaved(false);
-              }}
-              inputProps={{ min: 1, max: 150, step: 1 }}
-              sx={{ mt: 2, maxWidth: 220 }}
-            />
-          </Stack>
-        </Box>
-
-        <Divider />
-
-        <Box>
-          <SectionHeading level={3} variant="subtitle2" sx={{ mb: 1 }}>
-            {t("settings.outpaint.title")}
-          </SectionHeading>
+        <Stack spacing={3}>
           <TextField
-            label={t("settings.outpaint.negativeLabel")}
-            helperText={t("settings.outpaint.negativeHelp")}
-            value={outpaintNegative}
+            label={t("settings.hfToken")}
+            type="password"
+            value={token}
             onChange={(e) => {
-              setOutpaintNegative(e.target.value);
+              setToken(e.target.value);
               setSaved(false);
             }}
-            multiline
-            minRows={2}
-            fullWidth
+            helperText={t("settings.hfTokenHelp")}
+            autoComplete="off"
           />
-        </Box>
 
-        <Divider />
+          <Divider />
 
-        <Box>
-          <SectionHeading level={3} variant="subtitle2" sx={{ mb: 1 }}>
-            {t("settings.defaults.title")}
-          </SectionHeading>
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
-            {t("settings.defaults.help")}
-          </Typography>
-          {defaultsError && (
-            <Alert severity="warning" sx={{ mb: 1.5 }}>
-              {t("settings.defaults.loadError")}
-            </Alert>
-          )}
-          <Stack spacing={2}>
-            {defaultSelect(t("settings.defaults.model"), defModel, setDefModel, downloadedModels)}
-            {defaultSelect(
-              t("settings.defaults.upscaler"),
-              defUpscaler,
-              setDefUpscaler,
-              downloadedUpscalers,
-            )}
-            {defaultSelect(
-              t("settings.defaults.outpaint"),
-              defOutpaint,
-              setDefOutpaint,
-              downloadedOutpaint,
-            )}
-          </Stack>
-        </Box>
+          <Box>
+            <SectionHeading level={3} variant="subtitle2" sx={{ mb: 1 }}>
+              {t("settings.performance.title")}
+            </SectionHeading>
+            <Stack>
+              <PerfSwitch
+                label={t("settings.performance.vaeTiling")}
+                help={t("settings.performance.vaeTilingHelp")}
+                checked={perf.vae_tiling}
+                onChange={setFlag("vae_tiling")}
+              />
+              <PerfSwitch
+                label={t("settings.performance.vaeSlicing")}
+                help={t("settings.performance.vaeSlicingHelp")}
+                checked={perf.vae_slicing}
+                onChange={setFlag("vae_slicing")}
+              />
+              <PerfSwitch
+                label={t("settings.performance.xformers")}
+                help={t("settings.performance.xformersHelp")}
+                checked={perf.xformers}
+                onChange={setFlag("xformers")}
+              />
+              <PerfSwitch
+                label={t("settings.performance.torchCompile")}
+                help={t("settings.performance.torchCompileHelp")}
+                checked={perf.torch_compile}
+                onChange={setFlag("torch_compile")}
+              />
+              <TextField
+                label={t("settings.performance.sdX4Steps")}
+                helperText={t("settings.performance.sdX4StepsHelp")}
+                type="number"
+                value={sdX4Steps}
+                onChange={(e) => {
+                  setSdX4Steps(Number(e.target.value));
+                  setSaved(false);
+                }}
+                inputProps={{ min: 1, max: 150, step: 1 }}
+                sx={{ mt: 2, maxWidth: 220 }}
+              />
+            </Stack>
+          </Box>
 
-        <Box>
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {t("common.error")}
-            </Alert>
-          )}
-          <Button variant="contained" onClick={handleSave} disabled={saving}>
-            {saved ? t("settings.saved") : t("settings.save")}
-          </Button>
-        </Box>
+          <Divider />
 
-        <Divider />
-
-        <Box>
-          <SectionHeading level={3} variant="subtitle2" sx={{ mb: 1 }}>
-            {t("settings.system")}
-          </SectionHeading>
-          <Stack spacing={0.5}>
-            <InfoRow
-              label={t("settings.backend")}
-              value={device?.torch_available ? device.backend : t("settings.torchMissing")}
+          <Box>
+            <SectionHeading level={3} variant="subtitle2" sx={{ mb: 1 }}>
+              {t("settings.outpaint.title")}
+            </SectionHeading>
+            <TextField
+              label={t("settings.outpaint.negativeLabel")}
+              helperText={t("settings.outpaint.negativeHelp")}
+              value={outpaintNegative}
+              onChange={(e) => {
+                setOutpaintNegative(e.target.value);
+                setSaved(false);
+              }}
+              multiline
+              minRows={2}
+              fullWidth
             />
-            {device?.gpu_name && <InfoRow label={t("settings.gpu")} value={device.gpu_name} />}
-            {system && <InfoRow label={t("settings.modelsDir")} value={system.models_dir} />}
-          </Stack>
-        </Box>
-      </Stack>
+          </Box>
+
+          <Divider />
+
+          <Box>
+            <SectionHeading level={3} variant="subtitle2" sx={{ mb: 1 }}>
+              {t("settings.defaults.title")}
+            </SectionHeading>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
+              {t("settings.defaults.help")}
+            </Typography>
+            {defaultsError && (
+              <Alert severity="warning" sx={{ mb: 1.5 }}>
+                {t("settings.defaults.loadError")}
+              </Alert>
+            )}
+            <Stack spacing={2}>
+              {defaultSelect(t("settings.defaults.model"), defModel, setDefModel, downloadedModels)}
+              {defaultSelect(
+                t("settings.defaults.upscaler"),
+                defUpscaler,
+                setDefUpscaler,
+                downloadedUpscalers,
+              )}
+              {defaultSelect(
+                t("settings.defaults.outpaint"),
+                defOutpaint,
+                setDefOutpaint,
+                downloadedOutpaint,
+              )}
+            </Stack>
+          </Box>
+
+          <Box>
+            {error && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {t("common.error")}
+              </Alert>
+            )}
+            <Button variant="contained" onClick={handleSave} disabled={saving}>
+              {saved ? t("settings.saved") : t("settings.save")}
+            </Button>
+          </Box>
+
+          <Divider />
+
+          <Box>
+            <SectionHeading level={3} variant="subtitle2" sx={{ mb: 1 }}>
+              {t("settings.system")}
+            </SectionHeading>
+            <Stack spacing={0.5}>
+              <InfoRow
+                label={t("settings.backend")}
+                value={device?.torch_available ? device.backend : t("settings.torchMissing")}
+              />
+              {device?.gpu_name && <InfoRow label={t("settings.gpu")} value={device.gpu_name} />}
+              {system && <InfoRow label={t("settings.modelsDir")} value={system.models_dir} />}
+            </Stack>
+          </Box>
+        </Stack>
       )}
     </Paper>
   );
-}
+};

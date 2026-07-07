@@ -101,7 +101,10 @@ export const GenerationParams = ({
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
               <FormControlLabel
                 control={
-                  <Switch checked={refine.checked} onChange={(e) => refine.onChange(e.target.checked)} />
+                  <Switch
+                    checked={refine.checked}
+                    onChange={(e) => refine.onChange(e.target.checked)}
+                  />
                 }
                 label={k("refine")}
               />

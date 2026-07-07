@@ -36,7 +36,12 @@ interface GalleryPanelProps {
 export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPanelProps) => {
   const t = useTranslations();
 
-  const { data, loading, error: loadError, reload } = useAsyncData(() => api.getImages(), [reloadToken]);
+  const {
+    data,
+    loading,
+    error: loadError,
+    reload,
+  } = useAsyncData(() => api.getImages(), [reloadToken]);
   const images = data ?? [];
   const [query, setQuery] = useState("");
   const [modelFilter, setModelFilter] = useState("");
@@ -46,7 +51,10 @@ export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPa
   const [samplers, setSamplers] = useState<Sampler[]>([]);
 
   useEffect(() => {
-    api.getSamplers().then((l) => setSamplers(l.samplers)).catch(() => setSamplers([]));
+    api
+      .getSamplers()
+      .then((l) => setSamplers(l.samplers))
+      .catch(() => setSamplers([]));
   }, []);
 
   const samplerLabel = useMemo(() => {
@@ -116,7 +124,11 @@ export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPa
         </TextField>
       </Stack>
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
 
       {loadError && images.length === 0 ? (
         <Alert severity="error">{t("gallery.loadError")}</Alert>
@@ -187,10 +199,7 @@ export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPa
                     value={String(selected.guidance_scale)}
                     mono
                   />
-                  <DetailRow
-                    label={t("gallery.sampler")}
-                    value={samplerLabel(selected.sampler)}
-                  />
+                  <DetailRow label={t("gallery.sampler")} value={samplerLabel(selected.sampler)} />
                   <DetailRow
                     label={t("gallery.size")}
                     value={`${selected.width}×${selected.height}`}
@@ -244,17 +253,9 @@ export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPa
       />
     </Box>
   );
-}
+};
 
-const DetailRow = ({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) => {
+const DetailRow = ({ label, value, mono }: { label: string; value: string; mono?: boolean }) => {
   return (
     <Box>
       <Typography variant="caption" color="text.secondary">
@@ -265,4 +266,4 @@ const DetailRow = ({
       </Typography>
     </Box>
   );
-}
+};

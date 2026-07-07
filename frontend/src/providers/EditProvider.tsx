@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
@@ -162,7 +155,22 @@ export const EditProvider = ({ onEdited, children }: EditProviderProps) => {
       start,
       reset,
     }),
-    [source, engine, prompt, steps, guidance, seed, batch, progress, resultId, resultIds, error, running, start, reset],
+    [
+      source,
+      engine,
+      prompt,
+      steps,
+      guidance,
+      seed,
+      batch,
+      progress,
+      resultId,
+      resultIds,
+      error,
+      running,
+      start,
+      reset,
+    ],
   );
 
   return <EditContext.Provider value={value}>{children}</EditContext.Provider>;

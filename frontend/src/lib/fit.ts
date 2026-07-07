@@ -12,14 +12,22 @@ interface FitChipMeta {
 
 const META: Record<FitVerdict, FitChipMeta> = {
   fits_gpu: { color: "success", labelKey: "models.fitFitsGpu", tooltipKey: "models.fitTooltipGpu" },
-  fits_offload: { color: "warning", labelKey: "models.fitOffload", tooltipKey: "models.fitTooltipOffload" },
-  too_large: { color: "error", labelKey: "models.fitTooLarge", tooltipKey: "models.fitTooltipTooLarge" },
+  fits_offload: {
+    color: "warning",
+    labelKey: "models.fitOffload",
+    tooltipKey: "models.fitTooltipOffload",
+  },
+  too_large: {
+    color: "error",
+    labelKey: "models.fitTooLarge",
+    tooltipKey: "models.fitTooltipTooLarge",
+  },
   cpu_only: { color: "info", labelKey: "models.fitCpu", tooltipKey: "models.fitTooltipCpu" },
 };
 
 export const fitChipMeta = (verdict: FitVerdict): FitChipMeta => {
   return META[verdict];
-}
+};
 
 // Fit-based grouping for the model/engine lists. Three buckets: entries that run
 // fully on the GPU (or CPU-only when there is no GPU), ones that run only via RAM
@@ -30,7 +38,7 @@ export const fitBucket = (verdict: FitVerdict): FitBucket => {
   if (verdict === "fits_offload") return "offload";
   if (verdict === "too_large") return "tooLarge";
   return "available"; // fits_gpu + cpu_only
-}
+};
 
 // Stable in-bucket ordering (best fit first).
 export const fitRank: Record<FitVerdict, number> = {

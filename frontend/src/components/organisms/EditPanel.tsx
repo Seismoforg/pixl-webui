@@ -59,7 +59,12 @@ export const EditPanel = ({ reloadToken, initialImageId }: EditPanelProps) => {
   } = edit;
 
   const downloads = useDownloads();
-  const { engines, loading: enginesLoading, error: enginesError, reload: reloadEngines } = useEngineCatalog();
+  const {
+    engines,
+    loading: enginesLoading,
+    error: enginesError,
+    reload: reloadEngines,
+  } = useEngineCatalog();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -130,8 +135,7 @@ export const EditPanel = ({ reloadToken, initialImageId }: EditPanelProps) => {
   };
 
   const displayError = error ?? jobError ?? (enginesError ? t("edit.engineLoadError") : null);
-  const downloadPercent =
-    engineDl && engineDl.status === "downloading" ? engineDl.percent : null;
+  const downloadPercent = engineDl && engineDl.status === "downloading" ? engineDl.percent : null;
 
   return (
     <Box>
@@ -140,10 +144,19 @@ export const EditPanel = ({ reloadToken, initialImageId }: EditPanelProps) => {
       </SectionHeading>
 
       {displayError && (
-        <Alert severity="error" sx={{ mb: 2 }}>{displayError}</Alert>
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {displayError}
+        </Alert>
       )}
 
-      <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, alignItems: "start" }}>
+      <Box
+        sx={{
+          display: "grid",
+          gap: 3,
+          gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
+          alignItems: "start",
+        }}
+      >
         <Stack spacing={3}>
           <fieldset disabled={running} style={formLockStyle(running)}>
             <Stack spacing={3}>
@@ -198,7 +211,12 @@ export const EditPanel = ({ reloadToken, initialImageId }: EditPanelProps) => {
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                 />
-                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1, mb: 0.5 }}>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  display="block"
+                  sx={{ mt: 1, mb: 0.5 }}
+                >
                   {t("edit.examples.title")}
                 </Typography>
                 <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>

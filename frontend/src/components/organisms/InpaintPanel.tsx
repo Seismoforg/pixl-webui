@@ -91,7 +91,12 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
   } = inpaint;
 
   const downloads = useDownloads();
-  const { engines, loading: enginesLoading, error: enginesError, reload: reloadEngines } = useEngineCatalog();
+  const {
+    engines,
+    loading: enginesLoading,
+    error: enginesError,
+    reload: reloadEngines,
+  } = useEngineCatalog();
   const [snippets, setSnippets] = useState<PromptSnippet[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,7 +110,10 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
   );
 
   const reloadSnippets = useCallback(() => {
-    api.getPromptSnippets().then(setSnippets).catch(() => setSnippets([]));
+    api
+      .getPromptSnippets()
+      .then(setSnippets)
+      .catch(() => setSnippets([]));
   }, []);
 
   useEffect(() => {
@@ -113,8 +121,7 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
   }, [reloadSnippets]);
 
   const inpaintEngines = engines.filter((e) => e.kind === "inpaint");
-  const selectedEngine =
-    inpaintEngines.find((e) => e.slug === engine) ?? inpaintEngines[0] ?? null;
+  const selectedEngine = inpaintEngines.find((e) => e.slug === engine) ?? inpaintEngines[0] ?? null;
   // FLUX Fill (GGUF) is flow-matching: it ignores the sampler and wants a higher
   // guidance / more steps than SD inpaint.
   const fluxEngine = !!selectedEngine?.is_gguf;
@@ -204,8 +211,7 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
   };
 
   const displayError = error ?? jobError ?? (enginesError ? t("inpaint.engineLoadError") : null);
-  const downloadPercent =
-    engineDl && engineDl.status === "downloading" ? engineDl.percent : null;
+  const downloadPercent = engineDl && engineDl.status === "downloading" ? engineDl.percent : null;
 
   return (
     <Box>
@@ -214,10 +220,19 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
       </SectionHeading>
 
       {displayError && (
-        <Alert severity="error" sx={{ mb: 2 }}>{displayError}</Alert>
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {displayError}
+        </Alert>
       )}
 
-      <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, alignItems: "start" }}>
+      <Box
+        sx={{
+          display: "grid",
+          gap: 3,
+          gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
+          alignItems: "start",
+        }}
+      >
         <Stack spacing={3}>
           <fieldset disabled={running} style={formLockStyle(running)}>
             <Stack spacing={3}>
@@ -262,7 +277,9 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
               {/* Mask editor + brush */}
               <Box>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-                  <SectionHeading level={3} variant="subtitle2">{t("inpaint.mask.title")}</SectionHeading>
+                  <SectionHeading level={3} variant="subtitle2">
+                    {t("inpaint.mask.title")}
+                  </SectionHeading>
                   <InfoTip text={t("inpaint.mask.help")} />
                 </Box>
                 <InpaintCanvas
@@ -289,11 +306,18 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
               {/* Feather tuning — mask gradient / composite seam / seed blur. */}
               <Box>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-                  <SectionHeading level={3} variant="subtitle2">{t("inpaint.tuning.title")}</SectionHeading>
+                  <SectionHeading level={3} variant="subtitle2">
+                    {t("inpaint.tuning.title")}
+                  </SectionHeading>
                   <InfoTip text={t("inpaint.tuning.help")} />
                 </Box>
                 {/* One-tap presets that set the three sliders for common jobs. */}
-                <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  display="block"
+                  sx={{ mb: 0.5 }}
+                >
                   {t("inpaint.tuning.presets")}
                 </Typography>
                 <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: "wrap", gap: 1 }}>

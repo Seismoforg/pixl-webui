@@ -59,7 +59,7 @@ export const useUpscale = () => {
   const ctx = useContext(UpscaleContext);
   if (!ctx) throw new Error("useUpscale must be used within UpscaleProvider");
   return ctx;
-}
+};
 
 interface UpscaleProviderProps {
   onUpscaled: () => void;
@@ -78,7 +78,10 @@ export const UpscaleProvider = ({ onUpscaled, children }: UpscaleProviderProps) 
   // Seed the per-run SD x4 step count from the global default once. The provider
   // never unmounts, so this runs a single time and later per-run edits persist.
   useEffect(() => {
-    api.getSettings().then((s) => setSdX4Steps(s.sd_x4_steps)).catch(() => undefined);
+    api
+      .getSettings()
+      .then((s) => setSdX4Steps(s.sd_x4_steps))
+      .catch(() => undefined);
   }, []);
 
   const [jobId, setJobId] = useState<string | null>(null);
@@ -164,4 +167,4 @@ export const UpscaleProvider = ({ onUpscaled, children }: UpscaleProviderProps) 
   );
 
   return <UpscaleContext.Provider value={value}>{children}</UpscaleContext.Provider>;
-}
+};

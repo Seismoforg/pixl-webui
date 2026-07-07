@@ -73,7 +73,15 @@ export const SourcePicker = ({
           // Fixed-height container reserves the layout space up front (avoids CLS
           // as the optimized variant loads); `fill` + objectFit letterboxes any
           // source aspect ratio inside it.
-          <Box sx={{ position: "relative", width: "100%", height: 220, borderRadius: 1, overflow: "hidden" }}>
+          <Box
+            sx={{
+              position: "relative",
+              width: "100%",
+              height: 220,
+              borderRadius: 1,
+              overflow: "hidden",
+            }}
+          >
             <Image
               src={preview}
               alt={t("sourcePicker.title")}

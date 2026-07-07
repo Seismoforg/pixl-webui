@@ -162,15 +162,30 @@ export const PromptSnippetManager = () => {
         </Alert>
       )}
       <Stack spacing={3}>
-        {renderList("positive", snippets.filter((s) => s.kind === "positive"))}
+        {renderList(
+          "positive",
+          snippets.filter((s) => s.kind === "positive"),
+        )}
         <Divider />
-        {renderList("negative", snippets.filter((s) => s.kind === "negative"))}
+        {renderList(
+          "negative",
+          snippets.filter((s) => s.kind === "negative"),
+        )}
         <Divider />
-        {renderList("upscale", snippets.filter((s) => s.kind === "upscale"))}
+        {renderList(
+          "upscale",
+          snippets.filter((s) => s.kind === "upscale"),
+        )}
         <Divider />
-        {renderList("outpaint", snippets.filter((s) => s.kind === "outpaint"))}
+        {renderList(
+          "outpaint",
+          snippets.filter((s) => s.kind === "outpaint"),
+        )}
         <Divider />
-        {renderList("outpaint_negative", snippets.filter((s) => s.kind === "outpaint_negative"))}
+        {renderList(
+          "outpaint_negative",
+          snippets.filter((s) => s.kind === "outpaint_negative"),
+        )}
       </Stack>
 
       <Dialog open={editing !== null} onClose={() => setEditing(null)} maxWidth="sm" fullWidth>
@@ -220,4 +235,4 @@ export const PromptSnippetManager = () => {
       />
     </Paper>
   );
-}
+};

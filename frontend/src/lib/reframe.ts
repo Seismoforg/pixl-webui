@@ -32,7 +32,9 @@ export const extendSize = (
 ): [number, number] => {
   const target = rw / rh;
   let [cw, ch] =
-    target > w / h ? [Math.max(w, Math.round(h * target)), h] : [w, Math.max(h, Math.round(w / target))];
+    target > w / h
+      ? [Math.max(w, Math.round(h * target)), h]
+      : [w, Math.max(h, Math.round(w / target))];
   const s = Math.min(1, Math.max(0.01, scale));
   if (s < 1) {
     cw = Math.round(cw / s);
@@ -104,10 +106,46 @@ const drawFeatherBand = (
   const clear = alpha(base, 0);
   const s = inward ? 1 : -1;
   const edges = [
-    { gx0: 0, gy0: y, gx1: 0, gy1: y + s * band, rx: x, ry: inward ? y : y - band, rw: w, rh: band },
-    { gx0: 0, gy0: y + h, gx1: 0, gy1: y + h - s * band, rx: x, ry: inward ? y + h - band : y + h, rw: w, rh: band },
-    { gx0: x, gy0: 0, gx1: x + s * band, gy1: 0, rx: inward ? x : x - band, ry: y, rw: band, rh: h },
-    { gx0: x + w, gy0: 0, gx1: x + w - s * band, gy1: 0, rx: inward ? x + w - band : x + w, ry: y, rw: band, rh: h },
+    {
+      gx0: 0,
+      gy0: y,
+      gx1: 0,
+      gy1: y + s * band,
+      rx: x,
+      ry: inward ? y : y - band,
+      rw: w,
+      rh: band,
+    },
+    {
+      gx0: 0,
+      gy0: y + h,
+      gx1: 0,
+      gy1: y + h - s * band,
+      rx: x,
+      ry: inward ? y + h - band : y + h,
+      rw: w,
+      rh: band,
+    },
+    {
+      gx0: x,
+      gy0: 0,
+      gx1: x + s * band,
+      gy1: 0,
+      rx: inward ? x : x - band,
+      ry: y,
+      rw: band,
+      rh: h,
+    },
+    {
+      gx0: x + w,
+      gy0: 0,
+      gx1: x + w - s * band,
+      gy1: 0,
+      rx: inward ? x + w - band : x + w,
+      ry: y,
+      rw: band,
+      rh: h,
+    },
   ];
   for (const e of edges) {
     const g = ctx.createLinearGradient(e.gx0, e.gy0, e.gx1, e.gy1);
@@ -171,8 +209,28 @@ export const drawExtend = (
   // the generated border. The band widths mirror the backend feather derivation.
   if (outpaint) {
     const primary = theme.palette.primary.main;
-    drawFeatherBand(ctx, sx, sy, sw, sh, maskFeatherPx(cw, ch, maskSoftness) * k, primary, 0.4, true);
-    drawFeatherBand(ctx, sx, sy, sw, sh, seamFeatherPx(w, h, seamSoftness) * k, primary, 0.28, false);
+    drawFeatherBand(
+      ctx,
+      sx,
+      sy,
+      sw,
+      sh,
+      maskFeatherPx(cw, ch, maskSoftness) * k,
+      primary,
+      0.4,
+      true,
+    );
+    drawFeatherBand(
+      ctx,
+      sx,
+      sy,
+      sw,
+      sh,
+      seamFeatherPx(w, h, seamSoftness) * k,
+      primary,
+      0.28,
+      false,
+    );
   }
 
   // Seam between kept source and generated border.
@@ -217,7 +275,17 @@ export const drawCover = (
     ctx.drawImage(img, 0, 0, bw, bh);
     ctx.fillStyle = alpha(theme.palette.common.black, 0.55);
     ctx.fillRect(0, 0, bw, bh);
-    ctx.drawImage(img, keep.x, keep.y, keep.w, keep.h, keep.x * k, keep.y * k, keep.w * k, keep.h * k);
+    ctx.drawImage(
+      img,
+      keep.x,
+      keep.y,
+      keep.w,
+      keep.h,
+      keep.x * k,
+      keep.y * k,
+      keep.w * k,
+      keep.h * k,
+    );
   }
 
   ctx.lineWidth = 2;

@@ -33,7 +33,11 @@ export const useImageSource = (
   // Preselect a gallery image passed via the deep-link (?image=<id>).
   useEffect(() => {
     if (initialImageId) {
-      setSource({ kind: "gallery", imageId: initialImageId, preview: api.imageFileUrl(initialImageId) });
+      setSource({
+        kind: "gallery",
+        imageId: initialImageId,
+        preview: api.imageFileUrl(initialImageId),
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialImageId]);

@@ -42,7 +42,11 @@ export const SkeletonCardGrid = ({
           {/* Wrapper owns the square aspect ratio so the tile height is reliable
               regardless of MUI Skeleton's default height handling. */}
           <Box sx={{ aspectRatio: "1 / 1" }}>
-            <Skeleton variant="rounded" animation={animation} sx={{ width: "100%", height: "100%" }} />
+            <Skeleton
+              variant="rounded"
+              animation={animation}
+              sx={{ width: "100%", height: "100%" }}
+            />
           </Box>
           {lines > 0 && (
             <Box sx={{ pt: 1 }}>

@@ -35,4 +35,4 @@ export const InfoTip = ({ text, sx }: InfoTipProps) => {
       </IconButton>
     </Tooltip>
   );
-}
+};

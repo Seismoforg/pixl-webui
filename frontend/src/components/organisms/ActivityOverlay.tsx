@@ -16,9 +16,7 @@ export const ActivityOverlay = () => {
   const pathname = usePathname();
   const router = useRouter();
 
-  const shown = activities.filter(
-    (a) => a.status !== "done" && !pathname.startsWith(a.route),
-  );
+  const shown = activities.filter((a) => a.status !== "done" && !pathname.startsWith(a.route));
   if (shown.length === 0) return null;
 
   return (
@@ -38,4 +36,4 @@ export const ActivityOverlay = () => {
       ))}
     </Box>
   );
-}
+};

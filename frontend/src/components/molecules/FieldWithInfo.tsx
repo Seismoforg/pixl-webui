@@ -19,7 +19,13 @@ interface FieldWithInfoProps {
  * InfoTip button. Extracted from `GenerationForm`, which repeated this exact
  * Box+field+InfoTip wrapper across its model/prompt/sampler/size/seed rows.
  */
-export const FieldWithInfo = ({ info, align = "center", infoSx, sx, children }: FieldWithInfoProps) => (
+export const FieldWithInfo = ({
+  info,
+  align = "center",
+  infoSx,
+  sx,
+  children,
+}: FieldWithInfoProps) => (
   <Box sx={{ display: "flex", alignItems: align, gap: 0.5, ...sx }}>
     {children}
     <InfoTip text={info} sx={infoSx} />

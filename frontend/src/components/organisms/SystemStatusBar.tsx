@@ -17,12 +17,10 @@ export const SystemStatusBar = () => {
   const [stats, setStats] = useState<ResourceStats | null>(null);
 
   // Live via WebSocket; falls back to REST polling while the socket is down.
-  useLive<ResourceStats>(
-    "system",
-    { channel: "system" },
-    setStats,
-    { fetch: api.getSystemStats, intervalMs: 2000 },
-  );
+  useLive<ResourceStats>("system", { channel: "system" }, setStats, {
+    fetch: api.getSystemStats,
+    intervalMs: 2000,
+  });
 
   return (
     <Box
@@ -69,7 +67,7 @@ export const SystemStatusBar = () => {
       </Box>
     </Box>
   );
-}
+};
 
 const Meter = ({
   label,
@@ -121,4 +119,4 @@ const Meter = ({
       />
     </Box>
   );
-}
+};

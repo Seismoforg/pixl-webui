@@ -77,7 +77,14 @@ export const AxisEditor = ({
   const unusedSamplers = samplers.filter((s) => !axis.values.includes(s.id));
 
   return (
-    <Box sx={{ display: "grid", gap: 1.5, gridTemplateColumns: { xs: "1fr", sm: "auto 1fr auto" }, alignItems: "start" }}>
+    <Box
+      sx={{
+        display: "grid",
+        gap: 1.5,
+        gridTemplateColumns: { xs: "1fr", sm: "auto 1fr auto" },
+        alignItems: "start",
+      }}
+    >
       <TextField
         select
         size="small"

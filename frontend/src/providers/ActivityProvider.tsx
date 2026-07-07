@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 
 /**
  * A single generic "activity" any long-running backend task publishes. The
@@ -38,7 +31,7 @@ export const useActivity = () => {
   const ctx = useContext(ActivityContext);
   if (!ctx) throw new Error("useActivity must be used within ActivityProvider");
   return ctx;
-}
+};
 
 export const ActivityProvider = ({ children }: { children: ReactNode }) => {
   const [map, setMap] = useState<Record<string, Activity>>({});
@@ -70,8 +63,6 @@ export const ActivityProvider = ({ children }: { children: ReactNode }) => {
   const activities = useMemo(() => Object.values(map), [map]);
 
   return (
-    <ActivityContext.Provider value={{ activities, set }}>
-      {children}
-    </ActivityContext.Provider>
+    <ActivityContext.Provider value={{ activities, set }}>{children}</ActivityContext.Provider>
   );
-}
+};

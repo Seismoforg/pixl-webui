@@ -56,7 +56,12 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
   } = upscale;
 
   const downloads = useDownloads();
-  const { engines, loading: enginesLoading, error: enginesError, reload: reloadEngines } = useEngineCatalog();
+  const {
+    engines,
+    loading: enginesLoading,
+    error: enginesError,
+    reload: reloadEngines,
+  } = useEngineCatalog();
   const [snippets, setSnippets] = useState<PromptSnippet[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -110,8 +115,7 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
   // Engine downloads share the app-level tracker (survive navigation + feed the
   // off-route bubble). Read this engine's progress for the inline bar.
   const engineDl = selectedEngine ? downloads.progress[selectedEngine.slug] : undefined;
-  const downloadPercent =
-    engineDl && engineDl.status === "downloading" ? engineDl.percent : null;
+  const downloadPercent = engineDl && engineDl.status === "downloading" ? engineDl.percent : null;
 
   const startEngineDownload = async (eng: UpscalerEngine) => {
     setError(null);
@@ -169,80 +173,93 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
       </SectionHeading>
 
       {displayError && (
-        <Alert severity="error" sx={{ mb: 2 }}>{displayError}</Alert>
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {displayError}
+        </Alert>
       )}
 
-      <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, alignItems: "start" }}>
+      <Box
+        sx={{
+          display: "grid",
+          gap: 3,
+          gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
+          alignItems: "start",
+        }}
+      >
         <Stack spacing={3}>
           {/* Lock the controls while a job runs (see formLockStyle). */}
           <fieldset disabled={running} style={formLockStyle(running)}>
             <Stack spacing={3}>
-          <EnginePicker
-            engine={selectedEngine}
-            engines={selectableEngines}
-            loading={enginesLoading}
-            downloadPercent={downloadPercent}
-            onSelect={setEngineSlug}
-            onDownload={handleDownload}
-          />
-
-          <SourcePicker
-            preview={sourcePreview}
-            dims={sourceDims}
-            meta={source?.kind === "gallery" ? sourceMeta : null}
-            onPickFromGallery={() => setPickerOpen(true)}
-            onUpload={onUpload}
-            onUploadDims={setUploadDims}
-          />
-
-          {/* Upscaler prompt — guides the diffusion upscaler (SD x4) toward detail. */}
-          {selectedEngine?.prompt_capable && (
-            <SnippetPromptField
-              kind="upscale"
-              snippets={snippets}
-              value={prompt}
-              onChange={setPrompt}
-              onAppend={(text) => setPrompt(prompt ? `${prompt}, ${text}` : text)}
-              onSnippetsChanged={reloadSnippets}
-              label={t("upscale.prompt.label")}
-              helperText={t("upscale.prompt.help")}
-            />
-          )}
-
-          {/* SD x4 step count — per-run override of the global default. */}
-          {selectedEngine?.kind === "sd_x4" && (
-            <Box>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-                <SectionHeading level={3} variant="subtitle2">{t("upscale.steps.label")}</SectionHeading>
-                <InfoTip text={t("upscale.steps.help")} />
-              </Box>
-              <TextField
-                type="number"
-                size="small"
-                value={sdX4Steps}
-                onChange={(e) => setSdX4Steps(Number(e.target.value))}
-                inputProps={{ min: 1, max: 150, step: 1 }}
-                sx={{ maxWidth: 140 }}
+              <EnginePicker
+                engine={selectedEngine}
+                engines={selectableEngines}
+                loading={enginesLoading}
+                downloadPercent={downloadPercent}
+                onSelect={setEngineSlug}
+                onDownload={handleDownload}
               />
-            </Box>
-          )}
 
-          {/* Tiling option */}
-          <Box>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-              <SectionHeading level={3} variant="subtitle2">{t("upscale.tiling.label")}</SectionHeading>
-              <InfoTip text={t("upscale.tiling.help")} />
-            </Box>
-            <ToggleButtonGroup
-              size="small"
-              exclusive
-              value={tile ? "auto" : "off"}
-              onChange={(_, v) => v !== null && setTile(v === "auto")}
-            >
-              <ToggleButton value="auto">{t("upscale.tiling.auto")}</ToggleButton>
-              <ToggleButton value="off">{t("upscale.tiling.off")}</ToggleButton>
-            </ToggleButtonGroup>
-          </Box>
+              <SourcePicker
+                preview={sourcePreview}
+                dims={sourceDims}
+                meta={source?.kind === "gallery" ? sourceMeta : null}
+                onPickFromGallery={() => setPickerOpen(true)}
+                onUpload={onUpload}
+                onUploadDims={setUploadDims}
+              />
+
+              {/* Upscaler prompt — guides the diffusion upscaler (SD x4) toward detail. */}
+              {selectedEngine?.prompt_capable && (
+                <SnippetPromptField
+                  kind="upscale"
+                  snippets={snippets}
+                  value={prompt}
+                  onChange={setPrompt}
+                  onAppend={(text) => setPrompt(prompt ? `${prompt}, ${text}` : text)}
+                  onSnippetsChanged={reloadSnippets}
+                  label={t("upscale.prompt.label")}
+                  helperText={t("upscale.prompt.help")}
+                />
+              )}
+
+              {/* SD x4 step count — per-run override of the global default. */}
+              {selectedEngine?.kind === "sd_x4" && (
+                <Box>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
+                    <SectionHeading level={3} variant="subtitle2">
+                      {t("upscale.steps.label")}
+                    </SectionHeading>
+                    <InfoTip text={t("upscale.steps.help")} />
+                  </Box>
+                  <TextField
+                    type="number"
+                    size="small"
+                    value={sdX4Steps}
+                    onChange={(e) => setSdX4Steps(Number(e.target.value))}
+                    inputProps={{ min: 1, max: 150, step: 1 }}
+                    sx={{ maxWidth: 140 }}
+                  />
+                </Box>
+              )}
+
+              {/* Tiling option */}
+              <Box>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
+                  <SectionHeading level={3} variant="subtitle2">
+                    {t("upscale.tiling.label")}
+                  </SectionHeading>
+                  <InfoTip text={t("upscale.tiling.help")} />
+                </Box>
+                <ToggleButtonGroup
+                  size="small"
+                  exclusive
+                  value={tile ? "auto" : "off"}
+                  onChange={(_, v) => v !== null && setTile(v === "auto")}
+                >
+                  <ToggleButton value="auto">{t("upscale.tiling.auto")}</ToggleButton>
+                  <ToggleButton value="off">{t("upscale.tiling.off")}</ToggleButton>
+                </ToggleButtonGroup>
+              </Box>
             </Stack>
           </fieldset>
 
@@ -284,4 +301,4 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
       />
     </Box>
   );
-}
+};

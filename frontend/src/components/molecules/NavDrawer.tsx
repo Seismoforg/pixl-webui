@@ -56,4 +56,4 @@ export const NavDrawer = ({ open, onClose, items, activeHref, title }: NavDrawer
       </Box>
     </Drawer>
   );
-}
+};

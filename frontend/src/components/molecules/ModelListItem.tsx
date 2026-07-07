@@ -63,9 +63,7 @@ export const ModelListItem = ({ model, progress, onDownload, onDelete }: ModelLi
             <Typography component="span" variant="subtitle1" fontWeight="medium" sx={{ mr: 0.5 }}>
               {model.name}
             </Typography>
-            {model.gated && (
-              <Chip label={t("models.gatedHint")} size="small" variant="outlined" />
-            )}
+            {model.gated && <Chip label={t("models.gatedHint")} size="small" variant="outlined" />}
             {model.gguf_filename && (
               <Tooltip title={t("models.quantizedHint")}>
                 <Chip label={t("models.quantized")} size="small" variant="outlined" />
@@ -168,4 +166,4 @@ export const ModelListItem = ({ model, progress, onDownload, onDelete }: ModelLi
       )}
     </Paper>
   );
-}
+};

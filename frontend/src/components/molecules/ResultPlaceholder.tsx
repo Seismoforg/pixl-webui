@@ -17,7 +17,10 @@ interface ResultPlaceholderProps {
  * centered. Replaces a bare line of muted text floating in an empty box so the
  * result column reads as an intentional "waiting" state rather than a void.
  */
-export const ResultPlaceholder = ({ icon: Icon = ImageOutlinedIcon, children }: ResultPlaceholderProps) => (
+export const ResultPlaceholder = ({
+  icon: Icon = ImageOutlinedIcon,
+  children,
+}: ResultPlaceholderProps) => (
   <Box
     sx={{
       display: "flex",

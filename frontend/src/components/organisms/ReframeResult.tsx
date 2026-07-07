@@ -80,7 +80,9 @@ export const ReframeResult = ({ preview, dims }: ReframeResultProps) => {
                 size="small"
                 onClick={() => setShowOverlay((v) => !v)}
                 aria-pressed={showOverlay}
-                aria-label={t(showOverlay ? "reframe.result.hidePreview" : "reframe.result.showPreview")}
+                aria-label={t(
+                  showOverlay ? "reframe.result.hidePreview" : "reframe.result.showPreview",
+                )}
                 sx={{
                   position: "absolute",
                   top: 8,

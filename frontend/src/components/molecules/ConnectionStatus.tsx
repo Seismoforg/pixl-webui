@@ -49,4 +49,4 @@ export const ConnectionStatus = () => {
       </Box>
     </Tooltip>
   );
-}
+};

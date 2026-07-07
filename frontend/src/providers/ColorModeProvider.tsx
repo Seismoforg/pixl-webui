@@ -27,7 +27,7 @@ export const useColorMode = (): ColorModeContextValue => {
   const ctx = useContext(ColorModeContext);
   if (!ctx) throw new Error("useColorMode must be used within ColorModeProvider");
   return ctx;
-}
+};
 
 export const ColorModeProvider = ({ children }: { children: ReactNode }) => {
   // Deterministic default so SSR and the first client render match (no hydration
@@ -73,4 +73,4 @@ export const ColorModeProvider = ({ children }: { children: ReactNode }) => {
       </ThemeProvider>
     </ColorModeContext.Provider>
   );
-}
+};

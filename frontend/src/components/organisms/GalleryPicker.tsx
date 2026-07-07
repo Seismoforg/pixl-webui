@@ -29,7 +29,11 @@ export const GalleryPicker = ({ open, reloadToken, onClose, onPick }: GalleryPic
   // Refetch whenever the picker opens or the gallery changes (reloadToken bump),
   // so newly generated images show up instead of a stale first-open snapshot.
   // Skips the network call while closed (resolves to the empty list instead).
-  const { data, loading, error: loadError } = useAsyncData(
+  const {
+    data,
+    loading,
+    error: loadError,
+  } = useAsyncData(
     () => (open ? api.getImages() : Promise.resolve<GalleryImage[]>([])),
     [open, reloadToken],
   );
@@ -75,7 +79,11 @@ export const GalleryPicker = ({ open, reloadToken, onClose, onPick }: GalleryPic
                     borderRadius: 1,
                     cursor: "pointer",
                     "&:hover": { outline: 2, outlineColor: "primary.main", outlineOffset: -2 },
-                    "&:focus-visible": { outline: 2, outlineColor: "primary.main", outlineOffset: -2 },
+                    "&:focus-visible": {
+                      outline: 2,
+                      outlineColor: "primary.main",
+                      outlineOffset: -2,
+                    },
                   }}
                 />
                 <SourceInfo dense dimensions={{ w: img.width, h: img.height }} meta={img} />

@@ -170,4 +170,4 @@ export const createAppTheme = (mode: ColorMode): Theme => {
     ? "0 8px 20px rgba(0,0,0,0.6), 0 32px 64px rgba(0,0,0,0.5)"
     : "0 8px 20px rgba(16,18,27,0.14), 0 32px 64px rgba(16,18,27,0.16)";
   return createTheme(base, { shadows });
-}
+};

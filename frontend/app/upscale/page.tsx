@@ -10,7 +10,7 @@ import { useImageRouteParams } from "@/lib/useImageRouteParams";
 const UpscalePageInner = () => {
   const { reloadToken, initialImageId } = useImageRouteParams();
   return <UpscalePanel reloadToken={reloadToken} initialImageId={initialImageId} />;
-}
+};
 
 const UpscalePage = () => {
   const theme = useTheme();
@@ -20,6 +20,6 @@ const UpscalePage = () => {
       <UpscalePageInner />
     </Suspense>
   );
-}
+};
 
 export default UpscalePage;

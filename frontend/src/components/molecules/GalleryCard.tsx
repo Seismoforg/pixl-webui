@@ -25,7 +25,13 @@ interface GalleryCardProps {
   onDelete: (image: GalleryImage) => void;
 }
 
-export const GalleryCard = ({ image, onOpen, onRegenerate, onUpscale, onDelete }: GalleryCardProps) => {
+export const GalleryCard = ({
+  image,
+  onOpen,
+  onRegenerate,
+  onUpscale,
+  onDelete,
+}: GalleryCardProps) => {
   const t = useTranslations();
 
   return (
@@ -114,4 +120,4 @@ export const GalleryCard = ({ image, onOpen, onRegenerate, onUpscale, onDelete }
       </Stack>
     </Paper>
   );
-}
+};

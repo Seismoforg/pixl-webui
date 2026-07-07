@@ -3,10 +3,9 @@ export type Draft = Record<string, unknown>;
 
 /** Read the value at a dotted `path` (e.g. "defaults.steps") from `obj`. */
 export const getPath = (obj: Draft, path: string): unknown =>
-  path.split(".").reduce<unknown>(
-    (acc, key) => (acc == null ? undefined : (acc as Draft)[key]),
-    obj,
-  );
+  path
+    .split(".")
+    .reduce<unknown>((acc, key) => (acc == null ? undefined : (acc as Draft)[key]), obj);
 
 /** Return a deep clone of `obj` with `value` set at the dotted `path`. */
 export const setPath = (obj: Draft, path: string, value: unknown): Draft => {
