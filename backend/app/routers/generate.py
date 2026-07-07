@@ -130,22 +130,41 @@ class _Job:
 _store: jobs.JobStore[_Job] = jobs.JobStore("gen")
 
 
+def _gpu_sync() -> None:
+    """Block until queued GPU work finishes. Diffusers denoise steps run async, so the
+    step callback fires while the step is still computing; without a sync the reported
+    it/s is inflated and the real denoise time leaks into the (later, synchronous) VAE
+    decode — mislabeling the decode phase as huge. Best-effort; never breaks a run."""
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+    except Exception:  # noqa: BLE001 - timing aid only
+        pass
+
+
 def _run(job: _Job, req: GenerateRequest, model, init_image) -> None:
     # Wakes the WebSocket pusher after each state change so progress is pushed with
     # no tick latency (a no-op when nobody is subscribed).
     key = f"generation:{job.job_id}"
 
     def on_step(completed: int) -> None:
+        # Timestamp the denoise start at the first callback (before syncing), then sync
+        # so current_step / it-s / the decode-phase boundary reflect real GPU progress
+        # instead of async-queued callback times (see _gpu_sync).
+        now = time.perf_counter()
+        _gpu_sync()
         # Some pipelines invoke the callback one extra time; clamp so the UI never
         # shows "step n+1 / n".
         with _store.lock:
             if job.first_step_at is None:
-                job.first_step_at = time.perf_counter()
+                job.first_step_at = now
             completed = min(completed, job.total_steps)
             job.current_step = completed
             # After the last denoising step the pipeline runs the VAE decode; flag
             # that tail so the UI can show a distinct "finalizing" phase, and stamp
-            # its start so the decode duration can be measured.
+            # its start (post-sync = true end of denoising) so the decode duration is real.
             if completed >= job.total_steps:
                 job.phase = "finalizing"
                 if job.decode_started_at is None:
