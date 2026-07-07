@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import { MonoText } from "@/components/atoms/MonoText";
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { AxisEditor } from "@/components/molecules/AxisEditor";
+import { LoadingIndicator } from "@/components/molecules/LoadingIndicator";
 import { CompareResult } from "@/components/organisms/CompareResult";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
@@ -30,17 +31,39 @@ const MAX_CELLS = 64;
 
 export const ComparePanel = () => {
   const t = useTranslations();
-  const { models } = useAppData();
+  const { models, modelsLoading, modelsError } = useAppData();
   const compare = useCompare();
   const {
-    slug, prompt, negative, width, height, steps, guidance, seed, sampler, axes,
-    setSlug, setPrompt, setNegative, setWidth, setHeight, setSteps, setGuidance,
-    setSeed, setSampler, setAxes, running, error: jobError,
+    slug,
+    prompt,
+    negative,
+    width,
+    height,
+    steps,
+    guidance,
+    seed,
+    sampler,
+    axes,
+    setSlug,
+    setPrompt,
+    setNegative,
+    setWidth,
+    setHeight,
+    setSteps,
+    setGuidance,
+    setSeed,
+    setSampler,
+    setAxes,
+    running,
+    error: jobError,
   } = compare;
 
   const [samplers, setSamplers] = useState<Sampler[]>([]);
   useEffect(() => {
-    api.getSamplers().then((s) => setSamplers(s.samplers)).catch(() => setSamplers([]));
+    api
+      .getSamplers()
+      .then((s) => setSamplers(s.samplers))
+      .catch(() => setSamplers([]));
   }, []);
 
   const downloaded = models.filter((m) => m.downloaded);
@@ -53,8 +76,7 @@ export const ComparePanel = () => {
   const activeAxes = axes.filter((a) => a.values.length > 0);
   const cellCount = activeAxes.reduce((n, a) => n * a.values.length, 1);
   const overCap = activeAxes.length > 0 && cellCount > MAX_CELLS;
-  const canRun =
-    !!slug && !!prompt.trim() && activeAxes.length > 0 && !overCap && !running;
+  const canRun = !!slug && !!prompt.trim() && activeAxes.length > 0 && !overCap && !running;
 
   const usedElsewhere = (index: number, param: CompareParam) =>
     axes.some((a, j) => j !== index && a.param === param);
@@ -100,12 +122,27 @@ export const ComparePanel = () => {
         {t("compare.title")}
       </SectionHeading>
 
-      {jobError && <Alert severity="error" sx={{ mb: 2 }}>{jobError}</Alert>}
+      {jobError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {jobError}
+        </Alert>
+      )}
 
-      {downloaded.length === 0 ? (
+      {modelsLoading && models.length === 0 ? (
+        <LoadingIndicator label={t("loading.models")} />
+      ) : modelsError ? (
+        <Alert severity="error">{t("models.loadError")}</Alert>
+      ) : downloaded.length === 0 ? (
         <Alert severity="info">{t("generate.noModelDownloaded")}</Alert>
       ) : (
-        <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, alignItems: "start" }}>
+        <Box
+          sx={{
+            display: "grid",
+            gap: 3,
+            gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
+            alignItems: "start",
+          }}
+        >
           <Stack spacing={3}>
             <fieldset disabled={running} style={formLockStyle(running)}>
               <Stack spacing={3}>
@@ -185,7 +222,13 @@ export const ComparePanel = () => {
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
                     {t("compare.base.help")}
                   </Typography>
-                  <Box sx={{ display: "grid", gap: 2, gridTemplateColumns: { xs: "1fr 1fr", sm: "repeat(3, 1fr)" } }}>
+                  <Box
+                    sx={{
+                      display: "grid",
+                      gap: 2,
+                      gridTemplateColumns: { xs: "1fr 1fr", sm: "repeat(3, 1fr)" },
+                    }}
+                  >
                     <TextField
                       select
                       size="small"
@@ -204,28 +247,36 @@ export const ComparePanel = () => {
                       size="small"
                       label={t("compare.base.steps")}
                       value={steps}
-                      onChange={(e) => setSteps(Math.max(1, Math.min(150, Number(e.target.value) || 1)))}
+                      onChange={(e) =>
+                        setSteps(Math.max(1, Math.min(150, Number(e.target.value) || 1)))
+                      }
                     />
                     <TextField
                       type="number"
                       size="small"
                       label={t("compare.base.guidance")}
                       value={guidance}
-                      onChange={(e) => setGuidance(Math.max(0, Math.min(30, Number(e.target.value) || 0)))}
+                      onChange={(e) =>
+                        setGuidance(Math.max(0, Math.min(30, Number(e.target.value) || 0)))
+                      }
                     />
                     <TextField
                       type="number"
                       size="small"
                       label={t("compare.base.width")}
                       value={width}
-                      onChange={(e) => setWidth(Math.max(128, Math.min(2048, Number(e.target.value) || 128)))}
+                      onChange={(e) =>
+                        setWidth(Math.max(128, Math.min(2048, Number(e.target.value) || 128)))
+                      }
                     />
                     <TextField
                       type="number"
                       size="small"
                       label={t("compare.base.height")}
                       value={height}
-                      onChange={(e) => setHeight(Math.max(128, Math.min(2048, Number(e.target.value) || 128)))}
+                      onChange={(e) =>
+                        setHeight(Math.max(128, Math.min(2048, Number(e.target.value) || 128)))
+                      }
                     />
                     <TextField
                       size="small"
@@ -240,19 +291,20 @@ export const ComparePanel = () => {
             </fieldset>
 
             {/* Cell count + cap warning */}
-            {activeAxes.length > 0 && (
-              overCap ? (
+            {activeAxes.length > 0 &&
+              (overCap ? (
                 <Alert severity="warning">
                   {t("compare.tooMany", { count: cellCount, max: MAX_CELLS })}
                 </Alert>
               ) : (
                 <Typography variant="body2" color="text.secondary">
-                  {t("compare.cellCount").split(/(\{count\})/).map((part, i) =>
-                    part === "{count}" ? <MonoText key={i}>{cellCount}</MonoText> : part,
-                  )}
+                  {t("compare.cellCount")
+                    .split(/(\{count\})/)
+                    .map((part, i) =>
+                      part === "{count}" ? <MonoText key={i}>{cellCount}</MonoText> : part,
+                    )}
                 </Typography>
-              )
-            )}
+              ))}
 
             <Stack direction="row" spacing={1}>
               <Button

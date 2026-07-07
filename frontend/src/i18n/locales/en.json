@@ -436,6 +436,7 @@
     "availableOffload": "Only with RAM offload",
     "availableTooLarge": "Doesn't fit this GPU",
     "noResults": "No models match your filters.",
+    "loadError": "Couldn't load models. Try reloading the page.",
     "quantized": "GGUF",
     "quantizedHint": "GGUF-quantized transformer — lower VRAM",
     "hfCard": "View on HuggingFace",

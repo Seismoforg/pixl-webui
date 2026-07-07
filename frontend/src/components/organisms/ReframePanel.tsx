@@ -94,7 +94,12 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
   } = reframe;
 
   const downloads = useDownloads();
-  const { engines, loading: enginesLoading, error: enginesError, reload: reloadEngines } = useEngineCatalog();
+  const {
+    engines,
+    loading: enginesLoading,
+    error: enginesError,
+    reload: reloadEngines,
+  } = useEngineCatalog();
   const [snippets, setSnippets] = useState<PromptSnippet[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,7 +127,7 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
   // Only inpaint engines are selectable outpaint models.
   const inpaintEngines = engines.filter((e) => e.kind === "inpaint");
   // The chosen outpaint model (falls back to the first available inpaint engine).
-  const selectedEngine=
+  const selectedEngine =
     inpaintEngines.find((e) => e.slug === outpaintEngine) ?? inpaintEngines[0] ?? null;
   // FLUX Fill (GGUF) is flow-matching: it ignores the sampler and wants a higher
   // guidance / more steps than SD inpaint.
@@ -160,7 +165,14 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
     if (sourceMeta.steps > 0) setOutpaintSteps(sourceMeta.steps);
     if (sourceMeta.guidance_scale > 0) setOutpaintGuidance(sourceMeta.guidance_scale);
     if (samplers.some((s) => s.id === sourceMeta.sampler)) setOutpaintSampler(sourceMeta.sampler);
-  }, [sourceMeta, samplers, fluxOutpaint, setOutpaintSteps, setOutpaintGuidance, setOutpaintSampler]);
+  }, [
+    sourceMeta,
+    samplers,
+    fluxOutpaint,
+    setOutpaintSteps,
+    setOutpaintGuidance,
+    setOutpaintSampler,
+  ]);
 
   // FLUX Fill wants a higher guidance (~30) and more steps (~50) than SD inpaint;
   // apply those defaults when a Flux (GGUF) outpaint engine is selected.
@@ -174,8 +186,8 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
   // Auto-fill source: a gallery image carries its original generation prompt in
   // metadata (uploads carry none).
   const sourcePrompt = source?.kind === "gallery" ? sourceMeta?.prompt?.trim() || null : null;
-  const inpaintDl = selectedEngine? downloads.progress[selectedEngine.slug] : undefined;
-  const needInpaintDownload = outpaint && !!selectedEngine&& !selectedEngine.downloaded;
+  const inpaintDl = selectedEngine ? downloads.progress[selectedEngine.slug] : undefined;
+  const needInpaintDownload = outpaint && !!selectedEngine && !selectedEngine.downloaded;
 
   const startEngineDownload = async (eng: UpscalerEngine) => {
     setError(null);
@@ -255,274 +267,301 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
       </SectionHeading>
 
       {displayError && (
-        <Alert severity="error" sx={{ mb: 2 }}>{displayError}</Alert>
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {displayError}
+        </Alert>
       )}
 
-      <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, alignItems: "start" }}>
+      <Box
+        sx={{
+          display: "grid",
+          gap: 3,
+          gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
+          alignItems: "start",
+        }}
+      >
         <Stack spacing={3}>
           {/* Lock the controls while a job runs (see formLockStyle). */}
           <fieldset disabled={running} style={formLockStyle(running)}>
             <Stack spacing={3}>
-          <SourcePicker
-            preview={sourcePreview}
-            dims={sourceDims}
-            meta={source?.kind === "gallery" ? sourceMeta : null}
-            onPickFromGallery={() => setPickerOpen(true)}
-            onUpload={onUpload}
-            onUploadDims={setUploadDims}
-          />
+              <SourcePicker
+                preview={sourcePreview}
+                dims={sourceDims}
+                meta={source?.kind === "gallery" ? sourceMeta : null}
+                onPickFromGallery={() => setPickerOpen(true)}
+                onUpload={onUpload}
+                onUploadDims={setUploadDims}
+              />
 
-          {/* Target format / reframe */}
-          <Box>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-              <SectionHeading level={3} variant="subtitle2">{t("reframe.format.title")}</SectionHeading>
-              <InfoTip text={t("reframe.format.help")} />
-            </Box>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-              <TextField
-                select
-                size="small"
-                label={t("reframe.format.ratio")}
-                value={targetRatio}
-                onChange={(e) => setTargetRatio(e.target.value)}
-                sx={{ minWidth: { xs: "100%", sm: 160 } }}
-              >
-                {RATIOS.map((r) => (
-                  <MenuItem key={r} value={r}>
-                    {r}
-                  </MenuItem>
-                ))}
-                <MenuItem value="custom">{t("reframe.format.custom")}</MenuItem>
-              </TextField>
-              <TextField
-                select
-                size="small"
-                label={t("reframe.format.strategy")}
-                value={strategy}
-                onChange={(e) => setReframe(e.target.value as ReframeStrategy)}
-                helperText={t(`reframe.strategy.${strategy}Help`)}
-                sx={{ minWidth: { xs: "100%", sm: 200 } }}
-              >
-                {REFRAME.map((s) => (
-                  <MenuItem key={s} value={s}>
-                    {t(`reframe.strategy.${s}`)}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Stack>
+              {/* Target format / reframe */}
+              <Box>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
+                  <SectionHeading level={3} variant="subtitle2">
+                    {t("reframe.format.title")}
+                  </SectionHeading>
+                  <InfoTip text={t("reframe.format.help")} />
+                </Box>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                  <TextField
+                    select
+                    size="small"
+                    label={t("reframe.format.ratio")}
+                    value={targetRatio}
+                    onChange={(e) => setTargetRatio(e.target.value)}
+                    sx={{ minWidth: { xs: "100%", sm: 160 } }}
+                  >
+                    {RATIOS.map((r) => (
+                      <MenuItem key={r} value={r}>
+                        {r}
+                      </MenuItem>
+                    ))}
+                    <MenuItem value="custom">{t("reframe.format.custom")}</MenuItem>
+                  </TextField>
+                  <TextField
+                    select
+                    size="small"
+                    label={t("reframe.format.strategy")}
+                    value={strategy}
+                    onChange={(e) => setReframe(e.target.value as ReframeStrategy)}
+                    helperText={t(`reframe.strategy.${strategy}Help`)}
+                    sx={{ minWidth: { xs: "100%", sm: 200 } }}
+                  >
+                    {REFRAME.map((s) => (
+                      <MenuItem key={s} value={s}>
+                        {t(`reframe.strategy.${s}`)}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Stack>
 
-            {/* Custom exact output resolution (px). The result is resized to exactly
+                {/* Custom exact output resolution (px). The result is resized to exactly
                 this size after the strategy sets the aspect (may upscale). */}
-            {isCustom && (
-              <Stack direction="row" spacing={1.5} sx={{ mt: 1.5, alignItems: "flex-start" }}>
-                <TextField
-                  size="small"
-                  type="number"
-                  label={t("reframe.format.width")}
-                  value={customWidth}
-                  onChange={(e) => setCustomWidth(Number(e.target.value))}
-                  error={!inRange(customWidth)}
-                  helperText={!inRange(customWidth) ? t("reframe.format.rangeError") : undefined}
-                  inputProps={{ min: 64, max: 4096 }}
-                  sx={{ maxWidth: 130 }}
-                />
-                <Typography sx={{ mt: 1 }} aria-hidden>
-                  ×
-                </Typography>
-                <TextField
-                  size="small"
-                  type="number"
-                  label={t("reframe.format.height")}
-                  value={customHeight}
-                  onChange={(e) => setCustomHeight(Number(e.target.value))}
-                  error={!inRange(customHeight)}
-                  inputProps={{ min: 64, max: 4096 }}
-                  helperText={
-                    !inRange(customHeight) ? t("reframe.format.rangeError") : t("reframe.format.customHelp")
-                  }
-                  sx={{ maxWidth: 130 }}
-                />
-              </Stack>
-            )}
+                {isCustom && (
+                  <Stack direction="row" spacing={1.5} sx={{ mt: 1.5, alignItems: "flex-start" }}>
+                    <TextField
+                      size="small"
+                      type="number"
+                      label={t("reframe.format.width")}
+                      value={customWidth}
+                      onChange={(e) => setCustomWidth(Number(e.target.value))}
+                      error={!inRange(customWidth)}
+                      helperText={
+                        !inRange(customWidth) ? t("reframe.format.rangeError") : undefined
+                      }
+                      inputProps={{ min: 64, max: 4096 }}
+                      sx={{ maxWidth: 130 }}
+                    />
+                    <Typography sx={{ mt: 1 }} aria-hidden>
+                      ×
+                    </Typography>
+                    <TextField
+                      size="small"
+                      type="number"
+                      label={t("reframe.format.height")}
+                      value={customHeight}
+                      onChange={(e) => setCustomHeight(Number(e.target.value))}
+                      error={!inRange(customHeight)}
+                      inputProps={{ min: 64, max: 4096 }}
+                      helperText={
+                        !inRange(customHeight)
+                          ? t("reframe.format.rangeError")
+                          : t("reframe.format.customHelp")
+                      }
+                      sx={{ maxWidth: 130 }}
+                    />
+                  </Stack>
+                )}
 
-            {outpaint && (enginesLoading || inpaintEngines.length > 0) && (
-              <Box sx={{ mt: 1.5 }}>
-                <EnginePicker
-                  engine={selectedEngine}
-                  engines={inpaintEngines}
-                  loading={enginesLoading}
-                  downloadPercent={inpaintDownloadPercent}
-                  onSelect={setOutpaintEngine}
-                  onDownload={() => selectedEngine && startEngineDownload(selectedEngine)}
-                  showHeading={false}
-                  label={t("reframe.outpaint.model")}
-                  notInstalledLabel={t("reframe.outpaint.notInstalled")}
-                  helperText={t("reframe.outpaint.modelHelp")}
-                  showDetails={false}
-                  needsModelText={
-                    selectedEngine
-                      ? t("reframe.outpaint.needsModel", { size: selectedEngine.approx_size_gb })
-                      : undefined
-                  }
-                  downloadLabel={t("reframe.outpaint.download")}
-                  downloadingLabel={t("reframe.outpaint.downloading")}
-                  downloadButtonSize="small"
-                  loadingMinHeight={80}
-                  fullWidth={false}
-                  fieldSize="small"
-                  fieldSx={{ minWidth: { xs: "100%", sm: 260 } }}
-                />
+                {outpaint && (enginesLoading || inpaintEngines.length > 0) && (
+                  <Box sx={{ mt: 1.5 }}>
+                    <EnginePicker
+                      engine={selectedEngine}
+                      engines={inpaintEngines}
+                      loading={enginesLoading}
+                      downloadPercent={inpaintDownloadPercent}
+                      onSelect={setOutpaintEngine}
+                      onDownload={() => selectedEngine && startEngineDownload(selectedEngine)}
+                      showHeading={false}
+                      label={t("reframe.outpaint.model")}
+                      notInstalledLabel={t("reframe.outpaint.notInstalled")}
+                      helperText={t("reframe.outpaint.modelHelp")}
+                      showDetails={false}
+                      needsModelText={
+                        selectedEngine
+                          ? t("reframe.outpaint.needsModel", {
+                              size: selectedEngine.approx_size_gb,
+                            })
+                          : undefined
+                      }
+                      downloadLabel={t("reframe.outpaint.download")}
+                      downloadingLabel={t("reframe.outpaint.downloading")}
+                      downloadButtonSize="small"
+                      loadingMinHeight={80}
+                      fullWidth={false}
+                      fieldSize="small"
+                      fieldSx={{ minWidth: { xs: "100%", sm: 260 } }}
+                    />
+                  </Box>
+                )}
               </Box>
-            )}
-          </Box>
 
-          {/* Source position — where the image sits in the extended frame, or (for
+              {/* Source position — where the image sits in the extended frame, or (for
               cover) which part of the crop is kept. */}
-          <Box>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-              <SectionHeading level={3} variant="subtitle2">{t("reframe.position.title")}</SectionHeading>
-              <InfoTip text={t("reframe.position.help")} />
-            </Box>
-            <Stack spacing={1.5}>
-              {/* Scale shrinks the source within the frame so it can be positioned;
+              <Box>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
+                  <SectionHeading level={3} variant="subtitle2">
+                    {t("reframe.position.title")}
+                  </SectionHeading>
+                  <InfoTip text={t("reframe.position.help")} />
+                </Box>
+                <Stack spacing={1.5}>
+                  {/* Scale shrinks the source within the frame so it can be positioned;
                   cover has no surrounding area, so it's hidden there. */}
-              {strategy !== "cover" && (
-                <LabeledSlider
-                  label={t("reframe.position.scale")}
-                  info={t("reframe.position.scaleHelp")}
-                  value={scale}
-                  min={20}
-                  max={100}
-                  onChange={setScale}
+                  {strategy !== "cover" && (
+                    <LabeledSlider
+                      label={t("reframe.position.scale")}
+                      info={t("reframe.position.scaleHelp")}
+                      value={scale}
+                      min={20}
+                      max={100}
+                      onChange={setScale}
+                    />
+                  )}
+                  <LabeledSlider
+                    label={t("reframe.position.horizontal")}
+                    value={posX}
+                    min={0}
+                    max={100}
+                    onChange={setPosX}
+                  />
+                  <LabeledSlider
+                    label={t("reframe.position.vertical")}
+                    value={posY}
+                    min={0}
+                    max={100}
+                    onChange={setPosY}
+                  />
+                </Stack>
+              </Box>
+
+              {/* Seam-blend tuning — mask gradient / composite seam / seed blur. */}
+              {outpaint && (
+                <Box>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
+                    <SectionHeading level={3} variant="subtitle2">
+                      {t("reframe.outpaint.tuning")}
+                    </SectionHeading>
+                    <InfoTip text={t("reframe.outpaint.tuningHelp")} />
+                  </Box>
+                  <Stack spacing={1.5}>
+                    <LabeledSlider
+                      label={t("reframe.outpaint.maskFeather")}
+                      info={t("reframe.outpaint.maskFeatherHelp")}
+                      value={maskFeather}
+                      min={0}
+                      max={100}
+                      onChange={setMaskFeather}
+                    />
+                    <LabeledSlider
+                      label={t("reframe.outpaint.seamFeather")}
+                      info={t("reframe.outpaint.seamFeatherHelp")}
+                      value={seamFeather}
+                      min={0}
+                      max={100}
+                      onChange={setSeamFeather}
+                    />
+                    <LabeledSlider
+                      label={t("reframe.outpaint.seedBlur")}
+                      info={t("reframe.outpaint.seedBlurHelp")}
+                      value={seedBlur}
+                      min={0}
+                      max={100}
+                      onChange={setSeedBlur}
+                    />
+                  </Stack>
+                </Box>
+              )}
+
+              {/* Outpaint prompt — describes the scene generated in the new area. */}
+              {outpaint && (
+                <Box>
+                  <SnippetPromptField
+                    kind="outpaint"
+                    snippets={snippets.filter((s) => s.kind === "outpaint")}
+                    value={outpaintPrompt}
+                    onChange={setOutpaintPrompt}
+                    onAppend={(text) =>
+                      setOutpaintPrompt(outpaintPrompt ? `${outpaintPrompt}, ${text}` : text)
+                    }
+                    onSnippetsChanged={reloadSnippets}
+                    label={t("reframe.outpaint.promptLabel")}
+                    helperText={t("reframe.outpaint.promptHelp")}
+                  />
+                  {sourcePrompt ? (
+                    <Button
+                      size="small"
+                      startIcon={<AutoFixHighIcon />}
+                      onClick={() => setOutpaintPrompt(sourcePrompt)}
+                      sx={{ mt: 1 }}
+                    >
+                      {t("reframe.outpaint.autofill")}
+                    </Button>
+                  ) : source?.kind === "upload" ? (
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      display="block"
+                      sx={{ mt: 1 }}
+                    >
+                      {t("reframe.outpaint.autofillHint")}
+                    </Typography>
+                  ) : null}
+
+                  <Box sx={{ mt: 2 }}>
+                    <SnippetPromptField
+                      kind="outpaint_negative"
+                      snippets={snippets.filter((s) => s.kind === "outpaint_negative")}
+                      value={outpaintNegative}
+                      onChange={setOutpaintNegative}
+                      onAppend={(text) =>
+                        setOutpaintNegative(
+                          outpaintNegative ? `${outpaintNegative}, ${text}` : text,
+                        )
+                      }
+                      onSnippetsChanged={reloadSnippets}
+                      label={t("reframe.outpaint.negativeLabel")}
+                      helperText={t("reframe.outpaint.negativeHelp")}
+                    />
+                  </Box>
+                </Box>
+              )}
+
+              {/* Generation parameters — sampler / steps / guidance / seed / batch for
+              the AI outpaint pass (the PIL strategies ignore them). */}
+              {outpaint && (
+                <GenerationParams
+                  keyPrefix="reframe.params"
+                  steps={outpaintSteps}
+                  onSteps={setOutpaintSteps}
+                  guidance={outpaintGuidance}
+                  onGuidance={setOutpaintGuidance}
+                  batch={outpaintBatch}
+                  onBatch={setOutpaintBatch}
+                  seed={outpaintSeed}
+                  onSeed={setOutpaintSeed}
+                  sampler={
+                    fluxOutpaint
+                      ? undefined
+                      : { list: samplers, value: outpaintSampler, onChange: setOutpaintSampler }
+                  }
+                  refine={{
+                    checked: outpaintRefine,
+                    onChange: setOutpaintRefine,
+                    steps: outpaintRefineSteps,
+                    onSteps: setOutpaintRefineSteps,
+                  }}
                 />
               )}
-              <LabeledSlider
-                label={t("reframe.position.horizontal")}
-                value={posX}
-                min={0}
-                max={100}
-                onChange={setPosX}
-              />
-              <LabeledSlider
-                label={t("reframe.position.vertical")}
-                value={posY}
-                min={0}
-                max={100}
-                onChange={setPosY}
-              />
-            </Stack>
-          </Box>
-
-          {/* Seam-blend tuning — mask gradient / composite seam / seed blur. */}
-          {outpaint && (
-            <Box>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-                <SectionHeading level={3} variant="subtitle2">{t("reframe.outpaint.tuning")}</SectionHeading>
-                <InfoTip text={t("reframe.outpaint.tuningHelp")} />
-              </Box>
-              <Stack spacing={1.5}>
-                <LabeledSlider
-                  label={t("reframe.outpaint.maskFeather")}
-                  info={t("reframe.outpaint.maskFeatherHelp")}
-                  value={maskFeather}
-                  min={0}
-                  max={100}
-                  onChange={setMaskFeather}
-                />
-                <LabeledSlider
-                  label={t("reframe.outpaint.seamFeather")}
-                  info={t("reframe.outpaint.seamFeatherHelp")}
-                  value={seamFeather}
-                  min={0}
-                  max={100}
-                  onChange={setSeamFeather}
-                />
-                <LabeledSlider
-                  label={t("reframe.outpaint.seedBlur")}
-                  info={t("reframe.outpaint.seedBlurHelp")}
-                  value={seedBlur}
-                  min={0}
-                  max={100}
-                  onChange={setSeedBlur}
-                />
-              </Stack>
-            </Box>
-          )}
-
-          {/* Outpaint prompt — describes the scene generated in the new area. */}
-          {outpaint && (
-            <Box>
-              <SnippetPromptField
-                kind="outpaint"
-                snippets={snippets.filter((s) => s.kind === "outpaint")}
-                value={outpaintPrompt}
-                onChange={setOutpaintPrompt}
-                onAppend={(text) =>
-                  setOutpaintPrompt(outpaintPrompt ? `${outpaintPrompt}, ${text}` : text)
-                }
-                onSnippetsChanged={reloadSnippets}
-                label={t("reframe.outpaint.promptLabel")}
-                helperText={t("reframe.outpaint.promptHelp")}
-              />
-              {sourcePrompt ? (
-                <Button
-                  size="small"
-                  startIcon={<AutoFixHighIcon />}
-                  onClick={() => setOutpaintPrompt(sourcePrompt)}
-                  sx={{ mt: 1 }}
-                >
-                  {t("reframe.outpaint.autofill")}
-                </Button>
-              ) : source?.kind === "upload" ? (
-                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
-                  {t("reframe.outpaint.autofillHint")}
-                </Typography>
-              ) : null}
-
-              <Box sx={{ mt: 2 }}>
-                <SnippetPromptField
-                  kind="outpaint_negative"
-                  snippets={snippets.filter((s) => s.kind === "outpaint_negative")}
-                  value={outpaintNegative}
-                  onChange={setOutpaintNegative}
-                  onAppend={(text) =>
-                    setOutpaintNegative(outpaintNegative ? `${outpaintNegative}, ${text}` : text)
-                  }
-                  onSnippetsChanged={reloadSnippets}
-                  label={t("reframe.outpaint.negativeLabel")}
-                  helperText={t("reframe.outpaint.negativeHelp")}
-                />
-              </Box>
-            </Box>
-          )}
-
-          {/* Generation parameters — sampler / steps / guidance / seed / batch for
-              the AI outpaint pass (the PIL strategies ignore them). */}
-          {outpaint && (
-            <GenerationParams
-              keyPrefix="reframe.params"
-              steps={outpaintSteps}
-              onSteps={setOutpaintSteps}
-              guidance={outpaintGuidance}
-              onGuidance={setOutpaintGuidance}
-              batch={outpaintBatch}
-              onBatch={setOutpaintBatch}
-              seed={outpaintSeed}
-              onSeed={setOutpaintSeed}
-              sampler={
-                fluxOutpaint
-                  ? undefined
-                  : { list: samplers, value: outpaintSampler, onChange: setOutpaintSampler }
-              }
-              refine={{
-                checked: outpaintRefine,
-                onChange: setOutpaintRefine,
-                steps: outpaintRefineSteps,
-                onSteps: setOutpaintRefineSteps,
-              }}
-            />
-          )}
-
             </Stack>
           </fieldset>
 

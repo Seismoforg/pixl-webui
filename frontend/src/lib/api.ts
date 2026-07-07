@@ -31,10 +31,11 @@ import type {
   UpscaleStarted,
 } from "@/types";
 
-const BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+// Backend origin, shared with ws.ts so the REST + WebSocket clients can't drift.
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...init,
   });
@@ -46,7 +47,7 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
     throw new Error(detail ?? `Request failed (${res.status})`);
   }
   return res.json() as Promise<T>;
-}
+};
 
 export const api = {
   getSystem: () => request<SystemInfo>("/api/system"),
@@ -77,8 +78,7 @@ export const api = {
       method: "DELETE",
     }),
 
-  getProgress: (slug: string) =>
-    request<DownloadProgress>(`/api/models/${slug}/progress`),
+  getProgress: (slug: string) => request<DownloadProgress>(`/api/models/${slug}/progress`),
 
   getSettings: () => request<AppSettings>("/api/settings"),
 
@@ -96,8 +96,7 @@ export const api = {
       body: JSON.stringify(req),
     }),
 
-  getGenerationProgress: (jobId: string) =>
-    request<GenerationProgress>(`/api/generate/${jobId}`),
+  getGenerationProgress: (jobId: string) => request<GenerationProgress>(`/api/generate/${jobId}`),
 
   compare: (req: CompareRequest) =>
     request<UpscaleStarted>("/api/compare", {
@@ -105,8 +104,7 @@ export const api = {
       body: JSON.stringify(req),
     }),
 
-  getCompareProgress: (jobId: string) =>
-    request<CompareProgress>(`/api/compare/${jobId}`),
+  getCompareProgress: (jobId: string) => request<CompareProgress>(`/api/compare/${jobId}`),
 
   getPromptSnippets: () => request<PromptSnippet[]>("/api/prompt-templates"),
 
@@ -160,8 +158,7 @@ export const api = {
       body: JSON.stringify(req),
     }),
 
-  getUpscaleProgress: (jobId: string) =>
-    request<UpscaleProgress>(`/api/upscale/${jobId}`),
+  getUpscaleProgress: (jobId: string) => request<UpscaleProgress>(`/api/upscale/${jobId}`),
 
   reframe: (req: ReframeRequest) =>
     request<UpscaleStarted>("/api/reframe", {
@@ -169,8 +166,7 @@ export const api = {
       body: JSON.stringify(req),
     }),
 
-  getReframeProgress: (jobId: string) =>
-    request<ReframeProgress>(`/api/reframe/${jobId}`),
+  getReframeProgress: (jobId: string) => request<ReframeProgress>(`/api/reframe/${jobId}`),
 
   inpaint: (req: InpaintRequest) =>
     request<UpscaleStarted>("/api/inpaint", {
@@ -178,8 +174,7 @@ export const api = {
       body: JSON.stringify(req),
     }),
 
-  getInpaintProgress: (jobId: string) =>
-    request<InpaintProgress>(`/api/inpaint/${jobId}`),
+  getInpaintProgress: (jobId: string) => request<InpaintProgress>(`/api/inpaint/${jobId}`),
 
   edit: (req: EditRequest) =>
     request<UpscaleStarted>("/api/edit", {
@@ -187,8 +182,7 @@ export const api = {
       body: JSON.stringify(req),
     }),
 
-  getEditProgress: (jobId: string) =>
-    request<EditProgress>(`/api/edit/${jobId}`),
+  getEditProgress: (jobId: string) => request<EditProgress>(`/api/edit/${jobId}`),
 
   getLoras: () => request<LoraEntry[]>("/api/loras"),
 
@@ -214,8 +208,7 @@ export const api = {
       method: "DELETE",
     }),
 
-  getLoraProgress: (slug: string) =>
-    request<DownloadProgress>(`/api/loras/${slug}/progress`),
+  getLoraProgress: (slug: string) => request<DownloadProgress>(`/api/loras/${slug}/progress`),
 
   getImages: () => request<GalleryImage[]>("/api/images"),
 
@@ -226,5 +219,5 @@ export const api = {
       method: "DELETE",
     }),
 
-  imageFileUrl: (id: string) => `${BASE}/api/images/${id}/file`,
+  imageFileUrl: (id: string) => `${API_BASE}/api/images/${id}/file`,
 };

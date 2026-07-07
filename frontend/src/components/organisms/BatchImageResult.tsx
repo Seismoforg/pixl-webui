@@ -21,7 +21,8 @@ import type { BatchProgress, UpscaleProgress } from "@/types";
 
 // Upscale's progress shape lacks the batch fields (it never batches); accept it
 // loosely so the batch line/thumbnail grid below simply never triggers for it.
-type MaybeBatchProgress = UpscaleProgress & Partial<Pick<BatchProgress, "batch_index" | "batch_size">>;
+type MaybeBatchProgress = UpscaleProgress &
+  Partial<Pick<BatchProgress, "batch_index" | "batch_size">>;
 
 interface BatchImageResultProps {
   icon: SvgIconComponent;
@@ -140,11 +141,25 @@ export const BatchImageResult = ({
                   alt={t(`${keyPrefix}.thumbAlt`, { index: i + 1 })}
                   sizes="80px"
                   onClick={() => setSelectedIndex(i)}
+                  role="button"
+                  tabIndex={0}
+                  ariaLabel={t(`${keyPrefix}.thumbAlt`, { index: i + 1 })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelectedIndex(i);
+                    }
+                  }}
                   sx={{
                     borderRadius: 1,
                     cursor: "pointer",
                     border: 2,
                     borderColor: i === selected ? "primary.main" : "transparent",
+                    "&:focus-visible": {
+                      outline: 2,
+                      outlineColor: "primary.main",
+                      outlineOffset: -2,
+                    },
                   }}
                 />
               ))}

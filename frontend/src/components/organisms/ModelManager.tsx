@@ -22,6 +22,8 @@ interface ModelManagerProps {
   models: ModelEntry[];
   // True while the initial models load is in flight (shows the skeleton list).
   loading: boolean;
+  // True when the models load failed (shows an error, not an empty catalog).
+  error: boolean;
   onChanged: () => void;
 }
 
@@ -34,9 +36,9 @@ const errorProgress = (slug: string, err: unknown): DownloadProgress => {
     percent: 0,
     error: err instanceof Error ? err.message : String(err),
   };
-}
+};
 
-export const ModelManager = ({ models, loading, onChanged }: ModelManagerProps) => {
+export const ModelManager = ({ models, loading, error, onChanged }: ModelManagerProps) => {
   const t = useTranslations();
   // Downloads are tracked app-level (survive navigation + feed the off-route
   // bubble); local `errors` only holds POST/delete failures for inline display.
@@ -119,11 +121,7 @@ export const ModelManager = ({ models, loading, onChanged }: ModelManagerProps) 
     if (entries.length === 0) return null;
     return (
       <Box key={titleKey}>
-        <SectionHeading
-          level={3}
-          variant="subtitle2"
-          sx={{ mb: 1.5, color: "text.secondary" }}
-        >
+        <SectionHeading level={3} variant="subtitle2" sx={{ mb: 1.5, color: "text.secondary" }}>
           {t(titleKey)} (<MonoText>{entries.length}</MonoText>)
         </SectionHeading>
         <Stack spacing={1.5}>
@@ -186,6 +184,8 @@ export const ModelManager = ({ models, loading, onChanged }: ModelManagerProps) 
 
       {loading && models.length === 0 ? (
         <SkeletonList count={5} />
+      ) : error ? (
+        <Alert severity="error">{t("models.loadError")}</Alert>
       ) : filtered.length === 0 ? (
         <Alert severity="info">{t("models.noResults")}</Alert>
       ) : (
@@ -207,4 +207,4 @@ export const ModelManager = ({ models, loading, onChanged }: ModelManagerProps) 
       />
     </Box>
   );
-}
+};

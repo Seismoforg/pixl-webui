@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 
 import { api } from "@/lib/api";
 import type { ModelEntry, SystemInfo } from "@/types";
@@ -27,6 +20,8 @@ interface AppData {
   // True until the first models load resolves (drives the Models list skeleton);
   // later reloads don't flip it back, so there's no skeleton flicker.
   modelsLoading: boolean;
+  // Set when a models load fails, so views show an error (not an empty catalog).
+  modelsError: boolean;
   system: SystemInfo | null;
   reloadModels: () => void;
   // Bumped whenever the gallery should refetch (e.g. a finished generation).
@@ -50,14 +45,18 @@ export const useAppData = () => {
 export const AppDataProvider = ({ children }: { children: ReactNode }) => {
   const [models, setModels] = useState<ModelEntry[]>([]);
   const [modelsLoading, setModelsLoading] = useState(true);
+  const [modelsError, setModelsError] = useState(false);
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [galleryToken, setGalleryToken] = useState(0);
 
   const reloadModels = useCallback(() => {
     api
       .getModels()
-      .then(setModels)
-      .catch(() => setModels([]))
+      .then((m) => {
+        setModels(m);
+        setModelsError(false);
+      })
+      .catch(() => setModelsError(true))
       .finally(() => setModelsLoading(false));
   }, []);
 
@@ -76,11 +75,16 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
   // re-render flash) to every page switch.
   useEffect(() => {
     reloadModels();
-    api.getSystem().then(setSystem).catch(() => setSystem(null));
+    api
+      .getSystem()
+      .then(setSystem)
+      .catch(() => setSystem(null));
   }, [reloadModels]);
 
   return (
-    <AppDataContext.Provider value={{ models, modelsLoading, system, reloadModels, galleryToken }}>
+    <AppDataContext.Provider
+      value={{ models, modelsLoading, modelsError, system, reloadModels, galleryToken }}
+    >
       <ActivityProvider>
         <DownloadProvider onFinished={reloadModels}>
           <GenerationProvider models={models} onGenerated={handleGenerated}>

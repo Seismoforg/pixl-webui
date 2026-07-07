@@ -7,8 +7,9 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const WS_URL =
-  (process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000").replace(/^http/, "ws") + "/ws";
+import { API_BASE } from "@/lib/api";
+
+const WS_URL = API_BASE.replace(/^http/, "ws") + "/ws";
 
 type Handler = (data: unknown) => void;
 interface Sub {
@@ -137,7 +138,11 @@ export const useLive = <T>(
     let timer: ReturnType<typeof setInterval> | null = null;
     if (fallback) {
       const tick = () => {
-        if (!live.isConnected()) cb.current.fallback?.fetch().then(handle).catch(() => {});
+        if (!live.isConnected())
+          cb.current.fallback
+            ?.fetch()
+            .then(handle)
+            .catch(() => {});
       };
       tick();
       timer = setInterval(tick, fallback.intervalMs);
@@ -150,7 +155,7 @@ export const useLive = <T>(
     // are read through the ref above so they never go stale.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
-}
+};
 
 // Number of consecutive REST-fallback poll failures tolerated before a job is
 // declared lost. The fallback only runs while the WS is down, so a single
@@ -202,7 +207,7 @@ export const useJobTracker = <T>(
       clearInterval(id);
     };
   }, [jobId, channel]);
-}
+};
 
 /** Reactive WebSocket connection state for a status indicator. */
 export const useLiveStatus = (): boolean => {
@@ -212,4 +217,4 @@ export const useLiveStatus = (): boolean => {
     return live.onStatus(setConnected);
   }, []);
   return connected;
-}
+};

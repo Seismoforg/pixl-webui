@@ -35,9 +35,8 @@ export const GenerationResult = () => {
       : t("generate.speedSpit", { value: (1 / its).toFixed(2) });
   };
 
-  const percent = progress && progress.total_steps > 0
-    ? (progress.current_step / progress.total_steps) * 100
-    : 0;
+  const percent =
+    progress && progress.total_steps > 0 ? (progress.current_step / progress.total_steps) * 100 : 0;
   const selected = Math.min(selectedIndex, Math.max(0, images.length - 1));
 
   return (
@@ -88,24 +87,20 @@ export const GenerationResult = () => {
               })}
             </Typography>
           )}
-          <Stack
-            direction="row"
-            justifyContent="space-between"
-            sx={{ mb: 0.5 }}
-          >
+          <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
             <Typography variant="body2">
-              {progress.phase === "loading"
-                ? t("generate.phaseLoading")
-                : progress.phase === "finalizing"
-                  ? t("generate.phaseFinalizing")
-                  : (
-                    <MonoText>
-                      {t("generate.step", {
-                        current: progress.current_step,
-                        total: progress.total_steps,
-                      })}
-                    </MonoText>
-                  )}
+              {progress.phase === "loading" ? (
+                t("generate.phaseLoading")
+              ) : progress.phase === "finalizing" ? (
+                t("generate.phaseFinalizing")
+              ) : (
+                <MonoText>
+                  {t("generate.step", {
+                    current: progress.current_step,
+                    total: progress.total_steps,
+                  })}
+                </MonoText>
+              )}
             </Typography>
             {progress.phase === "generating" && speedLabel(progress.its) && (
               <Typography variant="body2" color="text.secondary">
@@ -181,11 +176,25 @@ export const GenerationResult = () => {
                   alt={t("generate.thumbAlt", { index: i + 1 })}
                   sizes="80px"
                   onClick={() => setSelectedIndex(i)}
+                  role="button"
+                  tabIndex={0}
+                  ariaLabel={t("generate.thumbAlt", { index: i + 1 })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelectedIndex(i);
+                    }
+                  }}
                   sx={{
                     borderRadius: 1,
                     cursor: "pointer",
                     border: 2,
                     borderColor: !running && i === selected ? "primary.main" : "transparent",
+                    "&:focus-visible": {
+                      outline: 2,
+                      outlineColor: "primary.main",
+                      outlineOffset: -2,
+                    },
                   }}
                 />
               ))}
@@ -199,4 +208,4 @@ export const GenerationResult = () => {
       )}
     </Paper>
   );
-}
+};
