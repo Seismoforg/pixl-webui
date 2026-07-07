@@ -47,6 +47,8 @@ export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPa
   const [modelFilter, setModelFilter] = useState("");
   const [selected, setSelected] = useState<GalleryImage | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkPending, setBulkPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [samplers, setSamplers] = useState<Sampler[]>([]);
 
@@ -77,12 +79,45 @@ export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPa
     );
   }, [images, query, modelFilter]);
 
+  // Drop any selected ids that fell out of the current filter so a hidden image
+  // can never be swept up by a bulk delete.
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const present = new Set(filtered.map((img) => img.id));
+      const next = new Set([...prev].filter((id) => present.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [filtered]);
+
+  const toggleSelect = (image: GalleryImage) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(image.id)) next.delete(image.id);
+      else next.add(image.id);
+      return next;
+    });
+
+  const selectAll = () => setSelectedIds(new Set(filtered.map((img) => img.id)));
+  const clearSelection = () => setSelectedIds(new Set());
+
   const handleDelete = async (id: string) => {
     setPendingId(null);
     try {
       await api.deleteImage(id);
       reload();
       setSelected(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    setBulkPending(false);
+    try {
+      await api.deleteImages([...selectedIds]);
+      clearSelection();
+      reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -130,6 +165,34 @@ export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPa
         </Alert>
       )}
 
+      {selectedIds.size > 0 && (
+        <Stack
+          direction="row"
+          spacing={1}
+          useFlexGap
+          sx={{ mb: 2, alignItems: "center", flexWrap: "wrap" }}
+        >
+          <Typography variant="body2" sx={{ mr: "auto" }}>
+            {t("gallery.selectedCount", { count: selectedIds.size })}
+          </Typography>
+          <Button size="small" onClick={selectAll} disabled={selectedIds.size === filtered.length}>
+            {t("gallery.selectAll")}
+          </Button>
+          <Button size="small" onClick={clearSelection}>
+            {t("gallery.clearSelection")}
+          </Button>
+          <Button
+            size="small"
+            color="error"
+            variant="contained"
+            startIcon={<DeleteIcon />}
+            onClick={() => setBulkPending(true)}
+          >
+            {t("gallery.deleteSelected")}
+          </Button>
+        </Stack>
+      )}
+
       {loadError && images.length === 0 ? (
         <Alert severity="error">{t("gallery.loadError")}</Alert>
       ) : loading && images.length === 0 ? (
@@ -154,6 +217,8 @@ export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPa
               onRegenerate={handleRegenerate}
               onUpscale={onUpscale}
               onDelete={(image) => setPendingId(image.id)}
+              selected={selectedIds.has(img.id)}
+              onToggleSelect={toggleSelect}
             />
           ))}
         </Box>
@@ -250,6 +315,15 @@ export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPa
         confirmLabel={t("gallery.delete")}
         onConfirm={() => pendingId && handleDelete(pendingId)}
         onClose={() => setPendingId(null)}
+      />
+
+      <ConfirmDialog
+        open={bulkPending}
+        title={t("common.confirmDeleteTitle")}
+        message={t("gallery.confirmBulkDelete", { count: selectedIds.size })}
+        confirmLabel={t("gallery.deleteSelected")}
+        onConfirm={handleBulkDelete}
+        onClose={() => setBulkPending(false)}
       />
     </Box>
   );

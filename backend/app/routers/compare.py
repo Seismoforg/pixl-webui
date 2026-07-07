@@ -33,6 +33,7 @@ _PARAMS: dict[str, tuple[str, str]] = {
     "guidance_scale": ("guidance_scale", "CFG"),
     "sampler": ("sampler", "Sampler"),
     "seed": ("seed", "Seed"),
+    "prompt": ("prompt", "Prompt"),
 }
 
 
@@ -54,6 +55,8 @@ class CompareRequest(BaseModel):
     sampler: str = samplers.DEFAULT_SAMPLER
     # 1..3 axes: X = columns, Y = rows, Z = one sheet per value.
     axes: list[Axis] = Field(min_length=1, max_length=3)
+    # Also persist each individual cell image to the gallery (not just the grid sheet).
+    save_individuals: bool = True
 
 
 class CompareStarted(BaseModel):
@@ -119,6 +122,15 @@ def _coerce(param: str, values: list) -> list:
                 if sv not in {s.id for s in samplers.list_samplers()}:
                     raise ValueError
                 out.append(sv)
+            elif param == "prompt":
+                if not isinstance(v, dict):
+                    raise ValueError
+                text = str(v.get("prompt", ""))
+                if not text.strip():
+                    raise ValueError
+                negative = v.get("negative")
+                negative = str(negative) if negative else None
+                out.append({"prompt": text, "negative_prompt": negative})
     except (TypeError, ValueError) as exc:
         raise ValueError(messages.COMPARE_VALUE_INVALID.format(param=param)) from exc
     return out
@@ -129,6 +141,10 @@ def _fmt_value(param: str, value) -> str:
     if param == "sampler":
         by_id = {s.id: s.label for s in samplers.list_samplers()}
         return f"{label}: {by_id.get(value, value)}"
+    if param == "prompt":
+        text = value["prompt"] if isinstance(value, dict) else str(value)
+        short = text if len(text) <= 24 else f"{text[:23]}…"
+        return f"{label}: {short}"
     return f"{label}: {value}"
 
 
@@ -164,27 +180,54 @@ def _run(job: _Job, req: CompareRequest, model, axes: list[tuple[str, list]]) ->
                     if z_param:
                         overrides[z_param] = z
                     cell_no += 1
+                    # Effective per-cell params: a swept value overrides the base. The
+                    # "prompt" axis carries a {prompt, negative_prompt} pair.
+                    prompt_ov = overrides.get("prompt")
+                    eff_prompt = prompt_ov["prompt"] if prompt_ov else req.prompt
+                    eff_negative = (
+                        prompt_ov["negative_prompt"] if prompt_ov else req.negative_prompt
+                    )
+                    eff_steps = int(overrides.get("steps", req.steps))
+                    eff_guidance = float(overrides.get("guidance_scale", req.guidance_scale))
+                    eff_seed = int(overrides.get("seed", base_seed))
+                    eff_sampler = str(overrides.get("sampler", req.sampler))
                     with _store.lock:
                         job.cell_index = cell_no
                         job.current_step = 0
                         job.first_step_at = None
                         job.phase = "loading"
-                        job.total_steps = int(overrides.get("steps", req.steps))
+                        job.total_steps = eff_steps
                     live.publish(key)
 
                     image, _sampler = pipeline.generate(
                         model=model,
-                        prompt=req.prompt,
-                        negative_prompt=req.negative_prompt,
-                        steps=int(overrides.get("steps", req.steps)),
-                        guidance_scale=float(overrides.get("guidance_scale", req.guidance_scale)),
+                        prompt=eff_prompt,
+                        negative_prompt=eff_negative,
+                        steps=eff_steps,
+                        guidance_scale=eff_guidance,
                         width=req.width,
                         height=req.height,
-                        seed=int(overrides.get("seed", base_seed)),
-                        sampler=str(overrides.get("sampler", req.sampler)),
+                        seed=eff_seed,
+                        sampler=eff_sampler,
                         on_step=on_step,
                     )
                     row.append(image)
+                    if req.save_individuals:
+                        gallery.save(
+                            image,
+                            {
+                                "model_slug": model.slug,
+                                "model_name": model.name,
+                                "prompt": eff_prompt,
+                                "negative_prompt": eff_negative,
+                                "steps": eff_steps,
+                                "guidance_scale": eff_guidance,
+                                "width": req.width,
+                                "height": req.height,
+                                "seed": eff_seed,
+                                "sampler": eff_sampler,
+                            },
+                        )
                 rows.append(row)
 
             with _store.lock:

@@ -4,6 +4,7 @@ import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ReplayIcon from "@mui/icons-material/Replay";
 import Box from "@mui/material/Box";
+import Checkbox from "@mui/material/Checkbox";
 import Chip from "@mui/material/Chip";
 import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
@@ -23,6 +24,8 @@ interface GalleryCardProps {
   onRegenerate: (image: GalleryImage) => void;
   onUpscale: (image: GalleryImage) => void;
   onDelete: (image: GalleryImage) => void;
+  selected: boolean;
+  onToggleSelect: (image: GalleryImage) => void;
 }
 
 export const GalleryCard = ({
@@ -31,30 +34,57 @@ export const GalleryCard = ({
   onRegenerate,
   onUpscale,
   onDelete,
+  selected,
+  onToggleSelect,
 }: GalleryCardProps) => {
   const t = useTranslations();
 
   return (
-    <Paper variant="outlined" sx={{ overflow: "hidden", display: "flex", flexDirection: "column" }}>
-      <Thumbnail
-        src={api.imageFileUrl(image.id)}
-        alt={image.prompt}
-        sizes="(max-width: 600px) 50vw, 260px"
-        onClick={() => onOpen(image)}
-        role="button"
-        tabIndex={0}
-        ariaLabel={t("gallery.details")}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onOpen(image);
-          }
-        }}
-        sx={{
-          cursor: "pointer",
-          "&:focus-visible": { outline: 2, outlineColor: "primary.main", outlineOffset: -2 },
-        }}
-      />
+    <Paper
+      variant="outlined"
+      sx={{
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        // Inset ring on select so the selected state shows without reflowing the grid.
+        boxShadow: (theme) => (selected ? `inset 0 0 0 2px ${theme.palette.primary.main}` : "none"),
+      }}
+    >
+      <Box sx={{ position: "relative" }}>
+        <Thumbnail
+          src={api.imageFileUrl(image.id)}
+          alt={image.prompt}
+          sizes="(max-width: 600px) 50vw, 260px"
+          onClick={() => onOpen(image)}
+          role="button"
+          tabIndex={0}
+          ariaLabel={t("gallery.details")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onOpen(image);
+            }
+          }}
+          sx={{
+            cursor: "pointer",
+            "&:focus-visible": { outline: 2, outlineColor: "primary.main", outlineOffset: -2 },
+          }}
+        />
+        <Checkbox
+          checked={selected}
+          onChange={() => onToggleSelect(image)}
+          inputProps={{ "aria-label": t("gallery.select") }}
+          sx={{
+            position: "absolute",
+            top: 4,
+            left: 4,
+            p: 0.5,
+            bgcolor: "background.paper",
+            borderRadius: 1,
+            "&:hover": { bgcolor: "background.paper" },
+          }}
+        />
+      </Box>
       <Stack spacing={1} sx={{ p: 1.5, flexGrow: 1 }}>
         <Typography
           variant="body2"

@@ -27,9 +27,11 @@ navigation-surviving state or wraps the tree in a context lives here.
                            running job + polling; `useGeneration`
 - CompareProvider.tsx    — XYZ-plot compare form (model/prompt/negative/base
                            steps·guidance·seed·sampler·width·height + `axes[]`, each
-                           an `{param, values}` sweep, 1–3 axes) + job + live tracking;
-                           `useCompare`. Sweeps a parameter over values into a labelled
-                           grid; tracks the job via `CompareProgress` (the `BatchProgress`
+                           an `{param, values}` sweep, 1–3 axes; `saveIndividuals` flag)
+                           + job + live tracking; `useCompare`. Axis param one of
+                           steps/guidance/sampler/seed/prompt (prompt value = pos+neg
+                           pair). Sweeps a parameter over values into a labelled grid;
+                           tracks the job via `CompareProgress` (the `BatchProgress`
                            shape, cell index = batch index) and exposes `resultIds` (one
                            per Z-slice sheet) for the result grid
 - UpscaleProvider.tsx    — upscale form + job + polling; `useUpscale`

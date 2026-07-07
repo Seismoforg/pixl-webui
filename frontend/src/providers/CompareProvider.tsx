@@ -36,6 +36,7 @@ interface CompareContextValue {
   seed: string; // free text; "" → random base seed
   sampler: string;
   axes: CompareAxis[];
+  saveIndividuals: boolean;
   setSlug: (v: string) => void;
   setPrompt: (v: string) => void;
   setNegative: (v: string) => void;
@@ -46,6 +47,7 @@ interface CompareContextValue {
   setSeed: (v: string) => void;
   setSampler: (v: string) => void;
   setAxes: (v: CompareAxis[]) => void;
+  setSaveIndividuals: (v: boolean) => void;
   // job
   progress: CompareProgress | null;
   resultIds: string[];
@@ -83,6 +85,7 @@ export const CompareProvider = ({ onCompared, children }: CompareProviderProps) 
   const [seed, setSeed] = useState("");
   const [sampler, setSampler] = useState("");
   const [axes, setAxes] = useState<CompareAxis[]>([{ param: "steps", values: [] }]);
+  const [saveIndividuals, setSaveIndividuals] = useState(true);
 
   // Seed the base sampler from the backend default once (the provider never
   // unmounts, so this runs a single time and later edits persist).
@@ -159,6 +162,7 @@ export const CompareProvider = ({ onCompared, children }: CompareProviderProps) 
       seed,
       sampler,
       axes,
+      saveIndividuals,
       setSlug,
       setPrompt,
       setNegative,
@@ -169,6 +173,7 @@ export const CompareProvider = ({ onCompared, children }: CompareProviderProps) 
       setSeed,
       setSampler,
       setAxes,
+      setSaveIndividuals,
       progress,
       resultIds,
       error,
@@ -187,6 +192,7 @@ export const CompareProvider = ({ onCompared, children }: CompareProviderProps) 
       seed,
       sampler,
       axes,
+      saveIndividuals,
       progress,
       resultIds,
       error,

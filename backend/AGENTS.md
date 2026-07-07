@@ -97,20 +97,22 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            generation time (see pipeline + generate), not a job of their own
 - routers/compare.py     — XYZ-plot compare as a background job: POST /api/compare
                            (base generate params + `axes` = 1–3 `{param, values}` sweeps
-                           over a whitelist steps/guidance_scale/sampler/seed; X=cols,
-                           Y=rows, Z=one sheet per value; capped at MAX_CELLS=64) loops
-                           pipeline.generate over the cartesian product (one model load)
-                           and composes labelled grid sheet(s) via services.grid, saved to
-                           the gallery; GET /api/compare/{job_id} returns the shared
-                           `BatchProgress` (cell index = batch index). Publishes the
-                           `compare` WS channel
+                           over a whitelist steps/guidance_scale/sampler/seed/prompt
+                           (prompt value = {prompt, negative} pair); X=cols, Y=rows,
+                           Z=one sheet per value; capped at MAX_CELLS=64; `save_individuals`
+                           also saves every cell to the gallery) loops pipeline.generate
+                           over the cartesian product (one model load) and composes
+                           labelled grid sheet(s) via services.grid, saved to the gallery;
+                           GET /api/compare/{job_id} returns the shared `BatchProgress`
+                           (cell index = batch index). Publishes the `compare` WS channel
 - routers/generate.py    — generation as a background job; POST starts (returns job_id),
                            GET /api/generate/{job_id} polls step/its/seed progress +
                            batch index and finished image_ids; a run can produce a
                            batch of images (incrementing seeds); GET /api/samplers
                            lists the available samplers + default
 - routers/images.py      — GET /api/images, GET /api/images/{id} (metadata),
-                           GET /api/images/{id}/file, DELETE /api/images/{id}
+                           GET /api/images/{id}/file, DELETE /api/images/{id},
+                           POST /api/images/bulk-delete ({ids} → {deleted, missing})
 - routers/upscale.py     — GET /api/upscale/engines (curated list + per-engine
                            download/progress + GPU-fit verdict); engine-catalog editing
                            (GET/PUT /engines/catalog, POST /engines/catalog/reset);

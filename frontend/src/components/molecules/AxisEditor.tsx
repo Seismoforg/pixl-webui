@@ -1,20 +1,26 @@
 "use client";
 
+import AddIcon from "@mui/icons-material/Add";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import Box from "@mui/material/Box";
-import Chip from "@mui/material/Chip";
+import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
-import { useEffect, useState } from "react";
 
 import { useTranslations } from "@/i18n";
-import type { CompareAxis, CompareParam, Sampler } from "@/types";
+import type { CompareAxis, CompareParam, PromptValue, Sampler } from "@/types";
 
-// Parameters that carry numeric values (comma/space separated) vs the sampler axis,
-// which picks from the sampler list.
+// Parameters that carry a single numeric value per row (vs sampler ids / prompt pairs).
 const NUMERIC: CompareParam[] = ["steps", "guidance_scale", "seed"];
+
+/** Per-param numeric input constraints (min/step) for the value fields. */
+const NUMERIC_INPUT: Record<string, { min: number; step: number }> = {
+  steps: { min: 1, step: 1 },
+  seed: { min: 0, step: 1 },
+  guidance_scale: { min: 0, step: 0.5 },
+};
 
 interface AxisEditorProps {
   axis: CompareAxis;
@@ -27,10 +33,10 @@ interface AxisEditorProps {
 }
 
 /**
- * Edits one XYZ-plot axis: a swept parameter + its list of values. Numeric params
- * (steps/guidance/seed) take a comma-separated field parsed into number chips;
- * the sampler param adds from a dropdown of not-yet-chosen samplers. Presentational
- * — the parsed axis is pushed up via `onChange`.
+ * Edits one XYZ-plot axis: a swept parameter + a list of values, one row per value
+ * with the right control for the type — a number field (steps/guidance/seed), a
+ * sampler dropdown, or a positive+negative prompt pair. An "Add value" button appends
+ * a row; each row removes itself. Presentational — the axis is pushed up via `onChange`.
  */
 export const AxisEditor = ({
   axis,
@@ -42,46 +48,35 @@ export const AxisEditor = ({
 }: AxisEditorProps) => {
   const t = useTranslations();
   const isNumeric = NUMERIC.includes(axis.param);
+  const isPrompt = axis.param === "prompt";
 
-  // Local raw text for the numeric field so a trailing comma / half-typed number
-  // survives while editing; the parsed numbers are propagated up.
-  const [text, setText] = useState(() => axis.values.join(", "));
-  // Re-seed when the axis param switches (values reset to a different type).
-  useEffect(() => {
-    if (isNumeric) setText(axis.values.join(", "));
-  }, [axis.param]); // eslint-disable-line react-hooks/exhaustive-deps
+  const setValues = (values: CompareAxis["values"]) => onChange({ ...axis, values });
+  const updateValue = (index: number, value: CompareAxis["values"][number]) =>
+    setValues(axis.values.map((v, j) => (j === index ? value : v)));
+  const removeValue = (index: number) => setValues(axis.values.filter((_, j) => j !== index));
 
-  const onParam = (param: CompareParam) => {
-    setText("");
-    onChange({ param, values: [] });
+  const unusedSamplers = (current?: string) =>
+    samplers.filter((s) => s.id === current || !axis.values.includes(s.id));
+
+  const defaultValue = (): CompareAxis["values"][number] => {
+    if (isPrompt) return { prompt: "", negative: "" };
+    if (axis.param === "sampler") return unusedSamplers()[0]?.id ?? "";
+    return Number.NaN;
   };
 
-  const onNumericText = (raw: string) => {
-    setText(raw);
-    const values = raw
-      .split(/[,\s]+/)
-      .map((tok) => tok.trim())
-      .filter((tok) => tok !== "" && !Number.isNaN(Number(tok)))
-      .map(Number);
-    onChange({ ...axis, values });
-  };
+  const onParam = (param: CompareParam) => onChange({ param, values: [] });
 
-  const addSampler = (id: string) => {
-    if (id && !axis.values.includes(id)) onChange({ ...axis, values: [...axis.values, id] });
-  };
+  const addValue = () => setValues([...axis.values, defaultValue()]);
+  const canAddSampler = axis.param !== "sampler" || unusedSamplers().length > 0;
 
-  const removeSampler = (id: string) =>
-    onChange({ ...axis, values: axis.values.filter((v) => v !== id) });
-
-  const samplerLabel = (id: string) => samplers.find((s) => s.id === id)?.label ?? id;
-  const unusedSamplers = samplers.filter((s) => !axis.values.includes(s.id));
+  const numInput = NUMERIC_INPUT[axis.param];
 
   return (
     <Box
       sx={{
         display: "grid",
         gap: 1.5,
-        gridTemplateColumns: { xs: "1fr", sm: "auto 1fr auto" },
+        gridTemplateColumns: { xs: "1fr", sm: "auto 1fr" },
         alignItems: "start",
       }}
     >
@@ -100,56 +95,86 @@ export const AxisEditor = ({
         ))}
       </TextField>
 
-      {isNumeric ? (
-        <TextField
-          size="small"
-          label={t("compare.axis.values")}
-          placeholder={t(`compare.placeholder.${axis.param}`)}
-          helperText={t("compare.axis.valuesHelp")}
-          value={text}
-          onChange={(e) => onNumericText(e.target.value)}
-          fullWidth
-        />
-      ) : (
-        <Box>
-          <TextField
-            select
-            size="small"
-            label={t("compare.axis.addSampler")}
-            value=""
-            onChange={(e) => addSampler(e.target.value)}
-            fullWidth
-            disabled={unusedSamplers.length === 0}
-          >
-            {unusedSamplers.map((s) => (
-              <MenuItem key={s.id} value={s.id}>
-                {s.label}
-              </MenuItem>
-            ))}
-          </TextField>
-          {axis.values.length > 0 && (
-            <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1, mt: 1 }}>
-              {axis.values.map((v) => (
-                <Chip
-                  key={String(v)}
-                  label={samplerLabel(String(v))}
+      <Stack spacing={1}>
+        {axis.values.map((value, i) => (
+          <Box key={i} sx={{ display: "grid", gap: 1, gridTemplateColumns: "1fr auto" }}>
+            {isPrompt ? (
+              <Stack spacing={1}>
+                <TextField
                   size="small"
-                  onDelete={() => removeSampler(String(v))}
+                  multiline
+                  minRows={1}
+                  label={t("compare.axis.pos")}
+                  value={(value as PromptValue).prompt}
+                  onChange={(e) =>
+                    updateValue(i, { ...(value as PromptValue), prompt: e.target.value })
+                  }
+                  fullWidth
                 />
-              ))}
-            </Stack>
-          )}
-        </Box>
-      )}
+                <TextField
+                  size="small"
+                  multiline
+                  minRows={1}
+                  label={t("compare.axis.neg")}
+                  value={(value as PromptValue).negative}
+                  onChange={(e) =>
+                    updateValue(i, { ...(value as PromptValue), negative: e.target.value })
+                  }
+                  fullWidth
+                />
+              </Stack>
+            ) : isNumeric ? (
+              <TextField
+                size="small"
+                type="number"
+                inputProps={{ ...numInput, "aria-label": `${t("compare.axis.value")} ${i + 1}` }}
+                value={Number.isNaN(value as number) ? "" : (value as number)}
+                onChange={(e) =>
+                  updateValue(i, e.target.value === "" ? Number.NaN : Number(e.target.value))
+                }
+                fullWidth
+              />
+            ) : (
+              <TextField
+                select
+                size="small"
+                inputProps={{ "aria-label": `${t("compare.axis.value")} ${i + 1}` }}
+                value={value as string}
+                onChange={(e) => updateValue(i, e.target.value)}
+                fullWidth
+              >
+                {unusedSamplers(value as string).map((s) => (
+                  <MenuItem key={s.id} value={s.id}>
+                    {s.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
+            <IconButton
+              aria-label={t("compare.axis.removeValue")}
+              onClick={() => removeValue(i)}
+              size="small"
+              sx={{ mt: 0.25 }}
+            >
+              <DeleteOutlineIcon fontSize="small" />
+            </IconButton>
+          </Box>
+        ))}
 
-      <IconButton
-        aria-label={t("compare.axis.remove")}
-        onClick={onRemove}
-        disabled={!removable}
-        sx={{ justifySelf: { xs: "end", sm: "center" } }}
-      >
-        <DeleteOutlineIcon />
-      </IconButton>
+        <Stack direction="row" spacing={1} sx={{ justifyContent: "space-between" }}>
+          <Button startIcon={<AddIcon />} size="small" onClick={addValue} disabled={!canAddSampler}>
+            {t("compare.axis.addValue")}
+          </Button>
+          <IconButton
+            aria-label={t("compare.axis.remove")}
+            onClick={onRemove}
+            disabled={!removable}
+            size="small"
+          >
+            <DeleteOutlineIcon />
+          </IconButton>
+        </Stack>
+      </Stack>
     </Box>
   );
 };

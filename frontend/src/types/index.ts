@@ -323,13 +323,19 @@ export interface InpaintRequest {
 export interface InpaintProgress extends BatchProgress {}
 
 /** A generation parameter that an XYZ-plot axis can sweep. */
-export type CompareParam = "steps" | "guidance_scale" | "sampler" | "seed";
+export type CompareParam = "steps" | "guidance_scale" | "sampler" | "seed" | "prompt";
+
+/** One value of a "prompt" sweep axis: a positive + negative prompt pair. */
+export interface PromptValue {
+  prompt: string;
+  negative: string;
+}
 
 /** One compare axis: a swept parameter and its list of values (numbers for
- *  steps/guidance/seed, sampler ids for sampler). */
+ *  steps/guidance/seed, sampler ids for sampler, prompt pairs for prompt). */
 export interface CompareAxis {
   param: CompareParam;
-  values: Array<number | string>;
+  values: Array<number | string | PromptValue>;
 }
 
 /** XYZ-plot compare request: base generation params + 1–3 sweep axes. */
@@ -345,6 +351,7 @@ export interface CompareRequest {
   seed?: number | null;
   sampler: string;
   axes: CompareAxis[]; // X = columns, Y = rows, Z = one sheet per value
+  save_individuals: boolean; // also save each cell image to the gallery
 }
 
 /** Compare job progress = the batch progress shape (cell index = batch index,

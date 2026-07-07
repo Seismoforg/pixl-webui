@@ -168,7 +168,13 @@
     "loras": "LoRAs",
     "created": "Created",
     "upscale": "Upscale",
-    "loadError": "Couldn't load the gallery."
+    "loadError": "Couldn't load the gallery.",
+    "select": "Select image",
+    "selectedCount": "{count} selected",
+    "selectAll": "Select all",
+    "clearSelection": "Clear",
+    "deleteSelected": "Delete selected",
+    "confirmBulkDelete": "Delete {count} selected image(s) permanently?"
   },
   "sourcePicker": {
     "title": "Source image",
@@ -629,21 +635,19 @@
     },
     "axis": {
       "param": "Parameter",
-      "values": "Values",
-      "valuesHelp": "Comma or space separated (e.g. 10, 20, 30).",
-      "addSampler": "Add sampler…",
+      "value": "Value",
+      "addValue": "Add value",
+      "removeValue": "Remove value",
+      "pos": "Positive prompt",
+      "neg": "Negative prompt (optional)",
       "remove": "Remove axis"
     },
     "param": {
       "steps": "Steps",
       "guidance_scale": "Guidance scale",
       "sampler": "Sampler",
-      "seed": "Seed"
-    },
-    "placeholder": {
-      "steps": "10, 20, 30",
-      "guidance_scale": "3, 6, 9",
-      "seed": "1, 2, 3"
+      "seed": "Seed",
+      "prompt": "Prompt"
     },
     "base": {
       "title": "Base parameters",
@@ -657,6 +661,7 @@
     },
     "cellCount": "{count} images in the grid.",
     "tooMany": "{count} images — keep the grid to {max} or fewer (reduce the axis values).",
+    "saveIndividuals": "Also save each image to the gallery",
     "run": "Run compare",
     "running": "Rendering…",
     "clear": "Clear",

@@ -27,13 +27,15 @@ Atomic-design React component library for the Pixl WebUI frontend: presentationa
 - GenerationParams — shared sampler/steps/refine/guidance/batch/seed block;
   presentational, keyed by an i18n `keyPrefix`; reused by Reframe/Inpaint/Edit
   panels (optional sampler + refine controls hidden when omitted)
-- AxisEditor — one XYZ-plot sweep axis (param select + values): numeric params
-  (steps/guidance/seed) take a comma/space-separated field parsed to number chips;
-  the sampler param adds from a dropdown of unused samplers (removable chips).
-  Presentational — parsed axis pushed up via `onChange` (ComparePanel)
+- AxisEditor — one XYZ-plot sweep axis (param select + value list): one row per
+  value with the right control — number field (steps/guidance/seed), sampler dropdown
+  (dedup: hides samplers picked in sibling rows), or a positive+negative prompt pair
+  (`prompt` axis). "Add value" appends a row; each row removes itself. Presentational
+  — axis pushed up via `onChange` (ComparePanel)
 - ModelListItem — one model as a compact list row (name + GGUF tag + chips + fit
   badge + HF link + download/delete + progress bar)
-- GalleryCard — gallery image card (inline regenerate/upscale/delete + detail dialog)
+- GalleryCard — gallery image card (inline regenerate/upscale/delete + detail dialog);
+  selection checkbox overlay (`selected`/`onToggleSelect`) for multi-select bulk delete
 - InfoTip — info tooltip
 - ConfirmDialog — confirm dialog
 - ConnectionStatus — WS connection indicator
@@ -61,16 +63,19 @@ Atomic-design React component library for the Pixl WebUI frontend: presentationa
   for ones not on disk, one-tap trigger words into the prompt. Prunes incompatible
   picks on model-family change
 - ComparePanel (host) + CompareResult — /compare XYZ-plot screen (model + prompt +
-  base params + 1–3 `AxisEditor` sweep axes; live cell-count + cap warning). Reads
-  `useCompare`; CompareResult is a thin BatchImageResult wrapper (one Z-slice sheet
-  per result image)
+  slider-style base params + 1–3 `AxisEditor` sweep axes; live cell-count + cap
+  warning). Sweep whitelist steps/guidance/sampler/seed/prompt; `sampler` (base + axis)
+  hidden for flow-matching families (FLUX/SD 3.x). "Also save each image" toggle →
+  `save_individuals`. Reads `useCompare`; CompareResult is a thin BatchImageResult
+  wrapper (one Z-slice sheet per result image)
 - ModelManager — catalog list, filter bar (search + family + pipeline), grouped by
   install state then GPU fit; download/progress/delete. Read-only over the catalog
   (edited in Settings). Generation models only
 - EngineManager — Models-page section for upscale/outpaint engines, same grouping +
   per-row fit badge; install/progress/delete via DownloadProvider
 - GalleryPanel — stored-images grid with search/model-filter; upscale action
-  deep-links to /upscale?image=<id>
+  deep-links to /upscale?image=<id>; multi-select (per-card checkbox) + action bar
+  (select-all-filtered / clear / delete-selected → confirm → `api.deleteImages`)
 - GalleryPicker / SourcePicker — pick a gallery image / choose source (gallery or upload)
 - SettingsPanel — HF token + perf toggles + SD x4 steps + outpaint-negative default +
   Defaults section (default model/upscaler/outpaint engine) + system info

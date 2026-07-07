@@ -219,5 +219,11 @@ export const api = {
       method: "DELETE",
     }),
 
+  deleteImages: (ids: string[]) =>
+    request<{ deleted: string[]; missing: string[] }>("/api/images/bulk-delete", {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
+
   imageFileUrl: (id: string) => `${API_BASE}/api/images/${id}/file`,
 };
