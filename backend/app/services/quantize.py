@@ -28,6 +28,7 @@ _HEAVY_PARAMS_B = {
     "SDXL": 2.6,
     "FLUX": 11.9,
     "SD 3.x": 8.1,
+    "Z-Image": 6.0,
 }
 
 # GB occupied by one billion fp16 params (2 bytes/param, GiB): 1e9 * 2 / 1024**3.
@@ -37,6 +38,13 @@ _GB_PER_BILLION_FP16 = 2e9 / 1024**3
 def available() -> bool:
     """True when bitsandbytes is importable, so int8/nf4 can actually load."""
     return importlib.util.find_spec("bitsandbytes") is not None
+
+
+def quantizable(family: str) -> bool:
+    """Whether on-the-fly bitsandbytes quantization applies to a family. Only the
+    families with a known heavy denoising module (SD 1.5/SDXL/FLUX/SD 3.x) are
+    quant-capable; others (e.g. Z-Image) load at fp16/bf16 only."""
+    return family in _HEAVY_PARAMS_B
 
 
 def engine_family(engine) -> str | None:
@@ -77,7 +85,7 @@ def quant_config(level: str, family: str):
 
     if level == "int8":
         return BitsAndBytesConfig(load_in_8bit=True)
-    compute = torch.bfloat16 if family in ("FLUX", "SD 3.x") else torch.float16
+    compute = torch.bfloat16 if family in ("FLUX", "SD 3.x", "Z-Image") else torch.float16
     return BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",

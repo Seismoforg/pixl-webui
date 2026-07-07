@@ -95,8 +95,8 @@ def assess_for(min_vram_gb: float, family: str, approx_size_gb: float, level: st
 
 def quant_levels_for(min_vram_gb: float, family: str, approx_size_gb: float) -> list[QuantLevel]:
     """Per-level VRAM estimate + fit verdict for each quantization level. Empty when
-    bitsandbytes is unavailable (fp16-only)."""
-    if not quantize.available():
+    bitsandbytes is unavailable or the family isn't quant-capable (fp16-only)."""
+    if not quantize.available() or not quantize.quantizable(family):
         return []
     gpu, ram = _gpu_total_gb(), _ram_total_gb()
     out = []
@@ -122,7 +122,7 @@ def suggest_for(min_vram_gb: float, family: str) -> str:
 def effective_level(slug: str, min_vram_gb: float, family: str, is_gguf: bool = False) -> str:
     """The load-time quantization level for an entry: the user's stored choice if
     valid, else the auto-suggested level. ``fp16`` for GGUF entries (self-quantized)."""
-    if is_gguf:
+    if is_gguf or not quantize.quantizable(family):
         return "fp16"
     stored = load_settings().load_quantization.get(slug)
     if stored in quantize.LEVELS:

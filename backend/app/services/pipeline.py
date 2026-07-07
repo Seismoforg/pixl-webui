@@ -15,6 +15,7 @@ from .. import config, messages, samplers
 from ..catalog import ModelInfo
 from ..config import load_settings
 from ..device import (
+    get_compute_dtype,
     get_device_info,
     get_dtype,
     get_torch_device,
@@ -152,6 +153,11 @@ def _load(model: ModelInfo):
         # GGUF loads a quantized transformer and always CPU-offloads (below), so no
         # separate fit-based placement is applied.
         pipe = _load_gguf(model)
+    elif model.family == "Z-Image":
+        # Z-Image (S3-DiT) has its own pipeline class + handles its own quant, so it
+        # comes before the generic quant branch. NF4 shrinks the 6B transformer enough
+        # to fit 16 GB resident (no offload shuffle); fp16 falls back to offload.
+        pipe = _load_zimage(model, quant_cfg, level)
     elif quant_cfg is not None:
         # On-the-fly bitsandbytes NF4/int8: heavy module quantized, CPU-offloaded
         # (like GGUF) so encoders stream off the GPU — but LoRA-compatible.
@@ -255,6 +261,33 @@ def _load_quantized(model: ModelInfo, quant_cfg):
         family=model.family,
         variant=model.variant,
     )
+
+
+def _load_zimage(model: ModelInfo, quant_cfg, level: str):
+    """Build a Z-Image (S3-DiT) pipeline. When ``quant_cfg`` is set (NF4/int8) the
+    transformer is bitsandbytes-quantized on the fly so the pipe fits 16 GB resident;
+    else it loads in bf16. Placed by the fit verdict at ``level`` — resident on the
+    GPU when it fits (no offload shuffle), else CPU offload."""
+    from diffusers import ZImagePipeline, ZImageTransformer2DModel
+
+    dtype = get_compute_dtype()
+    model_dir = str(config.model_dir(model.slug))
+    if quant_cfg is not None:
+        transformer = ZImageTransformer2DModel.from_pretrained(
+            model_dir, subfolder="transformer", quantization_config=quant_cfg, torch_dtype=dtype
+        )
+        pipe = ZImagePipeline.from_pretrained(model_dir, transformer=transformer, torch_dtype=dtype)
+    else:
+        pipe = ZImagePipeline.from_pretrained(
+            model_dir, torch_dtype=dtype, use_safetensors=model.use_safetensors
+        )
+
+    device = get_torch_device()
+    fits_gpu = device == "cuda" and assess(model, level).verdict == "fits_gpu"
+    if device == "cpu" or fits_gpu:
+        return pipe.to(device)
+    pipe.enable_model_cpu_offload()
+    return pipe
 
 
 def unload(slug: str | None = None) -> None:
@@ -516,7 +549,9 @@ def generate(
     # img2img pipe / running, so both the plain and img2img paths pick them up.
     _apply_loras(pipe, model, loras or [])
 
-    use_ref = init_image is not None
+    # Reference-image (img2img / IP-Adapter) is not wired for Z-Image yet (Phase 1
+    # is plain text2img); ignore any reference so the plain path always runs.
+    use_ref = init_image is not None and model.family != "Z-Image"
     extra: dict = {}
     if use_ref and reference_mode == "img2img":
         _ensure_no_ip_adapter(pipe)

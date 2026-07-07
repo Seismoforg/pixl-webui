@@ -78,5 +78,21 @@
     "gguf_repo_id": null,
     "gguf_filename": null,
     "defaults": { "steps": 28, "guidance_scale": 4.5, "width": 1024, "height": 1024 }
+  },
+  {
+    "slug": "z-image-turbo",
+    "repo_id": "Tongyi-MAI/Z-Image-Turbo",
+    "name": "Z-Image Turbo",
+    "family": "Z-Image",
+    "pipeline_tag": "text-to-image",
+    "description": "Fast 6B model from Alibaba Tongyi. ~9 steps, no guidance, high quality. ~33 GB download; runs in ~16 GB (CPU-offloaded).",
+    "gated": false,
+    "approx_size_gb": 20.0,
+    "min_vram_gb": 20.0,
+    "variant": null,
+    "use_safetensors": true,
+    "gguf_repo_id": null,
+    "gguf_filename": null,
+    "defaults": { "steps": 9, "guidance_scale": 0.0, "width": 1024, "height": 1024 }
   }
 ]

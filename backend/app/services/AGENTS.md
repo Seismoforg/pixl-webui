@@ -77,7 +77,10 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             VRAM). Non-GGUF at NF4/int8 (`effective_level` != fp16) → `_load_quantized`:
             heavy module (transformer/UNet by family) bitsandbytes-quantized from local
             fp16 weights via `device.load_quantized_pipe`, CPU-offloaded — LoRA-capable
-            (unlike GGUF). ROCm: load prologue enables TunableOp (GEMM tuning) per the
+            (unlike GGUF). Family "Z-Image" → `ZImagePipeline` in bf16 (not bnb-quantized;
+            `quantize.quantizable` excludes it), placed by the fit verdict (resident when
+            it fits, else CPU offload); text2img only for now (reference-image ignored).
+            ROCm: load prologue enables TunableOp (GEMM tuning) per the
             `tunable_ops` setting, after `_prune_stale_tunable_cache` drops a cache whose
             validators (rocBLAS/hipBLASLt version) no longer match the runtime; post apply_perf
             runs apply_compile. Also applies the sampler via samplers.apply_sampler,
