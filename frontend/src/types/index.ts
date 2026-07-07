@@ -119,6 +119,8 @@ export interface LoraCatalogEntry {
   filename: string;
   name: string;
   family: string; // "SD 1.5" | "SDXL" | "FLUX" — must match the base model
+  // Broad category badge: style | character | concept | realism | accelerator | other.
+  kind: string;
   description: string;
   trigger: string | null;
   approx_size_gb: number;

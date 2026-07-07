@@ -34,6 +34,10 @@ Atomic-design React component library for the Pixl WebUI frontend: presentationa
   — axis pushed up via `onChange` (ComparePanel)
 - ModelListItem — one model as a compact list row (name + GGUF tag + chips + fit
   badge + HF link + download/delete + progress bar)
+- CatalogEntryRow — one curated-catalog entry as a rich list row (identity + HF link
+  + caller-supplied badges slot + on-disk install action [Download / Downloaded+Delete]
+  + catalog actions [Edit / Remove-from-catalog] + progress bar). Presentational; used
+  by CatalogEditor's rich display path
 - GalleryCard — gallery image card (inline regenerate/upscale/delete + detail dialog);
   selection checkbox overlay (`selected`/`onToggleSelect`) for multi-select bulk delete
 - InfoTip — info tooltip
@@ -81,7 +85,11 @@ Atomic-design React component library for the Pixl WebUI frontend: presentationa
   Defaults section (default model/upscaler/outpaint engine) + system info
 - CatalogEditor (+ CuratedModelsEditor / CuratedEnginesEditor / CuratedLorasEditor) —
   edit a curated JSON catalog via a declarative `FieldSpec[]` dialog + reset; each
-  change PUTs the whole list
+  change PUTs the whole list. Optional `display` prop → rich path: loads the runtime
+  list (`getModels`/`getUpscalers`/`getLoras`), joins by slug, renders grouped
+  `CatalogEntryRow`s (badges + install/disk-delete via DownloadProvider) grouped by
+  family/kind; omit it → plain text-list fallback. LoRA editor adds a `kind` type
+  select + badge
 - EnginePicker — shared engine picker (upscale/outpaint/inpaint/edit); defaults
   reproduce the Upscale look, compact callers override label/helperText/showDetails
 - BatchImageResult — shared sticky batch-image result panel (icon/keyPrefix/running/

@@ -1,11 +1,22 @@
 "use client";
 
+import MemoryIcon from "@mui/icons-material/Memory";
+import StorageIcon from "@mui/icons-material/Storage";
+import Chip from "@mui/material/Chip";
+import Tooltip from "@mui/material/Tooltip";
 import { useMemo } from "react";
 
-import { CatalogEditor, type FieldSpec } from "@/components/organisms/CatalogEditor";
+import {
+  CatalogEditor,
+  type CatalogDisplay,
+  type CatalogRuntime,
+  type FieldSpec,
+} from "@/components/organisms/CatalogEditor";
 import { useAppData } from "@/providers/AppDataProvider";
+import { useDownloads } from "@/providers/DownloadProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import { fitChipMeta, fitRank } from "@/lib/fit";
 import type { ModelCatalogEntry } from "@/types";
 
 const EMPTY: ModelCatalogEntry = {
@@ -29,6 +40,7 @@ const EMPTY: ModelCatalogEntry = {
 export const CuratedModelsEditor = () => {
   const t = useTranslations();
   const { reloadModels } = useAppData();
+  const downloads = useDownloads();
 
   const fields = useMemo<FieldSpec[]>(() => {
     const f = (key: string) => t(`settings.catalog.fields.${key}`);
@@ -67,6 +79,31 @@ export const CuratedModelsEditor = () => {
     ];
   }, [t]);
 
+  const display: CatalogDisplay<ModelCatalogEntry> = {
+    loadRuntime: api.getModels,
+    groupBy: (m) => m.family,
+    // Installed first, then best GPU-fit, then name — mirrors the Models page.
+    sortWithin: (a, b) =>
+      Number(b.downloaded) - Number(a.downloaded) ||
+      (a.fit ? fitRank[a.fit.verdict] : 0) - (b.fit ? fitRank[b.fit.verdict] : 0) ||
+      a.name.localeCompare(b.name),
+    renderBadges: (m) => renderModelBadges(m, t),
+    onDownload: async (m) => {
+      await api.downloadModel(m.slug);
+      downloads.track(m.slug, {
+        title: m.name,
+        route: "/settings",
+        kind: "model",
+        fetch: () => api.getProgress(m.slug),
+        retry: () => api.downloadModel(m.slug),
+      });
+    },
+    onDeleteDownload: async (slug) => {
+      await api.deleteModel(slug);
+      reloadModels();
+    },
+  };
+
   return (
     <CatalogEditor<ModelCatalogEntry>
       title={t("settings.modelsCatalog.title")}
@@ -79,6 +116,48 @@ export const CuratedModelsEditor = () => {
       primaryText={(m) => `${m.name || m.slug}`}
       secondaryText={(m) => `${m.family} · ${m.repo_id}`}
       onSaved={reloadModels}
+      display={display}
     />
+  );
+};
+
+/** Metric chips for a model row — family / pipeline / GGUF / size / VRAM / GPU-fit. */
+const renderModelBadges = (
+  m: ModelCatalogEntry & CatalogRuntime,
+  t: ReturnType<typeof useTranslations>,
+) => {
+  const fitMeta = m.fit ? fitChipMeta(m.fit.verdict) : null;
+  return (
+    <>
+      <Chip label={m.family} size="small" color="primary" variant="outlined" />
+      <Chip label={m.pipeline_tag} size="small" variant="outlined" />
+      {m.gguf_filename && (
+        <Tooltip title={t("models.quantizedHint")}>
+          <Chip label={t("models.quantized")} size="small" variant="outlined" />
+        </Tooltip>
+      )}
+      <Chip
+        icon={<StorageIcon />}
+        label={`${t("models.size")} ≈ ${m.approx_size_gb} GB`}
+        size="small"
+        variant="outlined"
+      />
+      <Chip
+        icon={<MemoryIcon />}
+        label={`${t("models.vram")} ≥ ${m.min_vram_gb} GB`}
+        size="small"
+        variant="outlined"
+      />
+      {fitMeta && m.fit && (
+        <Tooltip
+          title={t(fitMeta.tooltipKey, {
+            vram: m.fit.est_vram_gb,
+            total: m.fit.gpu_total_gb ?? "?",
+          })}
+        >
+          <Chip label={t(fitMeta.labelKey)} size="small" color={fitMeta.color} variant="outlined" />
+        </Tooltip>
+      )}
+    </>
   );
 };

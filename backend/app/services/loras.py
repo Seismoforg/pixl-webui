@@ -27,6 +27,10 @@ class LoraInfo(BaseModel):
     name: str
     family: str  # "SD 1.5" | "SDXL" | "FLUX" — must match the base model to apply
     description: str = ""
+    # Broad category shown as a badge in the UI. One of: style | character | concept
+    # | realism | accelerator | other. Defaults to "other" so pre-existing overrides
+    # (which lack the field) stay valid.
+    kind: str = "other"
     # Optional trigger word(s) to add to the prompt for this LoRA to take effect.
     trigger: str | None = None
     approx_size_gb: float = 0.0

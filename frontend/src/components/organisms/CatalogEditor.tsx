@@ -22,13 +22,16 @@ import Stack from "@mui/material/Stack";
 import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
+import { CatalogEntryRow } from "@/components/molecules/CatalogEntryRow";
 import { ConfirmDialog } from "@/components/molecules/ConfirmDialog";
 import { LoadingIndicator } from "@/components/molecules/LoadingIndicator";
 import { useTranslations } from "@/i18n";
 import { getPath, setPath, type Draft } from "@/lib/objectPath";
+import { useDownloads } from "@/providers/DownloadProvider";
+import type { DownloadStatus, FitInfo } from "@/types";
 
 // Dialog field grid: min width before a field wraps to its own row.
 const FIELD_MIN_WIDTH = 220;
@@ -46,6 +49,32 @@ export interface FieldSpec {
   step?: number;
 }
 
+/** On-disk + fit extras a runtime list (`/api/models` etc.) adds to a catalog
+ *  entry; the editor joins the two by `slug`. */
+export interface CatalogRuntime {
+  slug: string;
+  downloaded: boolean;
+  status: DownloadStatus;
+  fit?: FitInfo; // models/engines only; LoRAs have no fit verdict
+}
+
+/**
+ * Optional rich-display config. When passed, the editor loads the runtime list too,
+ * joins it to the catalog by slug, and renders grouped rich rows (badges + install /
+ * delete) instead of the plain text list — while keeping the add/edit/remove/reset
+ * lifecycle unchanged. Omit it and the editor keeps its plain-list fallback.
+ */
+export interface CatalogDisplay<T> {
+  // Runtime list (install-state + fit); only slug/downloaded/status/fit are read,
+  // the catalog supplies the rest — so the flatter engine runtime shape fits too.
+  loadRuntime: () => Promise<CatalogRuntime[]>;
+  groupBy: (entry: T & CatalogRuntime) => string; // display-ready section label
+  sortWithin?: (a: T & CatalogRuntime, b: T & CatalogRuntime) => number;
+  renderBadges: (entry: T & CatalogRuntime) => ReactNode;
+  onDownload: (entry: T & CatalogRuntime) => Promise<void>; // start + track the download
+  onDeleteDownload: (slug: string) => Promise<void>; // remove weights from disk
+}
+
 interface CatalogEditorProps<T> {
   title: string;
   description: string;
@@ -57,6 +86,7 @@ interface CatalogEditorProps<T> {
   primaryText: (entry: T) => string;
   secondaryText: (entry: T) => string;
   onSaved?: () => void; // notify the app after a successful save/reset
+  display?: CatalogDisplay<T>; // present → rich grouped rows; absent → plain list
 }
 
 /**
@@ -77,9 +107,12 @@ export const CatalogEditor = <T,>({
   primaryText,
   secondaryText,
   onSaved,
+  display,
 }: CatalogEditorProps<T>) => {
   const t = useTranslations();
+  const downloads = useDownloads();
   const [entries, setEntries] = useState<T[]>([]);
+  const [runtime, setRuntime] = useState<CatalogRuntime[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,7 +120,11 @@ export const CatalogEditor = <T,>({
   const [draft, setDraft] = useState<Draft>({});
   const [busy, setBusy] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<number | null>(null);
+  const [pendingDiskDelete, setPendingDiskDelete] = useState<string | null>(null);
   const [pendingReset, setPendingReset] = useState(false);
+
+  const slugOf = (entry: T): string =>
+    String(getPath(entry as unknown as Draft, "slug") ?? "").trim();
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -98,12 +135,32 @@ export const CatalogEditor = <T,>({
   }, [load]);
   useEffect(() => reload(), [reload]);
 
+  // Rich-display path: load the runtime list (install-state + fit) alongside the
+  // catalog and reload it after any install change (best-effort — badges degrade
+  // to catalog-only if it fails).
+  const loadRuntime = display?.loadRuntime;
+  const reloadRuntime = useCallback(() => {
+    if (!loadRuntime) return;
+    loadRuntime()
+      .then(setRuntime)
+      .catch(() => {});
+  }, [loadRuntime]);
+  useEffect(() => reloadRuntime(), [reloadRuntime]);
+
+  // Flip install-state once a tracked download finishes (mirrors EngineManager).
+  useEffect(() => {
+    if (runtime.some((r) => !r.downloaded && downloads.progress[r.slug]?.status === "done")) {
+      reloadRuntime();
+    }
+  }, [downloads.progress, runtime, reloadRuntime]);
+
   const persist = async (next: T[]): Promise<boolean> => {
     setBusy(true);
     setError(null);
     try {
       setEntries(await save(next));
       onSaved?.();
+      reloadRuntime();
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -168,10 +225,34 @@ export const CatalogEditor = <T,>({
     try {
       setEntries(await reset());
       onSaved?.();
+      reloadRuntime();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+    }
+  };
+
+  // Install actions (rich path). Download progress flows through the shared
+  // DownloadProvider; a completed download is reflected by the done-effect above.
+  const handleDownload = async (entry: T & CatalogRuntime) => {
+    setError(null);
+    try {
+      await display?.onDownload(entry);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const confirmDiskDelete = async () => {
+    const slug = pendingDiskDelete;
+    setPendingDiskDelete(null);
+    if (slug === null) return;
+    setError(null);
+    try {
+      await display?.onDeleteDownload(slug);
+      reloadRuntime();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -225,6 +306,41 @@ export const CatalogEditor = <T,>({
     );
   };
 
+  const fieldOf = (entry: T, key: string): string | null => {
+    const v = getPath(entry as unknown as Draft, key);
+    return v == null ? null : String(v);
+  };
+  const indexOfSlug = (slug: string) => entries.findIndex((e) => slugOf(e) === slug);
+
+  // Rich path: join each catalog entry to its runtime counterpart (by slug), then
+  // group into display sections in first-appearance order, installed-first within.
+  const grouped = (() => {
+    if (!display) return null;
+    const joined: Array<T & CatalogRuntime> = entries.map((cat) => {
+      const rt = runtime.find((r) => r.slug === slugOf(cat));
+      return {
+        ...cat,
+        slug: slugOf(cat),
+        downloaded: rt?.downloaded ?? false,
+        status: rt?.status ?? "idle",
+        fit: rt?.fit,
+      } as T & CatalogRuntime;
+    });
+    const order: string[] = [];
+    const map = new Map<string, Array<T & CatalogRuntime>>();
+    for (const e of joined) {
+      const key = display.groupBy(e);
+      if (!map.has(key)) {
+        map.set(key, []);
+        order.push(key);
+      }
+      map.get(key)!.push(e);
+    }
+    const sortFn = display.sortWithin ?? ((a, b) => Number(b.downloaded) - Number(a.downloaded));
+    for (const key of order) map.get(key)!.sort(sortFn);
+    return order.map((key) => ({ key, items: map.get(key)! }));
+  })();
+
   return (
     <Paper variant="outlined" sx={{ p: 3 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
@@ -266,6 +382,38 @@ export const CatalogEditor = <T,>({
         <Typography variant="body2" color="text.secondary">
           {t("settings.catalog.empty")}
         </Typography>
+      ) : display && grouped ? (
+        <Stack spacing={3}>
+          {grouped.map(({ key, items }) => (
+            <Box key={key}>
+              <SectionHeading
+                level={3}
+                variant="subtitle2"
+                sx={{ mb: 1.5, color: "text.secondary" }}
+              >
+                {key} ({items.length})
+              </SectionHeading>
+              <Stack spacing={1.5}>
+                {items.map((e) => (
+                  <CatalogEntryRow
+                    key={e.slug}
+                    name={primaryText(e)}
+                    description={fieldOf(e, "description") ?? ""}
+                    repoId={fieldOf(e, "repo_id")}
+                    badges={display.renderBadges(e)}
+                    downloaded={e.downloaded}
+                    progress={downloads.progress[e.slug]}
+                    onDownload={() => handleDownload(e)}
+                    onDeleteDownload={() => setPendingDiskDelete(e.slug)}
+                    onEdit={() => openEdit(indexOfSlug(e.slug))}
+                    onRemoveFromCatalog={() => setPendingDelete(indexOfSlug(e.slug))}
+                    busy={busy}
+                  />
+                ))}
+              </Stack>
+            </Box>
+          ))}
+        </Stack>
       ) : (
         <List dense disablePadding>
           {entries.map((entry, index) => (
@@ -341,9 +489,17 @@ export const CatalogEditor = <T,>({
         open={pendingDelete !== null}
         title={t("common.confirmDeleteTitle")}
         message={t("settings.catalog.deleteConfirm")}
-        confirmLabel={t("settings.catalog.delete")}
+        confirmLabel={t("settings.catalog.removeFromCatalog")}
         onConfirm={confirmDelete}
         onClose={() => setPendingDelete(null)}
+      />
+      <ConfirmDialog
+        open={pendingDiskDelete !== null}
+        title={t("common.confirmDeleteTitle")}
+        message={t("models.confirmDelete")}
+        confirmLabel={t("models.delete")}
+        onConfirm={confirmDiskDelete}
+        onClose={() => setPendingDiskDelete(null)}
       />
       <ConfirmDialog
         open={pendingReset}

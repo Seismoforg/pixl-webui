@@ -142,7 +142,16 @@
     "downloading": "Downloading… {percent}%",
     "weight": "Weight",
     "weightInfo": "How strongly the LoRA is applied. 1.0 = full strength; lower blends it in more subtly, higher over-applies it.",
-    "activeCount": "{count} LoRA(s) active."
+    "activeCount": "{count} LoRA(s) active.",
+    "kindLabel": "Type",
+    "kind": {
+      "style": "Style",
+      "character": "Character",
+      "concept": "Concept",
+      "realism": "Realism",
+      "accelerator": "Accelerator",
+      "other": "Other"
+    }
   },
   "gallery": {
     "title": "Gallery",
@@ -514,6 +523,7 @@
       "add": "Add",
       "edit": "Edit",
       "delete": "Delete",
+      "removeFromCatalog": "Remove from catalog",
       "save": "Save",
       "reset": "Reset to defaults",
       "empty": "No entries yet — add one or reset to defaults.",

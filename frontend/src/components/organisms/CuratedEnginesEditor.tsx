@@ -1,10 +1,21 @@
 "use client";
 
+import MemoryIcon from "@mui/icons-material/Memory";
+import StorageIcon from "@mui/icons-material/Storage";
+import Chip from "@mui/material/Chip";
+import Tooltip from "@mui/material/Tooltip";
 import { useMemo } from "react";
 
-import { CatalogEditor, type FieldSpec } from "@/components/organisms/CatalogEditor";
+import {
+  CatalogEditor,
+  type CatalogDisplay,
+  type CatalogRuntime,
+  type FieldSpec,
+} from "@/components/organisms/CatalogEditor";
+import { trackUpscalerDownload, useDownloads } from "@/providers/DownloadProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import { fitChipMeta, fitRank } from "@/lib/fit";
 import type { EngineCatalogEntry } from "@/types";
 
 const EMPTY: EngineCatalogEntry = {
@@ -28,6 +39,7 @@ const EMPTY: EngineCatalogEntry = {
 /** Settings section to edit the curated upscale/outpaint engine catalog (JSON-backed). */
 export const CuratedEnginesEditor = () => {
   const t = useTranslations();
+  const downloads = useDownloads();
 
   const fields = useMemo<FieldSpec[]>(() => {
     const f = (key: string) => t(`settings.catalog.fields.${key}`);
@@ -62,6 +74,18 @@ export const CuratedEnginesEditor = () => {
     ];
   }, [t]);
 
+  const display: CatalogDisplay<EngineCatalogEntry> = {
+    loadRuntime: api.getUpscalers,
+    groupBy: (e) => t(`engines.kind.${e.kind}`),
+    sortWithin: (a, b) =>
+      Number(b.downloaded) - Number(a.downloaded) ||
+      (a.fit ? fitRank[a.fit.verdict] : 0) - (b.fit ? fitRank[b.fit.verdict] : 0) ||
+      a.name.localeCompare(b.name),
+    renderBadges: (e) => renderEngineBadges(e, t),
+    onDownload: (e) => trackUpscalerDownload(downloads.track, e, "/settings"),
+    onDeleteDownload: (slug) => api.deleteUpscaler(slug).then(() => undefined),
+  };
+
   return (
     <CatalogEditor<EngineCatalogEntry>
       title={t("settings.enginesCatalog.title")}
@@ -73,6 +97,45 @@ export const CuratedEnginesEditor = () => {
       emptyEntry={EMPTY}
       primaryText={(e) => `${e.name || e.slug}`}
       secondaryText={(e) => `${t(`engines.kind.${e.kind}`)} · ${e.repo_id}`}
+      display={display}
     />
+  );
+};
+
+/** Metric chips for an engine row — kind / scale / size / VRAM / GPU-fit. */
+const renderEngineBadges = (
+  e: EngineCatalogEntry & CatalogRuntime,
+  t: ReturnType<typeof useTranslations>,
+) => {
+  const fitMeta = e.fit ? fitChipMeta(e.fit.verdict) : null;
+  return (
+    <>
+      <Chip label={t(`engines.kind.${e.kind}`)} size="small" color="primary" variant="outlined" />
+      <Chip label={`${e.scale}×`} size="small" variant="outlined" />
+      {e.approx_size_gb > 0 && (
+        <Chip
+          icon={<StorageIcon />}
+          label={`${t("models.size")} ≈ ${e.approx_size_gb} GB`}
+          size="small"
+          variant="outlined"
+        />
+      )}
+      <Chip
+        icon={<MemoryIcon />}
+        label={`${t("models.vram")} ≥ ${e.min_vram_gb} GB`}
+        size="small"
+        variant="outlined"
+      />
+      {fitMeta && e.fit && (
+        <Tooltip
+          title={t(fitMeta.tooltipKey, {
+            vram: e.fit.est_vram_gb,
+            total: e.fit.gpu_total_gb ?? "?",
+          })}
+        >
+          <Chip label={t(fitMeta.labelKey)} size="small" color={fitMeta.color} variant="outlined" />
+        </Tooltip>
+      )}
+    </>
   );
 };

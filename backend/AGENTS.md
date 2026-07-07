@@ -91,7 +91,8 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 - app/samplers.py        — curated A1111-style sampler set → diffusers scheduler classes
                            + config flags; apply_sampler(pipe, id) returns the effective id
 - routers/loras.py       — LoRA adapter catalog + downloads: GET /api/loras (each with
-                           downloaded flag), catalog GET/PUT/reset, POST /{slug}/download
+                           downloaded flag; entries carry a `kind` category badge),
+                           catalog GET/PUT/reset, POST /{slug}/download
                            (single .safetensors via downloader.start_file_download) +
                            GET /{slug}/progress + DELETE /{slug}. LoRAs are applied at
                            generation time (see pipeline + generate), not a job of their own

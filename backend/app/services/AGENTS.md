@@ -59,7 +59,8 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             = base repo minus transformer (keeps config), `_run_gguf_download` fetches
             base snapshot + the single `.gguf` into models/<slug> (combined size)
 - loras.py — LoRA catalog (JSON-backed like models/engines): `LoraInfo` (slug, repo_id,
-            filename, family, trigger?, size), `all_loras()`/`get()` + catalog load/save/
+            filename, family, kind [style|character|concept|realism|accelerator|other,
+            default "other"; UI badge], trigger?, size), `all_loras()`/`get()` + catalog load/save/
             reset. Each downloads its single `.safetensors` into models/<slug> via the
             downloader single-file path; applied at generation time by pipeline
 - pipeline.py — diffusers load/cache + generation (step callback); cached img2img pipe
