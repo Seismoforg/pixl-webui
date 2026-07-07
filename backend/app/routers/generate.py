@@ -130,31 +130,16 @@ class _Job:
 _store: jobs.JobStore[_Job] = jobs.JobStore("gen")
 
 
-def _gpu_sync() -> None:
-    """Block until queued GPU work finishes. Diffusers denoise steps run async, so the
-    step callback fires while the step is still computing; without a sync the reported
-    it/s is inflated and the real denoise time leaks into the (later, synchronous) VAE
-    decode — mislabeling the decode phase as huge. Best-effort; never breaks a run."""
-    try:
-        import torch
-
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-    except Exception:  # noqa: BLE001 - timing aid only
-        pass
-
-
 def _run(job: _Job, req: GenerateRequest, model, init_image) -> None:
     # Wakes the WebSocket pusher after each state change so progress is pushed with
     # no tick latency (a no-op when nobody is subscribed).
     key = f"generation:{job.job_id}"
 
     def on_step(completed: int) -> None:
-        # Timestamp the denoise start at the first callback (before syncing), then sync
-        # so current_step / it-s / the decode-phase boundary reflect real GPU progress
-        # instead of async-queued callback times (see _gpu_sync).
+        # The callback wiring (callbacks.gpu_sync in _step_callback_kwargs) already
+        # synced the GPU, so this timestamp reflects real compute — current_step /
+        # it-s / the decode-phase boundary are accurate.
         now = time.perf_counter()
-        _gpu_sync()
         # Some pipelines invoke the callback one extra time; clamp so the UI never
         # shows "step n+1 / n".
         with _store.lock:

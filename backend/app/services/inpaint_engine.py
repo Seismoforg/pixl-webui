@@ -261,7 +261,7 @@ def run_inpaint(
         kwargs["width"] = image.width
     else:
         kwargs["negative_prompt"] = negative
-    result = pipe(
+    call_kwargs = dict(
         prompt=prompt or DEFAULT_PROMPT,
         image=image,
         mask_image=mask,
@@ -270,4 +270,16 @@ def run_inpaint(
         generator=generator,
         **kwargs,
     )
-    return result.images[0].resize(image.size)
+    # Real FLUX Fill is CPU-offloaded → its inline VAE decode is starved of VRAM by the
+    # resident quantized transformer (slow). Decode via output_type="latent" so the
+    # pipeline offloads the transformer first, then decode with the GPU free (see
+    # pipeline._decode_flux_latents). Z-Image (is_flux_pipe via the combined flag) is
+    # resident, so it keeps the inline path.
+    if is_flux(pipe):
+        from . import pipeline as _pipeline
+
+        latents = pipe(**call_kwargs, output_type="latent").images
+        img = _pipeline._decode_flux_latents(pipe, latents, image.width, image.height)
+    else:
+        img = pipe(**call_kwargs).images[0]
+    return img.resize(image.size)

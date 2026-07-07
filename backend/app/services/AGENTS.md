@@ -19,7 +19,8 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
 - loras.py          — LoRA adapter catalog (JSON-backed, family-scoped)
 - prompt_embeds.py  — long/weighted CLIP prompt embeds (compel)
 - preview.py        — TAESD live per-step preview
-- callbacks.py      — shared diffusers step-callback + StepTimer
+- callbacks.py      — shared diffusers step-callback + StepTimer + `gpu_sync` (syncs the
+                      GPU in the step callback so it/s + phase timing are accurate)
 - samplers is `../samplers.py` (app-level), not here
 - upscalers.py      — upscale/outpaint/inpaint engine catalog (JSON-backed)
 - upscale.py        — upscaling dispatch (Real-ESRGAN / SD x4) + tiling

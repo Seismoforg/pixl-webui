@@ -140,12 +140,28 @@ def edit_image(
 
     on_step(0)
     kwargs = callbacks.step_kwargs(pipe, on_step)
-    result = pipe(
+    # FLUX Kontext is CPU-offloaded → its inline VAE decode is starved of VRAM by the
+    # resident quantized transformer (slow). Pass an explicit ~1 MP size (so the latent
+    # grid is known) and decode via output_type="latent": the pipeline offloads the
+    # transformer first, then we decode with the GPU free (pipeline._decode_flux_latents).
+    import math
+
+    from . import pipeline as _pipeline
+
+    w0, h0 = img.size
+    ar = w0 / h0
+    height = max(16, round(math.sqrt((1024 * 1024) / ar) / 16) * 16)
+    width = max(16, round(math.sqrt((1024 * 1024) * ar) / 16) * 16)
+    latents = pipe(
         prompt=prompt,
         image=img,
+        height=height,
+        width=width,
         num_inference_steps=steps,
         guidance_scale=guidance,
         generator=generator,
+        output_type="latent",
         **kwargs,
-    )
-    return result.images[0].resize(img.size, Image.LANCZOS)
+    ).images
+    result = _pipeline._decode_flux_latents(pipe, latents, width, height)
+    return result.resize(img.size, Image.LANCZOS)

@@ -18,17 +18,34 @@ import time
 from typing import Callable
 
 
+def gpu_sync() -> None:
+    """Block until queued GPU work finishes so a step timestamp reflects real compute.
+    Diffusers denoise steps run async — the step callback fires before the step's GPU
+    work completes, which inflates the reported it/s and leaks denoise time into the
+    later (synchronous) decode phase. Best-effort; a no-op off-GPU."""
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+    except Exception:  # noqa: BLE001 - timing aid only
+        pass
+
+
 def step_kwargs(pipe, on_step: Callable[[int], None]) -> dict:
-    """Return ``pipe(...)`` kwargs that call ``on_step(completed_steps)`` per step."""
+    """Return ``pipe(...)`` kwargs that call ``on_step(completed_steps)`` per step.
+    Syncs the GPU first so it/s + phase timing reflect real compute (see gpu_sync)."""
     params = inspect.signature(pipe.__call__).parameters
     if "callback_on_step_end" in params:
         def _cb(_pipe, step, _timestep, cb_kwargs):  # diffusers >= 0.25 API
+            gpu_sync()
             on_step(step + 1)
             return cb_kwargs
 
         return {"callback_on_step_end": _cb}
     if "callback" in params:
         def _legacy(step, _timestep, _latents):  # older diffusers API
+            gpu_sync()
             on_step(step + 1)
 
         return {"callback": _legacy, "callback_steps": 1}

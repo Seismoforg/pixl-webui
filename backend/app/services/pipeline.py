@@ -478,6 +478,7 @@ def _step_callback_kwargs(
         last_preview = [0.0]
 
         def _cb(_pipe, step, _timestep, cb_kwargs):  # diffusers >= 0.25 API
+            callbacks.gpu_sync()
             on_step(step + 1)
             now = time.monotonic()
             if now - last_preview[0] >= _PREVIEW_MIN_INTERVAL_S:
