@@ -73,12 +73,27 @@ function Get-TorchTag {
 }
 
 # --- Python -----------------------------------------------------------------
+# Run a probe command and return its trimmed stdout, or $null on any failure. Native
+# tools (python / py) write to stderr and exit non-zero when a runtime is missing;
+# under the script's -ErrorAction Stop, PowerShell 5.1 turns that stderr into a
+# TERMINATING NativeCommandError that would abort the installer. Relaxing the
+# preference locally (function-scoped) + discarding stderr keeps a failed probe soft.
+function Get-ProbeOutput($file, [string[]]$probeArgs) {
+    $ErrorActionPreference = "SilentlyContinue"
+    try {
+        $out = & $file @probeArgs 2>$null
+        if ($LASTEXITCODE -ne 0) { return $null }
+        return "$out".Trim()
+    }
+    catch { return $null }
+}
+
 # True if $exe is a working CPython in the supported 3.10-3.13 range.
 function Test-PythonVersion($exe) {
-    $v = & $exe -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $v) { return $false }
-    $p = "$v".Trim().Split(".")
-    return ([int]$p[0] -eq 3 -and [int]$p[1] -ge 10 -and [int]$p[1] -le 13)
+    $v = Get-ProbeOutput $exe @("-c", "import sys; print('%d.%d' % sys.version_info[:2])")
+    if (-not $v) { return $false }
+    $p = $v.Split(".")
+    return ($p.Count -ge 2 -and [int]$p[0] -eq 3 -and [int]$p[1] -ge 10 -and [int]$p[1] -le 13)
 }
 
 # Download + extract the pinned project-local Python (once) and return its exe. The
@@ -94,8 +109,14 @@ function Get-StandalonePython {
     $tarball = Join-Path $PyDir "python.tar.gz"
     Write-Info "Downloading $PyStandaloneUrl"
     Invoke-WebRequest -Uri $PyStandaloneUrl -OutFile $tarball -Headers @{ "User-Agent" = "pixl-webui-installer" } -UseBasicParsing
-    & tar -xzf $tarball -C $PyDir
-    if ($LASTEXITCODE -ne 0) { Fail "Failed to unpack the local Python archive." }
+    # bsdtar can emit harmless warnings to stderr (PAX headers); relax the preference
+    # only around this native call so they don't become a terminating error under Stop.
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    & tar -xzf $tarball -C $PyDir 2>$null
+    $tarExit = $LASTEXITCODE
+    $ErrorActionPreference = $prevEap
+    if ($tarExit -ne 0) { Fail "Failed to unpack the local Python archive." }
     Remove-Item $tarball -Force
     if (-not (Test-Path $PyExe)) { Fail "Local Python unpack did not produce $PyExe." }
     return $PyExe
@@ -113,12 +134,13 @@ function Resolve-Python {
         Write-Info "Using system Python on PATH ($($onPath.Source))"
         return
     }
-    # 2) the Windows `py` launcher, newest supported first
+    # 2) the Windows `py` launcher, newest supported first (a missing version is a soft
+    #    miss via Get-ProbeOutput, not a fatal NativeCommandError)
     if (Get-Command py -ErrorAction SilentlyContinue) {
         foreach ($v in "3.13", "3.12", "3.11", "3.10") {
-            $exe = & py "-$v" -c "import sys; print(sys.executable)" 2>$null
-            if ($LASTEXITCODE -eq 0 -and $exe -and (Test-Path "$exe".Trim())) {
-                $script:PythonExe = "$exe".Trim()
+            $exe = Get-ProbeOutput "py" @("-$v", "-c", "import sys; print(sys.executable)")
+            if ($exe -and (Test-Path $exe)) {
+                $script:PythonExe = $exe
                 Write-Info "Using Python $v via the py launcher"
                 return
             }
