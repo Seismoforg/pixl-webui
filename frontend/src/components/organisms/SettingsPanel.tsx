@@ -78,8 +78,10 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
   const [perf, setPerf] = useState({
     vae_tiling: true,
     vae_slicing: true,
+    attention_slicing: false,
     xformers: true,
     torch_compile: false,
+    tunable_ops: true,
   });
   const [sdX4Steps, setSdX4Steps] = useState(50);
   const [outpaintNegative, setOutpaintNegative] = useState("");
@@ -107,8 +109,10 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
         setPerf({
           vae_tiling: s.vae_tiling,
           vae_slicing: s.vae_slicing,
+          attention_slicing: s.attention_slicing,
           xformers: s.xformers,
           torch_compile: s.torch_compile,
+          tunable_ops: s.tunable_ops,
         });
         setSdX4Steps(s.sd_x4_steps);
         setOutpaintNegative(s.outpaint_negative);
@@ -237,6 +241,12 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
                 onChange={setFlag("vae_slicing")}
               />
               <PerfSwitch
+                label={t("settings.performance.attentionSlicing")}
+                help={t("settings.performance.attentionSlicingHelp")}
+                checked={perf.attention_slicing}
+                onChange={setFlag("attention_slicing")}
+              />
+              <PerfSwitch
                 label={t("settings.performance.xformers")}
                 help={t("settings.performance.xformersHelp")}
                 checked={perf.xformers}
@@ -247,6 +257,12 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
                 help={t("settings.performance.torchCompileHelp")}
                 checked={perf.torch_compile}
                 onChange={setFlag("torch_compile")}
+              />
+              <PerfSwitch
+                label={t("settings.performance.tunableOps")}
+                help={t("settings.performance.tunableOpsHelp")}
+                checked={perf.tunable_ops}
+                onChange={setFlag("tunable_ops")}
               />
               <TextField
                 label={t("settings.performance.sdX4Steps")}

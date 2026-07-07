@@ -53,12 +53,22 @@ class Settings(BaseModel):
     # Default on; all are best-effort so absent hardware/libs are no-ops.
     vae_tiling: bool = True
     vae_slicing: bool = True
+    # Attention slicing trades speed for VRAM. Applied on every pipe load purely from
+    # this flag (no VRAM auto-switch). Default off: SDPA is memory-efficient and big
+    # models are already bounded by CPU offload; enable it only if a tight GPU OOMs.
+    attention_slicing: bool = False
     xformers: bool = True
     # Compile the denoising module (transformer/UNet) with torch.compile on load for
     # faster iterations. Default off: the first run after enabling pays a long
     # compile cost, and support is uneven on ROCm. Best-effort — a failed compile
     # falls back to eager (see optimizations.apply_compile).
     torch_compile: bool = False
+    # ROCm only: TunableOp benchmarks GEMM kernels on first use and caches the best.
+    # Default on (the historical behaviour). On some ROCm/Windows builds the tuning
+    # cache is rejected every session (rocBLAS version validator mismatch) so it
+    # re-tunes on every start — turn this off if the first run is slow. No effect off
+    # ROCm (applied in pipeline load).
+    tunable_ops: bool = True
     # Denoising steps for the SD x4 diffusion upscaler. The diffusers default is 75;
     # 30–50 are visually near-identical for this upscaler and much faster (the cost
     # multiplies across tiles). Read per-run, so changes take effect without reload.

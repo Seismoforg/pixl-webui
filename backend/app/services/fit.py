@@ -107,14 +107,15 @@ def quant_levels_for(min_vram_gb: float, family: str, approx_size_gb: float) -> 
 
 
 def suggest_for(min_vram_gb: float, family: str) -> str:
-    """Highest-quality level whose estimate fits GPU VRAM (fp16 → int8 → nf4); nf4 as
-    a last resort. Always ``fp16`` with no GPU or no bitsandbytes (no quant benefit)."""
+    """Auto-suggested load level: ``fp16`` if it fits GPU VRAM, else ``nf4``. ``int8``
+    stays selectable but is NEVER auto-suggested — for diffusion its LLM.int8 kernel is
+    much slower than NF4 (and casts bf16→fp16 per matmul) with no real quality gain, so
+    NF4 is the sensible 16 GB default. Always ``fp16`` with no GPU or no bitsandbytes."""
     gpu = _gpu_total_gb()
     if gpu is None or not quantize.available():
         return "fp16"
-    for level in quantize.LEVELS:
-        if est_vram_for(min_vram_gb, family, level) <= gpu * _VRAM_USABLE:
-            return level
+    if est_vram_for(min_vram_gb, family, "fp16") <= gpu * _VRAM_USABLE:
+        return "fp16"
     return "nf4"
 
 

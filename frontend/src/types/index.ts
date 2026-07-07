@@ -89,8 +89,10 @@ export interface AppSettings {
   hf_token: string | null;
   vae_tiling: boolean;
   vae_slicing: boolean;
+  attention_slicing: boolean;
   xformers: boolean;
   torch_compile: boolean;
+  tunable_ops: boolean;
   sd_x4_steps: number;
   outpaint_negative: string; // built-in negative base for AI outpainting
   // Preferred default dropdown selections (slugs); used only when downloaded, else

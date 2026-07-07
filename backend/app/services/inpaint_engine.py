@@ -135,8 +135,8 @@ def load(engine: UpscalerInfo):
             kwargs["requires_safety_checker"] = False
         pipe = AutoPipelineForInpainting.from_pretrained(str(model_path), **kwargs)
         pipe = place_offloaded(pipe)
-        pipe.enable_attention_slicing()
 
+    # attention slicing (+ VAE/xformers) is applied here purely from the settings.
     apply_perf(pipe, load_settings())
     with _lock:
         _pipe = pipe

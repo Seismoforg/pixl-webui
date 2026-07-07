@@ -21,9 +21,11 @@ Adopt on-the-fly bitsandbytes NF4/int8 as the **default 16 GB path** and **retir
 from the bundled default catalog** (still re-addable by hand).
 
 - Per-entry load-time level `{slug: fp16|int8|nf4}` in `AppSettings.load_quantization`,
-  set on the Models page, read at load. Absent slug → auto-suggested level (highest
-  quality that fits live VRAM). `services/quantize.py` builds the `BitsAndBytesConfig`
-  + VRAM heuristics; `services/fit.py` scores per-level fit + suggests.
+  set on the Models page, read at load. Absent slug → auto-suggested level: fp16 if it
+  fits live VRAM, else **NF4** (int8 stays selectable but is never auto-suggested — for
+  diffusion its LLM.int8 kernel is much slower than NF4 for no real quality gain).
+  `services/quantize.py` builds the `BitsAndBytesConfig` + VRAM heuristics;
+  `services/fit.py` scores per-level fit + suggests.
 - Quantized load quantizes the heavy module (transformer for FLUX/SD 3.x, UNet for
   SD 1.5/SDXL) from the local fp16 weights and CPU-offloads (like GGUF) — in
   `pipeline.py` (generation), `inpaint_engine.py` (FLUX Fill), `edit.py` (FLUX Kontext).

@@ -293,11 +293,11 @@ def _load_sd_x4(engine: UpscalerInfo):
                 variant=engine.variant,
             )
             pipe = place_offloaded(pipe)
-            pipe.enable_attention_slicing()
             # The x4 upscaler's final VAE decode of the full 4× image is the slow,
             # memory-heavy tail. VAE tiling (via the shared perf settings) decodes
             # it in internal tiles, slashing peak VRAM and avoiding the slow
-            # fallback — the main speedup. Best-effort per the user's settings.
+            # fallback — the main speedup. attention slicing follows the setting too.
+            # Best-effort per the user's settings.
             apply_perf(pipe, load_settings())
             _sd_x4_pipe = pipe
             _sd_x4_slug = engine.slug

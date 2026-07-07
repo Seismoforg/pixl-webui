@@ -47,3 +47,15 @@ Apply both, with different exposure:
   installed. Recorded as technical debt.
 - Gains are bounded by ROCm kernel maturity and are measured (it/s) rather than
   assumed.
+
+# Amendment (2026-07-07)
+Two refinements to the TunableOp path, prompted by a recurring slow first run:
+- **Toggle.** TunableOp is now gated by a `tunable_ops` setting (default on) instead of
+  being unconditional, so it can be turned off when it's not helping.
+- **Stale-cache auto-clear.** A ROCm/torch update changes the tuning validators
+  (rocBLAS / hipBLASLt version), which made TunableOp reject the whole
+  `data/tunableop_results*.csv` and re-tune on EVERY start (never persisting). The
+  pipeline load prologue now runs `_prune_stale_tunable_cache`: it compares each
+  cache file's recorded validators against the live ones and deletes any that no
+  longer match, so a clean re-tune writes under the current version and persists.
+  Recurs only when the ROCm stack is updated again (then it self-clears once more).

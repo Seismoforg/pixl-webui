@@ -52,6 +52,45 @@ _attention_slicing = False
 # Loaded on the base text2img pipe so the derived img2img pipe shares them.
 _loaded_loras: dict[str, float] = {}
 
+# Whether the stale-TunableOp-cache check has run this process (once, at first load).
+_tunable_pruned = False
+
+
+def _prune_stale_tunable_cache() -> None:
+    """Delete on-disk TunableOp results whose recorded validators (rocBLAS / hipBLASLt
+    version, GPU arch, …) differ from the current runtime. A ROCm/torch update changes
+    those versions, and TunableOp then rejects the whole cache and re-tunes on EVERY
+    start — deleting the stale file lets a clean re-tune persist. Runs once per process,
+    before tuning is enabled. Best-effort; never fatal."""
+    global _tunable_pruned
+    if _tunable_pruned:
+        return
+    _tunable_pruned = True
+
+    import csv
+
+    import torch
+
+    try:
+        current = {k: v for k, v in torch.cuda.tunable.get_validators()}
+    except Exception:  # noqa: BLE001 - never fatal
+        return
+    if not current:
+        return
+    # The filename env is a base path; torch appends the device ordinal (…0.csv).
+    for path in config.DATA_DIR.glob("tunableop_results*.csv"):
+        try:
+            recorded: dict[str, str] = {}
+            with open(path, newline="") as handle:
+                for row in csv.reader(handle):
+                    if row and row[0] == "Validator":
+                        recorded[row[1]] = row[2]
+            if recorded and any(current.get(k) != v for k, v in recorded.items()):
+                path.unlink()
+                print(f"[tunable] cleared stale cache {path.name} (ROCm version changed)")
+        except OSError:
+            pass
+
 # family -> (repo_id, subfolder, weight_name) for IP-Adapter "style" conditioning.
 # Only UNet families have ready diffusers IP-Adapters; others fall back (blocked).
 _IP_ADAPTERS: dict[str, tuple[str, str, str]] = {
@@ -88,12 +127,17 @@ def _load(model: ModelInfo):
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
 
-    # ROCm: tune GEMM kernels to this GPU (results persistently cached, see config).
-    # Gated to ROCm — NVIDIA's cuBLAS is already tuned, so TunableOp's warmup isn't
-    # worth it there. Idempotent + process-global, so upscale/outpaint benefit too.
+    # ROCm: tune GEMM kernels to this GPU, gated by the `tunable_ops` setting. Gated to
+    # ROCm — NVIDIA's cuBLAS is already tuned. Process-global, so upscale/outpaint
+    # follow too. Off → default kernels, no per-session tuning spike. Before enabling,
+    # drop a stale cache (validators from an old ROCm version) so tuning re-writes under
+    # the current version and persists instead of being rejected every start.
     if get_device_info().backend == "rocm":
+        tune = load_settings().tunable_ops
         try:
-            torch.cuda.tunable.enable(True)
+            if tune:
+                _prune_stale_tunable_cache()
+            torch.cuda.tunable.enable(tune)
         except Exception:  # noqa: BLE001 - optional optimisation; never fatal
             pass
 
@@ -106,14 +150,12 @@ def _load(model: ModelInfo):
 
     if model.is_gguf:
         # GGUF loads a quantized transformer and always CPU-offloads (below), so no
-        # separate fit-based placement / attention slicing is applied.
+        # separate fit-based placement is applied.
         pipe = _load_gguf(model)
-        _attention_slicing = False
     elif quant_cfg is not None:
         # On-the-fly bitsandbytes NF4/int8: heavy module quantized, CPU-offloaded
         # (like GGUF) so encoders stream off the GPU — but LoRA-compatible.
         pipe = _load_quantized(model, quant_cfg)
-        _attention_slicing = False
     else:
         from diffusers import AutoPipelineForText2Image
 
@@ -132,12 +174,6 @@ def _load(model: ModelInfo):
             pipe = pipe.to(device)
         else:
             pipe.enable_model_cpu_offload()
-        # Attention slicing saves VRAM but costs speed; only needed under memory
-        # pressure. When the model fully fits the GPU, skip it — SDPA is memory-
-        # efficient on its own — so full-GPU runs stay fast.
-        _attention_slicing = not fits_gpu
-        if _attention_slicing:
-            pipe.enable_attention_slicing()
         # channels_last is a free speedup for the conv-heavy UNet on Ampere+; skip it
         # for transformer families (SD3/FLUX expose `.transformer`, not `.unet`).
         # Best-effort: never fatal to a load.
@@ -148,9 +184,11 @@ def _load(model: ModelInfo):
             except Exception:  # noqa: BLE001 - optional optimisation; never fatal
                 pass
 
-    # User-configurable optimisations (VAE tiling/slicing, xformers, torch.compile)
-    # — all best-effort.
+    # User-configurable optimisations (VAE tiling/slicing, attention slicing, xformers,
+    # torch.compile) — all best-effort. attention slicing is applied by apply_perf per
+    # the setting; mirror it here so the IP-adapter restore path re-applies correctly.
     settings = load_settings()
+    _attention_slicing = settings.attention_slicing
     apply_perf(pipe, settings)
     apply_compile(pipe, settings)
 

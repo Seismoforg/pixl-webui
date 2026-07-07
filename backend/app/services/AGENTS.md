@@ -35,7 +35,9 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
 - resources.py      — live CPU/RAM/VRAM/GPU% stats
 - gpu_win.py        — Windows GPU% fallback (PowerShell perf counter)
 - optimizations.py  — perf toggles applied on pipe load: apply_perf (VAE tiling/
-                      slicing, xformers), apply_compile (torch.compile)
+                      slicing, attention slicing [enable/disable per setting — the single
+                      place all pipes get it; no VRAM auto-switch], xformers),
+                      apply_compile (torch.compile)
 - vram.py           — release(): gc + empty_cache
 
 # Key Components
@@ -75,7 +77,9 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             VRAM). Non-GGUF at NF4/int8 (`effective_level` != fp16) → `_load_quantized`:
             heavy module (transformer/UNet by family) bitsandbytes-quantized from local
             fp16 weights via `device.load_quantized_pipe`, CPU-offloaded — LoRA-capable
-            (unlike GGUF). ROCm: load prologue enables TunableOp (GEMM tuning); post apply_perf
+            (unlike GGUF). ROCm: load prologue enables TunableOp (GEMM tuning) per the
+            `tunable_ops` setting, after `_prune_stale_tunable_cache` drops a cache whose
+            validators (rocBLAS/hipBLASLt version) no longer match the runtime; post apply_perf
             runs apply_compile. Also applies the sampler via samplers.apply_sampler,
             guarded by pipe.scheduler.compatibles (FLUX/SD3 kept intact); step callback
             optionally decodes a throttled live preview

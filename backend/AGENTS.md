@@ -8,11 +8,14 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
   models into `models/<slug>`
 - Assess whether a model fits the current GPU (full / CPU-offload / too large)
 - Persist user settings (HuggingFace token + performance toggles: VAE tiling/
-  slicing, xformers, torch.compile — applied to generation and upscale pipelines on
-  load; plus the SD x4 upscaler step count and the outpaint negative-prompt default,
+  slicing, attention slicing [pure setting, no VRAM auto-switch; default off], xformers,
+  torch.compile — applied to every pipe on load; plus the SD x4 upscaler step count and
+  the outpaint negative-prompt default,
   read per-run; plus preferred default dropdown selections
   `default_model`/`default_upscaler`/`default_outpaint_engine`, consumed by the UI).
-  On ROCm, GEMM kernels are auto-tuned via TunableOp (persistently cached in `data/`)
+  On ROCm, GEMM kernels are auto-tuned via TunableOp (gated by the `tunable_ops`
+  setting; persistently cached in `data/`; a stale cache from a ROCm-version change is
+  auto-cleared on load so it re-tunes + persists instead of being rejected every start)
 - Run text-to-image generation as a background job with live step progress
 - Quantize non-GGUF models on the fly at load (bitsandbytes NF4/int8) — the default
   16 GB path (ADR 0019): a per-entry level in settings (`load_quantization`, else auto-

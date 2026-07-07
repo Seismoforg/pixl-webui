@@ -34,7 +34,9 @@ export const QuantSelect = ({ levels, value, suggested, onChange, disabled }: Qu
       value={value}
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
-      sx={{ minWidth: 116 }}
+      // Size to the (short) content — the closed field only shows the level id — and
+      // never stretch to fill the row; hug the right edge when the row stacks (mobile).
+      sx={{ width: 112, flexShrink: 0, alignSelf: { xs: "flex-end", md: "auto" } }}
       SelectProps={{ renderValue: (v) => t(`quant.level.${v as string}`) }}
     >
       {levels.map((l) => {

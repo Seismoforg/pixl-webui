@@ -30,6 +30,15 @@ def apply_perf(pipe, settings: Settings) -> None:
         _enable_vae(pipe, "enable_tiling", "enable_vae_tiling")
     if settings.vae_slicing:
         _enable_vae(pipe, "enable_slicing", "enable_vae_slicing")
+    # Attention slicing is driven purely by the setting on every pipe (no VRAM
+    # auto-switch): enable or explicitly disable so a toggle-off also clears it.
+    try:
+        if settings.attention_slicing:
+            pipe.enable_attention_slicing()
+        else:
+            pipe.disable_attention_slicing()
+    except Exception:  # noqa: BLE001 - optional optimisation; never fatal
+        pass
     if settings.xformers:
         try:
             pipe.enable_xformers_memory_efficient_attention()
