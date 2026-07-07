@@ -14,10 +14,16 @@ from __future__ import annotations
 
 import threading
 
-from . import callbacks, vram
+from . import callbacks, fit, quantize, vram
 from .. import config
 from ..config import load_settings
-from ..device import load_gguf_pipe, make_generator
+from ..device import (
+    get_compute_dtype,
+    load_gguf_pipe,
+    load_quantized_pipe,
+    make_generator,
+    place_offloaded,
+)
 from .optimizations import apply_perf
 from .upscalers import UpscalerInfo
 
@@ -59,7 +65,7 @@ def load(engine: UpscalerInfo):
     _inpaint_engine.unload()
     vram.release()
 
-    pipe = _load_flux_kontext(engine)
+    pipe = _load_flux_kontext_gguf(engine) if engine.is_gguf else _load_flux_kontext(engine)
     apply_perf(pipe, load_settings())
     with _lock:
         _pipe = pipe
@@ -67,7 +73,7 @@ def load(engine: UpscalerInfo):
     return pipe
 
 
-def _load_flux_kontext(engine: UpscalerInfo):
+def _load_flux_kontext_gguf(engine: UpscalerInfo):
     """Build a FLUX.1 Kontext pipe from the engine's GGUF transformer (shared GGUF
     load path). Only the transformer is quantized; the base repo supplies the
     VAE/text encoders/scheduler. CPU-offloaded to keep peak VRAM within ~16 GB."""
@@ -75,6 +81,27 @@ def _load_flux_kontext(engine: UpscalerInfo):
 
     model_path = config.model_dir(engine.slug)
     return load_gguf_pipe(model_path, engine.gguf_filename, FluxTransformer2DModel, FluxKontextPipeline)
+
+
+def _load_flux_kontext(engine: UpscalerInfo):
+    """Build a FLUX.1 Kontext pipe from the fp16 repo, quantized on the fly (NF4/int8)
+    per the engine's effective level, else full fp16. Transformer quantized, CPU-
+    offloaded (bounds VRAM; ~16 GB at NF4)."""
+    from diffusers import FluxKontextPipeline, FluxTransformer2DModel
+
+    model_path = config.model_dir(engine.slug)
+    level = fit.effective_level(engine.slug, engine.min_vram_gb, "FLUX")
+    quant_cfg = quantize.quant_config(level, "FLUX") if level != "fp16" else None
+    if quant_cfg is not None:
+        return load_quantized_pipe(
+            model_path, FluxTransformer2DModel, FluxKontextPipeline, quant_cfg,
+            component="transformer", family="FLUX", variant=engine.variant,
+        )
+    pipe = FluxKontextPipeline.from_pretrained(
+        str(model_path), torch_dtype=get_compute_dtype(),
+        variant=engine.variant, use_safetensors=engine.use_safetensors,
+    )
+    return place_offloaded(pipe)
 
 
 def edit_image(

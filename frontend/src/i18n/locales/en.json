@@ -143,6 +143,7 @@
     "weight": "Weight",
     "weightInfo": "How strongly the LoRA is applied. 1.0 = full strength; lower blends it in more subtly, higher over-applies it.",
     "activeCount": "{count} LoRA(s) active.",
+    "fluxQuantHint": "FLUX LoRAs apply on the fp16 base loaded at NF4/int8 (the default on 16 GB) — set the precision on the Models page. GGUF FLUX bases can't take LoRAs.",
     "kindLabel": "Type",
     "kind": {
       "style": "Style",
@@ -152,6 +153,12 @@
       "accelerator": "Accelerator",
       "other": "Other"
     }
+  },
+  "quant": {
+    "label": "Precision",
+    "suggested": "suggested",
+    "level": { "fp16": "fp16", "int8": "int8", "nf4": "NF4" },
+    "hint": "NF4 / int8 quantize the model on load so FLUX runs in ~16 GB — with LoRAs, unlike GGUF. Pick a lighter level if it doesn't fit; the suggested one is auto-selected."
   },
   "gallery": {
     "title": "Gallery",

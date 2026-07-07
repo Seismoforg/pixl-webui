@@ -72,8 +72,9 @@ class UpscalerInfo(BaseModel):
 
 # Slug of the inpaint model used for the outpaint reframe strategy.
 INPAINT_SLUG = "outpaint--sd-inpaint"
-# Default edit (FLUX Kontext) engine — the smallest GGUF, widest VRAM compatibility.
-EDIT_SLUG = "edit--flux-kontext-gguf-q4ks"
+# Default edit (FLUX Kontext) engine — the fp16 repo, loaded at its suggested NF4/int8
+# level (bitsandbytes) so it fits ~16 GB while staying LoRA-capable.
+EDIT_SLUG = "edit--flux-kontext"
 
 DEFAULT_CATALOG_FILE = Path(__file__).parents[1] / "engines_catalog.json"
 OVERRIDE_CATALOG_FILE = DATA_DIR / "engines_catalog.json"

@@ -117,6 +117,21 @@ export const ModelManager = ({ models, loading, error, onChanged }: ModelManager
     }
   };
 
+  // Persist a model's load-time quantization into the settings map, then refresh the
+  // list so its fit badge + grouping reflect the new level.
+  const handleQuantChange = async (slug: string, level: string) => {
+    try {
+      const settings = await api.getSettings();
+      await api.saveSettings({
+        ...settings,
+        load_quantization: { ...settings.load_quantization, [slug]: level },
+      });
+      onChanged();
+    } catch (err) {
+      setErrors((prev) => ({ ...prev, [slug]: errorProgress(slug, err) }));
+    }
+  };
+
   const section = (titleKey: string, entries: ModelEntry[]) => {
     if (entries.length === 0) return null;
     return (
@@ -132,6 +147,7 @@ export const ModelManager = ({ models, loading, error, onChanged }: ModelManager
               progress={progressFor(model.slug)}
               onDownload={handleDownload}
               onDelete={setPendingSlug}
+              onQuantChange={handleQuantChange}
             />
           ))}
         </Stack>

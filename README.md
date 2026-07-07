@@ -30,6 +30,15 @@ The installer detects your GPU and installs the matching PyTorch build:
 
 then installs the backend and frontend dependencies. Re-run with `-Force` to rebuild.
 
+It also installs **bitsandbytes** for on-the-fly NF4/int8 quantization (CUDA → the PyPI
+wheel; AMD/ROCm → a community wheel matched to your GPU; no GPU → skipped). This lets
+FLUX run in ~16 GB VRAM **with LoRAs** — pick the precision per model on the Models page
+(the fitting level is auto-selected). If no matching wheel is found the app still runs,
+just at fp16. Quantized FLUX inpaint/edit uses the fp16 **FLUX.1-Fill-dev** /
+**FLUX.1-Kontext-dev** repos, which are **gated** — add your HuggingFace token in
+Settings and accept their licenses. GGUF models are no longer shipped by default but can
+be re-added in Settings → Curated models/engines.
+
 ## Run
 
 ```powershell

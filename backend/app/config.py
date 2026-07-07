@@ -76,6 +76,11 @@ class Settings(BaseModel):
     default_model: str | None = None
     default_upscaler: str | None = None
     default_outpaint_engine: str | None = None
+    # Per-entry load-time quantization level: {slug: "fp16" | "int8" | "nf4"} for
+    # non-GGUF models AND the FLUX Fill/Kontext engines. Set on the Models page, read
+    # at pipeline/engine load. A slug absent from the map loads at its auto-suggested
+    # level (highest quality that fits live VRAM); see services.quantize + fit.
+    load_quantization: dict[str, str] = {}
 
 
 def ensure_dirs() -> None:

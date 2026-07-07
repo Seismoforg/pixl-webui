@@ -23,6 +23,7 @@ import { trackUpscalerDownload, useDownloads } from "@/providers/DownloadProvide
 import { MonoText } from "@/components/atoms/MonoText";
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { ConfirmDialog } from "@/components/molecules/ConfirmDialog";
+import { QuantSelect } from "@/components/molecules/QuantSelect";
 import { SkeletonList } from "@/components/molecules/SkeletonList";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
@@ -84,6 +85,20 @@ export const EngineManager = () => {
     }
   };
 
+  // Persist a FLUX engine's load-time quantization into the settings map, then refresh.
+  const handleQuantChange = async (slug: string, level: string) => {
+    try {
+      const settings = await api.getSettings();
+      await api.saveSettings({
+        ...settings,
+        load_quantization: { ...settings.load_quantization, [slug]: level },
+      });
+      reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const section = (titleKey: string, entries: UpscalerEngine[]) => {
     if (entries.length === 0) return null;
     return (
@@ -99,6 +114,7 @@ export const EngineManager = () => {
               progress={downloads.progress[engine.slug]}
               onDownload={() => handleDownload(engine)}
               onDelete={() => setPendingSlug(engine.slug)}
+              onQuantChange={handleQuantChange}
             />
           ))}
         </Stack>
@@ -153,9 +169,10 @@ interface EngineRowProps {
   progress?: DownloadProgress;
   onDownload: () => void;
   onDelete: () => void;
+  onQuantChange: (slug: string, level: string) => void;
 }
 
-const EngineRow = ({ engine, progress, onDownload, onDelete }: EngineRowProps) => {
+const EngineRow = ({ engine, progress, onDownload, onDelete, onQuantChange }: EngineRowProps) => {
   const t = useTranslations();
   const status = progress?.status ?? engine.status;
   const isDownloading = status === "downloading";
@@ -231,6 +248,13 @@ const EngineRow = ({ engine, progress, onDownload, onDelete }: EngineRowProps) =
             />
           </Tooltip>
         </Box>
+
+        <QuantSelect
+          levels={engine.quant_levels}
+          value={engine.load_level}
+          suggested={engine.suggested_level}
+          onChange={(level) => onQuantChange(engine.slug, level)}
+        />
 
         <Box sx={{ flexShrink: 0 }}>
           {engine.downloaded ? (

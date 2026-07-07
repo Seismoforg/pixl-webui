@@ -12,6 +12,8 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from ..catalog import ModelInfo
+from ..config import load_settings
+from . import quantize
 
 _GB = 1024**3
 
@@ -26,6 +28,15 @@ class FitInfo(BaseModel):
     est_vram_gb: float
     gpu_total_gb: float | None = None
     ram_total_gb: float | None = None
+
+
+class QuantLevel(BaseModel):
+    """One selectable load-time quantization level with its per-level VRAM estimate
+    and fit verdict, for the Models-page quant selector."""
+
+    level: str  # "fp16" | "int8" | "nf4"
+    est_vram_gb: float
+    verdict: str
 
 
 def _gpu_total_gb() -> float | None:
@@ -47,26 +58,102 @@ def _ram_total_gb() -> float | None:
     return round(psutil.virtual_memory().total / _GB, 2)
 
 
-def assess(model: ModelInfo) -> FitInfo:
-    """Classify how ``model`` fits the current inference device.
+# --- Primitive cores (min_vram_gb + family + approx_size_gb), reused by both the
+# model catalog and the quant-capable FLUX engines. ---
+
+def est_vram_for(min_vram_gb: float, family: str, level: str = "fp16") -> float:
+    """Estimated VRAM at quantization ``level``: the fp16 ``min_vram_gb`` with the
+    heavy module's share rescaled by the level's bytes/param (fp16 → unchanged;
+    int8 ≈ ½ the heavy module; nf4 ≈ ¼). A heuristic, floored."""
+    heavy_fp16 = quantize.heavy_module_gb_fp16(family)
+    scaled = heavy_fp16 * (quantize.bytes_per_param(level) / 2.0)
+    return round(max(min_vram_gb - heavy_fp16 + scaled, 0.5), 2)
+
+
+def _verdict(est: float, approx_size_gb: float, gpu: float | None, ram: float | None) -> str:
+    if gpu is None:
+        return "cpu_only"
+    if est <= gpu * _VRAM_USABLE:
+        return "fits_gpu"
+    if ram is not None and approx_size_gb <= ram * _RAM_USABLE:
+        return "fits_offload"
+    return "too_large"
+
+
+def assess_for(min_vram_gb: float, family: str, approx_size_gb: float, level: str = "fp16") -> FitInfo:
+    """Fit verdict from raw entry facts at load ``level`` — used for the quant-capable
+    engines (which aren't ``ModelInfo``) and, via ``assess``, the model catalog."""
+    est = est_vram_for(min_vram_gb, family, level)
+    gpu, ram = _gpu_total_gb(), _ram_total_gb()
+    return FitInfo(
+        verdict=_verdict(est, approx_size_gb, gpu, ram),
+        est_vram_gb=est,
+        gpu_total_gb=gpu,
+        ram_total_gb=ram,
+    )
+
+
+def quant_levels_for(min_vram_gb: float, family: str, approx_size_gb: float) -> list[QuantLevel]:
+    """Per-level VRAM estimate + fit verdict for each quantization level. Empty when
+    bitsandbytes is unavailable (fp16-only)."""
+    if not quantize.available():
+        return []
+    gpu, ram = _gpu_total_gb(), _ram_total_gb()
+    out = []
+    for level in quantize.LEVELS:
+        est = est_vram_for(min_vram_gb, family, level)
+        out.append(QuantLevel(level=level, est_vram_gb=est, verdict=_verdict(est, approx_size_gb, gpu, ram)))
+    return out
+
+
+def suggest_for(min_vram_gb: float, family: str) -> str:
+    """Highest-quality level whose estimate fits GPU VRAM (fp16 → int8 → nf4); nf4 as
+    a last resort. Always ``fp16`` with no GPU or no bitsandbytes (no quant benefit)."""
+    gpu = _gpu_total_gb()
+    if gpu is None or not quantize.available():
+        return "fp16"
+    for level in quantize.LEVELS:
+        if est_vram_for(min_vram_gb, family, level) <= gpu * _VRAM_USABLE:
+            return level
+    return "nf4"
+
+
+def effective_level(slug: str, min_vram_gb: float, family: str, is_gguf: bool = False) -> str:
+    """The load-time quantization level for an entry: the user's stored choice if
+    valid, else the auto-suggested level. ``fp16`` for GGUF entries (self-quantized)."""
+    if is_gguf:
+        return "fp16"
+    stored = load_settings().load_quantization.get(slug)
+    if stored in quantize.LEVELS:
+        return stored
+    return suggest_for(min_vram_gb, family)
+
+
+# --- Model-catalog wrappers over the primitives. ---
+
+def est_vram_gb(model: ModelInfo, level: str = "fp16") -> float:
+    return est_vram_for(model.min_vram_gb, model.family, level)
+
+
+def assess(model: ModelInfo, level: str = "fp16") -> FitInfo:
+    """Classify how ``model`` fits the current inference device at load ``level``.
 
     ``fits_gpu`` — the estimated VRAM need fits the GPU (with headroom).
     ``fits_offload`` — too big for VRAM, but the weights fit system RAM so the
     pipeline can stream them via CPU offloading (slower, but works).
     ``too_large`` — does not fit even with offloading.
     ``cpu_only`` — no CUDA GPU detected; everything runs on the CPU.
+
+    ``level`` != "fp16" scales the estimate down for a bitsandbytes NF4/int8 load.
     """
-    est = model.min_vram_gb
-    gpu = _gpu_total_gb()
-    ram = _ram_total_gb()
+    return assess_for(model.min_vram_gb, model.family, model.approx_size_gb, level)
 
-    if gpu is None:
-        verdict = "cpu_only"
-    elif est <= gpu * _VRAM_USABLE:
-        verdict = "fits_gpu"
-    elif ram is not None and model.approx_size_gb <= ram * _RAM_USABLE:
-        verdict = "fits_offload"
-    else:
-        verdict = "too_large"
 
-    return FitInfo(verdict=verdict, est_vram_gb=est, gpu_total_gb=gpu, ram_total_gb=ram)
+def quant_levels(model: ModelInfo) -> list[QuantLevel]:
+    """Per-level estimate + verdict for the Models-page selector (empty = fp16-only)."""
+    return quant_levels_for(model.min_vram_gb, model.family, model.approx_size_gb)
+
+
+def suggest_level(model: ModelInfo) -> str:
+    """Highest-quality level that fits GPU VRAM for ``model`` (see ``suggest_for``)."""
+    return suggest_for(model.min_vram_gb, model.family)

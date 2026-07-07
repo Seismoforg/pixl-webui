@@ -99,3 +99,40 @@ def load_gguf_pipe(model_path, gguf_filename: str, transformer_cls, pipeline_cls
         str(model_path), transformer=transformer, torch_dtype=dtype
     )
     return place_offloaded(pipe)
+
+
+def load_quantized_pipe(
+    model_path,
+    module_cls,
+    pipeline_cls,
+    quant_config,
+    *,
+    component: str,
+    family: str,
+    variant: str | None = None,
+):
+    """Build a bitsandbytes-quantized pipe: the heavy denoising module (``component``
+    = "transformer" or "unet") is loaded from the local fp16 weights + quantized on
+    the fly (NF4/int8); the base repo at ``model_path`` supplies the other components.
+    CPU-offloaded so encoders stream off the GPU (bounds peak VRAM). Compute dtype is
+    bf16 for FLUX / SD 3.x (their trained dtype), else fp16. Shared by the generation
+    and FLUX Fill/Kontext engine load paths."""
+    dtype = get_compute_dtype() if family in ("FLUX", "SD 3.x") else get_dtype()
+    module = module_cls.from_pretrained(
+        str(model_path),
+        subfolder=component,
+        variant=variant,
+        quantization_config=quant_config,
+        torch_dtype=dtype,
+    )
+    # variant is needed here too: repos that ship only fp16 weights (e.g. SDXL) have
+    # no non-variant VAE/encoder files, so the remaining components fail to load
+    # without it. use_safetensors matches every quant-capable curated entry.
+    pipe = pipeline_cls.from_pretrained(
+        str(model_path),
+        torch_dtype=dtype,
+        variant=variant,
+        use_safetensors=True,
+        **{component: module},
+    )
+    return place_offloaded(pipe)

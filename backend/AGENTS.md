@@ -14,10 +14,15 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
   `default_model`/`default_upscaler`/`default_outpaint_engine`, consumed by the UI).
   On ROCm, GEMM kernels are auto-tuned via TunableOp (persistently cached in `data/`)
 - Run text-to-image generation as a background job with live step progress
-- Load GGUF-quantized FLUX and SD 3.x models (catalog entries carrying a `.gguf`
-  transformer source): download the base repo without its transformer weights + the
-  single `.gguf`, and load the quantized transformer via diffusers'
-  GGUFQuantizationConfig so FLUX / SD 3.5 Large run in ~16 GB VRAM
+- Quantize non-GGUF models on the fly at load (bitsandbytes NF4/int8) — the default
+  16 GB path (ADR 0019): a per-entry level in settings (`load_quantization`, else auto-
+  suggested by live VRAM) quantizes the heavy module for generation + the FLUX Fill/
+  Kontext engines, so FLUX runs in ~16 GB WITH LoRAs (GGUF can't). bnb is installer-
+  managed; absent → fp16-only
+- Load GGUF-quantized FLUX and SD 3.x models (still supported, re-addable in the
+  catalog; removed from the default catalog per ADR 0019): download the base repo
+  without its transformer weights + the single `.gguf`, and load the quantized
+  transformer via diffusers' GGUFQuantizationConfig so FLUX / SD 3.5 Large run in ~16 GB
 - Encode long/weighted prompts (>77 CLIP tokens, A1111 `(word:1.2)` weighting)
   via compel for SD 1.5 / SDXL; other families keep the native prompt path
 - Optional reference image: img2img variations, or IP-Adapter style (SD 1.5/SDXL)
@@ -84,7 +89,8 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 
 # Key Components
 - services/* — business logic; per-service detail in app/services/AGENTS.md. Modules:
-               jobs (shared job store/resolve/save), job_guard (ADR 0014), downloader,
+               jobs (shared job store/resolve/save), job_guard (ADR 0014), quantize
+               (bnb NF4/int8 config + VRAM heuristics, ADR 0019), downloader,
                pipeline, prompt_embeds, preview, callbacks, upscalers, upscale, reframe,
                inpaint_engine, inpaint, outpaint, edit, fit, gallery, prompt_templates,
                resources, gpu_win, vram, optimizations

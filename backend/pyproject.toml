@@ -9,6 +9,10 @@ requires-python = ">=3.10,<3.14"
 # this package, so that spandrel's torchvision requirement is already satisfied and
 # pip does not pull a mismatched CPU/CUDA build from PyPI (which would break the GPU
 # torch). torchvision is required by spandrel (the Real-ESRGAN upscaler).
+# bitsandbytes is likewise NOT listed: it's platform-specific (CUDA wheel vs the
+# community ROCm/Windows wheel) and installed by install.ps1. On-the-fly NF4/int8
+# quantization (ADR 0019) is guarded by services.quantize.available() — absent bnb
+# degrades to fp16-only.
 dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",

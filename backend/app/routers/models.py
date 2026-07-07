@@ -22,6 +22,12 @@ class CatalogEntry(ModelInfo):
     downloaded: bool
     status: str  # "idle" | "downloading" | "done" | "error"
     fit: fit.FitInfo
+    # Load-time quantization (non-GGUF only): the selectable levels with per-level
+    # fit, the auto-suggested level, and the effective (stored-or-suggested) level.
+    # Empty / fp16 for GGUF entries and when bitsandbytes is unavailable.
+    quant_levels: list[fit.QuantLevel] = []
+    suggested_level: str = "fp16"
+    load_level: str = "fp16"
 
 
 class DownloadStarted(BaseModel):
@@ -31,11 +37,16 @@ class DownloadStarted(BaseModel):
 
 def _entry(model: ModelInfo) -> CatalogEntry:
     progress = downloader.get_progress(model.slug)
+    level = pipeline.effective_level(model)
+    quant = [] if model.is_gguf else fit.quant_levels(model)
     return CatalogEntry(
         **model.model_dump(),
         downloaded=downloader.is_downloaded(model.slug),
         status=progress.status,
-        fit=fit.assess(model),
+        fit=fit.assess(model, level),
+        quant_levels=quant,
+        suggested_level=fit.suggest_level(model) if not model.is_gguf else "fp16",
+        load_level=level,
     )
 
 

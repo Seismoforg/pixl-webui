@@ -33,7 +33,11 @@ Atomic-design React component library for the Pixl WebUI frontend: presentationa
   (`prompt` axis). "Add value" appends a row; each row removes itself. Presentational
   — axis pushed up via `onChange` (ComparePanel)
 - ModelListItem — one model as a compact list row (name + GGUF tag + chips + fit
-  badge + HF link + download/delete + progress bar)
+  badge + HF link + per-row QuantSelect + download/delete + progress bar)
+- QuantSelect — compact per-row load-time quantization picker (fp16/int8/NF4) for a
+  model or FLUX engine; each option shows its est-VRAM + fit color, tags the suggested
+  level; renders nothing when no levels offered (GGUF / bnb absent). Used by
+  ModelListItem + EngineManager's row
 - CatalogEntryRow — one curated-catalog entry as a rich list row (identity + HF link
   + caller-supplied badges slot + on-disk install action [Download / Downloaded+Delete]
   + catalog actions [Edit / Remove-from-catalog] + progress bar). Presentational; used

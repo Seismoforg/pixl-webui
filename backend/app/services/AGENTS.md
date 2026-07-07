@@ -72,7 +72,10 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             `_ensure_no_loras` clears them; reset on model switch. GGUF entries → `_load_gguf`:
             transformer built from local `.gguf` (GGUFQuantizationConfig, bf16), passed
             into family from_pretrained (Flux/StableDiffusion3), CPU-offloaded (bounds
-            VRAM). ROCm: load prologue enables TunableOp (GEMM tuning); post apply_perf
+            VRAM). Non-GGUF at NF4/int8 (`effective_level` != fp16) → `_load_quantized`:
+            heavy module (transformer/UNet by family) bitsandbytes-quantized from local
+            fp16 weights via `device.load_quantized_pipe`, CPU-offloaded — LoRA-capable
+            (unlike GGUF). ROCm: load prologue enables TunableOp (GEMM tuning); post apply_perf
             runs apply_compile. Also applies the sampler via samplers.apply_sampler,
             guarded by pipe.scheduler.compatibles (FLUX/SD3 kept intact); step callback
             optionally decodes a throttled live preview
@@ -104,11 +107,12 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
 - inpaint_engine.py — shared inpaint primitives for BOTH outpaint + inpaint: single
             cached inpaint pipe + `load`/`unload`, `run_inpaint` (one step-reported
             pass), engine caps, `is_sdxl`/`is_flux`/`working_cap`, `make_generator`,
-            `effective_negative`. GGUF → `_load_flux_fill` (GGUF transformer +
+            `effective_negative`. GGUF → `_load_flux_fill_gguf` (GGUF transformer +
             FluxFillPipeline + CPU offload; Flux drops negative, passes explicit
-            height/width); non-GGUF → AutoPipelineForInpainting. Only one inpaint pipe
-            loaded at a time; `pipeline.unload()`/`upscale.unload()` before load
-            (VRAM-coordinated)
+            height/width); non-GGUF FLUX Fill → `_load_flux_fill` (fp16 transformer
+            NF4/int8-quantized per effective level, else fp16; CPU offload); other
+            non-GGUF → AutoPipelineForInpainting. Only one inpaint pipe loaded at a time;
+            `pipeline.unload()`/`upscale.unload()` before load (VRAM-coordinated)
 - inpaint.py — user-mask inpainting: repaint the white-masked region with an `inpaint`
             engine. `_padded_box` crops a padded box (`mask_expand` knob grows the region
             first to swallow a subject's soft fringe → no halo). Scale crop into model
@@ -135,16 +139,26 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             params: steps (composition), refine_steps (hires), guidance, optional sampler
             (samplers.apply_sampler when supported), seed (seeded torch.Generator). Used by
             reframe=outpaint
-- edit.py — prompt-based whole-image editing (FLUX.1 Kontext). Loads an `edit` engine's
-            GGUF transformer into a `FluxKontextPipeline` (own cached pipe + `unload`,
-            CPU-offloaded). `edit_image` = one Kontext pass (source + instruction, NO
+- edit.py — prompt-based whole-image editing (FLUX.1 Kontext). Loads an `edit` engine
+            into a `FluxKontextPipeline` (own cached pipe + `unload`, CPU-offloaded):
+            GGUF → `_load_flux_kontext_gguf`; non-GGUF fp16 → `_load_flux_kontext` (NF4/
+            int8-quantized per effective level, else fp16). `edit_image` = one Kontext
+            pass (source + instruction, NO
             mask, NO negative — auto-resizes to ~1 MP internally bounding VRAM, result
             scaled back to source size), step-reported (phase "editing"). VRAM-
             coordinated: loading frees generation/upscale/inpaint, each frees it before
             load (mutual lazy-import unload). Driven by the edit job
-- fit.py — assess(model): fits_gpu / fits_offload / too_large / cpu_only vs live
-            VRAM+RAM; drives both the UI badge and pipeline device placement (offload)
-            so they never disagree
+- quantize.py — on-the-fly bitsandbytes quantization (ADR 0019): `quant_config(level,
+            family)` → diffusers `BitsAndBytesConfig` (nf4 4-bit / int8) or None (fp16 /
+            bnb absent); `available()` guard; `bytes_per_param`/`heavy_module_gb_fp16`
+            VRAM heuristics; `engine_family(engine)` → "FLUX" for the quant-capable Fill/
+            Kontext engines. bnb is installer-managed (platform-specific, like torch)
+- fit.py — assess(model, level): fits_gpu / fits_offload / too_large / cpu_only vs live
+            VRAM+RAM at a load level; drives the UI badge + pipeline device placement.
+            Primitive cores (`est_vram_for`/`assess_for`/`quant_levels_for`/`suggest_for`/
+            `effective_level`) reused by the model catalog AND the FLUX engines; per-level
+            estimate scales the heavy module by bytes/param; `suggest_level` picks the
+            best-quality level that fits; `effective_level` = stored map choice else suggested
 - gallery.py — persist images + metadata sidecars in outputs/, list/delete;
             `decode_data_url` turns a base64 data URL into a PIL image (shared via jobs)
 - prompt_templates.py — JSON store for reusable prompt snippets (positive/negative/

@@ -87,6 +87,9 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
   const [defModel, setDefModel] = useState("");
   const [defUpscaler, setDefUpscaler] = useState("");
   const [defOutpaint, setDefOutpaint] = useState("");
+  // Per-entry quantization map: managed on the Models page, only passed through here
+  // so saving other settings never wipes it.
+  const [loadQuant, setLoadQuant] = useState<Record<string, string>>({});
   // Downloaded entries to populate the default dropdowns.
   const [models, setModels] = useState<ModelEntry[]>([]);
   const [engines, setEngines] = useState<UpscalerEngine[]>([]);
@@ -112,6 +115,7 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
         setDefModel(s.default_model ?? "");
         setDefUpscaler(s.default_upscaler ?? "");
         setDefOutpaint(s.default_outpaint_engine ?? "");
+        setLoadQuant(s.load_quantization ?? {});
       })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
@@ -148,6 +152,7 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
         default_model: defModel || null,
         default_upscaler: defUpscaler || null,
         default_outpaint_engine: defOutpaint || null,
+        load_quantization: loadQuant,
       };
       await api.saveSettings(payload);
       setSaved(true);

@@ -19,6 +19,7 @@ from ..services import (
     job_guard,
     jobs,
     outpaint as outpaint_svc,
+    quantize,
     upscale as upscale_svc,
     upscalers,
 )
@@ -42,7 +43,12 @@ class UpscalerEntry(BaseModel):
     is_gguf: bool  # GGUF-quantized (FLUX Fill) — drives Flux-specific UI handling
     downloaded: bool
     status: str  # "idle" | "downloading" | "done" | "error"
-    fit: fit.FitInfo  # GPU-fit verdict, like the model catalog entries
+    fit: fit.FitInfo  # GPU-fit verdict at the effective load level
+    # Load-time quantization for the quant-capable FLUX engines (Fill / Kontext);
+    # empty / fp16 for the others and when bitsandbytes is unavailable.
+    quant_levels: list[fit.QuantLevel] = []
+    suggested_level: str = "fp16"
+    load_level: str = "fp16"
 
 
 class DownloadStarted(BaseModel):
@@ -133,6 +139,17 @@ def list_engines() -> list[UpscalerEntry]:
     entries: list[UpscalerEntry] = []
     for u in upscalers.all_engines():
         progress = downloader.get_progress(u.slug)
+        # Quant-capable FLUX engines (Fill / Kontext): expose the per-level selector
+        # and let the fit badge reflect the effective (stored-or-suggested) level.
+        qfam = quantize.engine_family(u)
+        if qfam is not None:
+            level = fit.effective_level(u.slug, u.min_vram_gb, qfam)
+            quant = fit.quant_levels_for(u.min_vram_gb, qfam, u.approx_size_gb)
+            suggested = fit.suggest_for(u.min_vram_gb, qfam)
+            fit_info = fit.assess_for(u.min_vram_gb, qfam, u.approx_size_gb, level)
+        else:
+            level, suggested, quant = "fp16", "fp16", []
+            fit_info = fit.assess(upscale_svc.to_model_info(u))
         entries.append(
             UpscalerEntry(
                 **u.model_dump(exclude={
@@ -143,7 +160,10 @@ def list_engines() -> list[UpscalerEntry]:
                 family=_engine_family(u.kind),
                 downloaded=downloader.is_downloaded(u.slug),
                 status=progress.status,
-                fit=fit.assess(upscale_svc.to_model_info(u)),
+                fit=fit_info,
+                quant_levels=quant,
+                suggested_level=suggested,
+                load_level=level,
             )
         )
     return entries

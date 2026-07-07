@@ -31,6 +31,24 @@ export interface FitInfo {
   ram_total_gb: number | null;
 }
 
+// Load-time quantization level (bitsandbytes) for non-GGUF entries.
+export type QuantLevelId = "fp16" | "int8" | "nf4";
+
+// One selectable quantization level with its per-level VRAM estimate + fit verdict.
+export interface QuantLevel {
+  level: QuantLevelId;
+  est_vram_gb: number;
+  verdict: FitVerdict;
+}
+
+// Quant fields shared by the model + FLUX-engine list entries. `quant_levels` is
+// empty for GGUF entries and when bitsandbytes is unavailable (fp16-only).
+export interface QuantFields {
+  quant_levels: QuantLevel[];
+  suggested_level: string;
+  load_level: string; // effective (stored-or-suggested) level
+}
+
 // The editable catalog shape for a generation model (mirrors backend ModelInfo).
 export interface ModelCatalogEntry {
   slug: string;
@@ -52,10 +70,10 @@ export interface ModelCatalogEntry {
 }
 
 // A catalog model plus its on-disk state + GPU-fit verdict (the /api/models list).
-export interface ModelEntry extends ModelCatalogEntry {
+export interface ModelEntry extends ModelCatalogEntry, QuantFields {
   downloaded: boolean;
   status: DownloadStatus;
-  fit: FitInfo;
+  fit: FitInfo; // GPU-fit at the effective load level
 }
 
 export interface DownloadProgress {
@@ -80,6 +98,9 @@ export interface AppSettings {
   default_model: string | null;
   default_upscaler: string | null;
   default_outpaint_engine: string | null;
+  // Per-entry load-time quantization {slug: "fp16" | "int8" | "nf4"} for non-GGUF
+  // models + the FLUX Fill/Kontext engines. A slug absent → auto-suggested level.
+  load_quantization: Record<string, string>;
 }
 
 export interface ResourceStats {
@@ -213,7 +234,7 @@ export interface EngineCatalogEntry {
   defaults: EngineDefaults;
 }
 
-export interface UpscalerEngine {
+export interface UpscalerEngine extends QuantFields {
   slug: string;
   kind: UpscalerKind;
   name: string;
@@ -227,7 +248,7 @@ export interface UpscalerEngine {
   is_gguf: boolean; // GGUF-quantized FLUX Fill outpaint engine (flow-matching)
   downloaded: boolean;
   status: DownloadStatus;
-  fit: FitInfo; // GPU-fit verdict, like the model catalog entries
+  fit: FitInfo; // GPU-fit verdict at the effective load level
 }
 
 export interface UpscaleRequest {

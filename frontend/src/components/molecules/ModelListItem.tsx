@@ -17,6 +17,7 @@ import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
+import { QuantSelect } from "@/components/molecules/QuantSelect";
 import { useTranslations } from "@/i18n";
 import { fitChipMeta } from "@/lib/fit";
 import type { ModelEntry, DownloadProgress } from "@/types";
@@ -26,6 +27,7 @@ interface ModelListItemProps {
   progress?: DownloadProgress;
   onDownload: (slug: string) => void;
   onDelete: (slug: string) => void;
+  onQuantChange?: (slug: string, level: string) => void;
 }
 
 /**
@@ -33,7 +35,13 @@ interface ModelListItemProps {
  * on the left, metric chips in the middle, the primary action on the right, with
  * the download progress bar spanning the full width below.
  */
-export const ModelListItem = ({ model, progress, onDownload, onDelete }: ModelListItemProps) => {
+export const ModelListItem = ({
+  model,
+  progress,
+  onDownload,
+  onDelete,
+  onQuantChange,
+}: ModelListItemProps) => {
   const t = useTranslations();
   const status = progress?.status ?? model.status;
   const isDownloading = status === "downloading";
@@ -111,6 +119,16 @@ export const ModelListItem = ({ model, progress, onDownload, onDelete }: ModelLi
             <Chip label={fit.label} size="small" color={fit.color} variant="outlined" />
           </Tooltip>
         </Box>
+
+        {/* Load-time quantization (non-GGUF only; empty when bnb unavailable) */}
+        {onQuantChange && (
+          <QuantSelect
+            levels={model.quant_levels}
+            value={model.load_level}
+            suggested={model.suggested_level}
+            onChange={(level) => onQuantChange(model.slug, level)}
+          />
+        )}
 
         {/* Action */}
         <Box sx={{ flexShrink: 0 }}>

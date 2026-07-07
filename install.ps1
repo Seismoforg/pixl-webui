@@ -235,12 +235,21 @@ function Install-Torch($gpu) {
             # created (New-Venv). torchvision comes from the SAME ROCm index so the later
             # backend install finds it satisfied and does NOT pull a mismatched CPU/CUDA
             # torchvision from PyPI (required by spandrel, the Real-ESRGAN upscaler).
-            # bitsandbytes is skipped (-SkipBitsAndBytes): the backend quantizes via
-            # GGUF, not bnb, so the footprint stays torch/torchvision/torchaudio only.
+            # bitsandbytes IS installed (no -SkipBitsAndBytes): the module matches a
+            # community ROCm/Windows wheel to (rocm major.minor, gfx arch, py) and enables
+            # on-the-fly NF4/int8 quantization (FLUX + LoRAs in ~16 GB). No matching wheel
+            # -> the module warns and continues; the feature degrades to fp16-only.
             $mod = Get-RocmModule
             Import-Module $mod -Force
-            Write-Info "Delegating ROCm/PyTorch install to rocm-torch-windows"
-            Initialize-RocmVenv -VenvPath $venv -SkipBitsAndBytes | Out-Null
+            Write-Info "Delegating ROCm/PyTorch (+ bitsandbytes) install to rocm-torch-windows"
+            try {
+                Initialize-RocmVenv -VenvPath $venv | Out-Null
+            }
+            catch {
+                Write-Warn ("ROCm bitsandbytes install failed ($($_.Exception.Message)); " +
+                    "retrying without it - quantization will fall back to fp16-only.")
+                Initialize-RocmVenv -VenvPath $venv -SkipBitsAndBytes | Out-Null
+            }
         }
         default {
             Write-Info "No supported GPU detected - installing CPU-only PyTorch (slow)."
@@ -260,6 +269,24 @@ function Install-Torch($gpu) {
     }
     elseif ($gpu.Vendor -eq "nvidia" -and $tag -notmatch "cu\d") {
         Write-Warn "Expected a CUDA build but got '$tag'. The GPU may not be usable."
+    }
+}
+
+# --- bitsandbytes (on-the-fly NF4/int8 quantization) ------------------------
+# AMD/ROCm bnb is handled by the rocm-torch-windows module (above). CUDA gets the
+# stock PyPI wheel; CPU has no benefit, so it's skipped. Best-effort everywhere: a
+# failure warns and continues, and the backend degrades to fp16-only (the quant path
+# is guarded by services.quantize.available()).
+function Install-Quantization($gpu) {
+    if ($gpu.Vendor -eq "nvidia") {
+        Write-Step "Installing bitsandbytes (CUDA quantization)"
+        Invoke-Pip install bitsandbytes
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warn "bitsandbytes install failed - NF4/int8 quantization will be unavailable (fp16-only)."
+        }
+    }
+    elseif ($gpu.Vendor -ne "amd") {
+        Write-Info "No GPU - skipping bitsandbytes (quantization has no CPU benefit)."
     }
 }
 
@@ -292,6 +319,7 @@ Test-Node
 $gpu = Get-GpuVendor
 New-Venv
 Install-Torch $gpu
+Install-Quantization $gpu
 $torchTag = Get-TorchTag
 Install-Backend
 

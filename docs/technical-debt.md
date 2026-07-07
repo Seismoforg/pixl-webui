@@ -1,5 +1,25 @@
 # Technical Debt
 
+## Community bitsandbytes wheel on ROCm/Windows is fragile  (added 2026-07-07)
+- Problem: On-the-fly NF4/int8 quantization (ADR 0019) needs bitsandbytes, but AMD/
+  ROCm-on-Windows has no official wheel. The installer relies on a community wheel
+  (0xDELUXA fork, a `dev0` build) matched to (rocm major.minor, gfx arch, py) via the
+  rocm-torch-windows module. Pinned to a narrow support matrix.
+- Impact: A new ROCm/gfx/Python combo with no matching wheel silently degrades the app
+  to fp16-only (FLUX no longer fits 16 GB, LoRAs on FLUX unavailable). The `dev0` build
+  may break against future bnb/torch versions.
+- Proposed Resolution: Track official ROCm bitsandbytes support and switch to it when
+  available; widen the community wheel matrix in rocm-torch-windows meanwhile.
+
+## SDXL/SD inpaint engines don't expose on-the-fly quantization  (added 2026-07-07)
+- Problem: ADR 0019 wires NF4/int8 only for generation models + the FLUX Fill/Kontext
+  engines. The SD/SDXL inpaint engines (`inpaint--sdxl`, `outpaint--sd-inpaint`) still
+  load fp16 only — `quantize.engine_family` returns None for them.
+- Impact: No lighter-VRAM option for the SDXL inpaint engine; minor (it already fits
+  ~10 GB). Inconsistent with the generation UNet path, which does quantize SDXL.
+- Proposed Resolution: Extend the engine quant path to UNet inpaint pipelines
+  (`AutoPipelineForInpainting` with a pre-quantized `unet=`) if the VRAM saving is wanted.
+
 ## Batch `_run` job loop duplicated across edit/inpaint/reframe routers  (added 2026-07-07)
 - Problem: The `_run` background-job loop in `routers/edit.py`, `routers/inpaint.py`
   and `routers/reframe.py` is near-identical: base-seed pick, `job.batch_size` set,

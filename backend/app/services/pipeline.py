@@ -19,14 +19,16 @@ from ..device import (
     get_dtype,
     get_torch_device,
     load_gguf_pipe,
+    load_quantized_pipe,
     make_generator,
 )
 from . import callbacks
 from . import preview as preview_svc
 from . import prompt_embeds
+from . import quantize
 from . import vram
 from .downloader import is_downloaded
-from .fit import assess
+from .fit import assess, effective_level as fit_effective_level
 from .optimizations import apply_compile, apply_perf
 
 # Minimum wall-clock gap between decoded previews, so high step counts don't spam
@@ -99,10 +101,18 @@ def _load(model: ModelInfo):
     _reset_aux_state()
     vram.release()  # return the previous model's VRAM before loading the next
 
+    level = effective_level(model)
+    quant_cfg = quantize.quant_config(level, model.family) if level != "fp16" else None
+
     if model.is_gguf:
         # GGUF loads a quantized transformer and always CPU-offloads (below), so no
         # separate fit-based placement / attention slicing is applied.
         pipe = _load_gguf(model)
+        _attention_slicing = False
+    elif quant_cfg is not None:
+        # On-the-fly bitsandbytes NF4/int8: heavy module quantized, CPU-offloaded
+        # (like GGUF) so encoders stream off the GPU — but LoRA-compatible.
+        pipe = _load_quantized(model, quant_cfg)
         _attention_slicing = False
     else:
         from diffusers import AutoPipelineForText2Image
@@ -170,6 +180,43 @@ def _load_gguf(model: ModelInfo):
 
     model_path = config.model_dir(model.slug)
     return load_gguf_pipe(model_path, model.gguf_filename, TransformerCls, PipelineCls)
+
+
+# family -> (heavy-module class name, subfolder/kwarg, pipeline class name) for the
+# non-GGUF quantized load. Resolved from diffusers lazily in _load_quantized.
+_QUANT_FAMILY = {
+    "FLUX": ("FluxTransformer2DModel", "transformer", "FluxPipeline"),
+    "SD 3.x": ("SD3Transformer2DModel", "transformer", "StableDiffusion3Pipeline"),
+    "SDXL": ("UNet2DConditionModel", "unet", "StableDiffusionXLPipeline"),
+    "SD 1.5": ("UNet2DConditionModel", "unet", "StableDiffusionPipeline"),
+}
+
+
+def effective_level(model: ModelInfo) -> str:
+    """The load-time quantization level for ``model``: the user's stored choice if
+    valid, else the auto-suggested level (highest quality that fits live VRAM). Always
+    ``fp16`` for GGUF entries (they carry their own quantization)."""
+    return fit_effective_level(model.slug, model.min_vram_gb, model.family, model.is_gguf)
+
+
+def _load_quantized(model: ModelInfo, quant_cfg):
+    """Build a pipeline whose heavy module (transformer/UNet) is bitsandbytes-quantized
+    on the fly from the local fp16 weights. CPU-offloaded (bounds VRAM), LoRA-capable."""
+    import diffusers
+
+    entry = _QUANT_FAMILY.get(model.family)
+    if entry is None:
+        raise ValueError(messages.GGUF_UNSUPPORTED_FAMILY.format(family=model.family))
+    module_name, component, pipeline_name = entry
+    return load_quantized_pipe(
+        config.model_dir(model.slug),
+        getattr(diffusers, module_name),
+        getattr(diffusers, pipeline_name),
+        quant_cfg,
+        component=component,
+        family=model.family,
+        variant=model.variant,
+    )
 
 
 def unload(slug: str | None = None) -> None:

@@ -101,6 +101,11 @@ export const LoraPicker = ({ family, onAppendPrompt }: LoraPickerProps) => {
       <Typography variant="body2" color="text.secondary">
         {t("lora.help")}
       </Typography>
+      {family === "FLUX" && (
+        <Typography variant="caption" color="text.secondary">
+          {t("lora.fluxQuantHint")}
+        </Typography>
+      )}
       {dlError && (
         <Typography color="error" variant="body2">
           {dlError}
