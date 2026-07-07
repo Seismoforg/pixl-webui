@@ -56,7 +56,8 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
     () => api.getPromptSnippets(),
     [],
   );
-  const snippets = snippetsData ?? [];
+  // Stable ref when the fetch is null so the memos below don't recompute every render.
+  const snippets = useMemo(() => snippetsData ?? [], [snippetsData]);
 
   const positiveSnippets = useMemo(() => snippets.filter((s) => s.kind === "positive"), [snippets]);
   const negativeSnippets = useMemo(() => snippets.filter((s) => s.kind === "negative"), [snippets]);

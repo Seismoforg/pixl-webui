@@ -206,7 +206,7 @@ export const useJobTracker = <T>(
       unsub();
       clearInterval(id);
     };
-  }, [jobId, channel]);
+  }, [jobId, channel, pollMs]);
 };
 
 /** Reactive WebSocket connection state for a status indicator. */

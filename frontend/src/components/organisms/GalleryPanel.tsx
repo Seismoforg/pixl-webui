@@ -42,7 +42,8 @@ export const GalleryPanel = ({ onRegenerate, onUpscale, reloadToken }: GalleryPa
     error: loadError,
     reload,
   } = useAsyncData(() => api.getImages(), [reloadToken]);
-  const images = data ?? [];
+  // Stable ref when `data` is null so the memos below don't recompute every render.
+  const images = useMemo(() => data ?? [], [data]);
   const [query, setQuery] = useState("");
   const [modelFilter, setModelFilter] = useState("");
   const [selected, setSelected] = useState<GalleryImage | null>(null);
