@@ -7,7 +7,7 @@
     the Python backend and the Node.js frontend dependencies.
 
       NVIDIA -> PyTorch CUDA wheels
-      AMD    -> ROCm PyTorch via the rocm-torch-windows multi-arch index
+      AMD    -> ROCm PyTorch via the fetched rocm-torch-windows module (pinned)
       other  -> CPU-only PyTorch
 
     Node.js is checked and installed automatically (winget) if missing or too old.
@@ -28,7 +28,13 @@ $venvPython = Join-Path $venv "Scripts\python.exe"
 $MinNodeMajor = 18
 $CudaIndex = "https://download.pytorch.org/whl/cu124"
 $CpuIndex = "https://download.pytorch.org/whl/cpu"
-$RocmIndex = "https://rocm.nightlies.amd.com/whl-multi-arch/"
+
+# The AMD/ROCm install is delegated to the rocm-torch-windows PowerShell module,
+# fetched from GitHub at a PINNED commit (below). This keeps the GPU->gfx map and
+# the ROCm wheel index in one upstream place instead of duplicating them here.
+$RocmModuleRepo = "Seismoforg/rocm-torch-windows"
+$RocmModuleRef = "20a28c717ceccfdc9bd6419faece9015215ef4d2"
+$RocmModuleDir = Join-Path $root ".rocm-module"
 
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Write-Info($msg) { Write-Host "    $msg" -ForegroundColor Gray }
@@ -116,17 +122,46 @@ function Get-GpuVendor {
     return @{ Vendor = "cpu"; Name = ($gpus | Select-Object -First 1) }
 }
 
-# Map an AMD GPU name to a rocm-torch-windows gfx architecture.
-function Get-GfxArch($name) {
-    switch -Regex ($name) {
-        "RX\s*90[7-9]0" { return "gfx1201" }
-        "RX\s*90[0-6]0" { return "gfx1200" }
-        "RX\s*7900"     { return "gfx1100" }
-        "RX\s*7[78]00"  { return "gfx1101" }
-        "RX\s*7600"     { return "gfx1102" }
-        "RX\s*6\d{3}"   { return "gfx1030" }
-        default          { return $null }
+# Fetch the rocm-torch-windows module (RocmVenv) from GitHub at the pinned commit
+# and return the path to import. Cached under .rocm-module/ and only re-downloaded
+# when the pinned ref changes. No offline fallback: the install needs network for
+# the ROCm wheels regardless, so a failed fetch fails the whole install loudly.
+function Get-RocmModule {
+    $moduleDir = Join-Path $RocmModuleDir "RocmVenv"
+    $stamp = Join-Path $RocmModuleDir ".ref"
+    if ((Test-Path $moduleDir) -and (Test-Path $stamp) -and
+        ((Get-Content -Raw $stamp).Trim() -eq $RocmModuleRef)) {
+        return $moduleDir   # cache hit
     }
+
+    Write-Step "Fetching rocm-torch-windows module ($RocmModuleRef)"
+    $tmpZip = Join-Path ([System.IO.Path]::GetTempPath()) ("rocm-module-$RocmModuleRef.zip")
+    $tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) ("rocm-module-$RocmModuleRef")
+    $url = "https://codeload.github.com/$RocmModuleRepo/zip/$RocmModuleRef"
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $url -OutFile $tmpZip -Headers @{ "User-Agent" = "pixl-webui-installer" } -UseBasicParsing
+        if (Test-Path $tmpDir) { Remove-Item -Recurse -Force $tmpDir }
+        Expand-Archive -Path $tmpZip -DestinationPath $tmpDir -Force
+        # The zip extracts to a single <repo>-<ref>/ folder containing RocmVenv/.
+        $extracted = Get-ChildItem -Path $tmpDir -Directory | Select-Object -First 1
+        $src = Join-Path $extracted.FullName "RocmVenv"
+        if (-not (Test-Path $src)) { throw "RocmVenv folder not found in the downloaded archive." }
+        if (Test-Path $RocmModuleDir) { Remove-Item -Recurse -Force $RocmModuleDir }
+        New-Item -ItemType Directory -Path $RocmModuleDir | Out-Null
+        Copy-Item -Path $src -Destination $moduleDir -Recurse
+        Set-Content -Path $stamp -Value $RocmModuleRef -Encoding ASCII
+    }
+    catch {
+        Fail ("Could not fetch the rocm-torch-windows module from GitHub ($url): " +
+            "$($_.Exception.Message). Check your internet connection and re-run:  .\install.ps1")
+    }
+    finally {
+        Remove-Item -Path $tmpZip -ErrorAction SilentlyContinue
+        Remove-Item -Path $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Write-Info "Module ready at $moduleDir"
+    return $moduleDir
 }
 
 # --- Virtual environment ----------------------------------------------------
@@ -194,14 +229,18 @@ function Install-Torch($gpu) {
             Invoke-Pip install torch torchvision --index-url $CudaIndex
         }
         "amd" {
-            $gfx = Get-GfxArch $gpu.Name
-            if (-not $gfx) { Fail "Could not map AMD GPU '$($gpu.Name)' to a gfx architecture. See rocm-torch-windows for supported cards." }
-            Write-Info "Using ROCm multi-arch build for $gfx (rocm-torch-windows)"
-            # torchvision from the SAME ROCm index (matches the torch ABI). It must be
-            # installed here so the later backend install finds it already satisfied and
-            # does NOT pull a mismatched CPU/CUDA torchvision from PyPI (which would break
-            # the ROCm torch). torchvision is required by spandrel (Real-ESRGAN upscaler).
-            Invoke-Pip install --index-url $RocmIndex "rocm[libraries,device-$gfx]" "torch[device-$gfx]" "torchvision[device-$gfx]"
+            # Delegate to the rocm-torch-windows module: it detects the gfx target
+            # (data-driven map), installs rocm + torch + torchvision + torchaudio from
+            # TheRock index, and verifies GPU visibility. It reuses the venv we already
+            # created (New-Venv). torchvision comes from the SAME ROCm index so the later
+            # backend install finds it satisfied and does NOT pull a mismatched CPU/CUDA
+            # torchvision from PyPI (required by spandrel, the Real-ESRGAN upscaler).
+            # bitsandbytes is skipped (-SkipBitsAndBytes): the backend quantizes via
+            # GGUF, not bnb, so the footprint stays torch/torchvision/torchaudio only.
+            $mod = Get-RocmModule
+            Import-Module $mod -Force
+            Write-Info "Delegating ROCm/PyTorch install to rocm-torch-windows"
+            Initialize-RocmVenv -VenvPath $venv -SkipBitsAndBytes | Out-Null
         }
         default {
             Write-Info "No supported GPU detected - installing CPU-only PyTorch (slow)."

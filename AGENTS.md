@@ -27,6 +27,9 @@ Diffusion family) models on Windows, with a Next.js frontend and a Python
 
 # Dependencies
 Python 3.10–3.13, Node.js 18+, PyTorch (CUDA or ROCm), diffusers, Next.js, MUI.
+AMD/ROCm install is delegated to the `rocm-torch-windows` module, fetched from
+GitHub at install time (pinned commit) — see docs/adr/0018. Needs network reach
+to github.com at install.
 
 # Related Modules
 - Child: ./backend  (inference API)
