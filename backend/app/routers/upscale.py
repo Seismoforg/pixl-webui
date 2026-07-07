@@ -23,7 +23,7 @@ from ..services import (
     upscale as upscale_svc,
     upscalers,
 )
-from ..services.upscalers import UpscalerInfo
+from ..services.upscalers import EngineDefaults, UpscalerInfo
 from ..config import load_settings
 
 router = APIRouter(prefix="/api/upscale", tags=["upscale"])
@@ -41,6 +41,7 @@ class UpscalerEntry(BaseModel):
     min_vram_gb: float  # recommended GPU VRAM — shown as a per-row badge
     prompt_capable: bool
     is_gguf: bool  # GGUF-quantized (FLUX Fill) — drives Flux-specific UI handling
+    defaults: EngineDefaults  # tuned steps/guidance/refine — applied by the forms on select
     downloaded: bool
     status: str  # "idle" | "downloading" | "done" | "error"
     fit: fit.FitInfo  # GPU-fit verdict at the effective load level
@@ -154,7 +155,7 @@ def list_engines() -> list[UpscalerEntry]:
             UpscalerEntry(
                 **u.model_dump(exclude={
                     "filename", "variant", "use_safetensors",
-                    "gguf_repo_id", "gguf_filename", "defaults",
+                    "gguf_repo_id", "gguf_filename",
                 }),
                 is_gguf=u.is_gguf,
                 family=_engine_family(u.kind),

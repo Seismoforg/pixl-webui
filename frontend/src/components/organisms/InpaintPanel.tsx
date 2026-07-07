@@ -9,7 +9,7 @@ import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { BrushControls } from "@/components/molecules/BrushControls";
@@ -120,11 +120,17 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
     reloadSnippets();
   }, [reloadSnippets]);
 
-  const inpaintEngines = engines.filter((e) => e.kind === "inpaint");
-  const selectedEngine = inpaintEngines.find((e) => e.slug === engine) ?? inpaintEngines[0] ?? null;
-  // FLUX Fill (GGUF) is flow-matching: it ignores the sampler and wants a higher
-  // guidance / more steps than SD inpaint.
-  const fluxEngine = !!selectedEngine?.is_gguf;
+  // Memoized so the selected engine + the defaults effect are stable across re-renders.
+  const inpaintEngines = useMemo(() => engines.filter((e) => e.kind === "inpaint"), [engines]);
+  const selectedEngine = useMemo(
+    () => inpaintEngines.find((e) => e.slug === engine) ?? inpaintEngines[0] ?? null,
+    [inpaintEngines, engine],
+  );
+  // Flow-matching engines (FLUX Fill GGUF/NF4, Z-Image, SD 3.x) keep their native
+  // scheduler (no sampler) and their own tuned defaults.
+  const fluxEngine =
+    !!selectedEngine &&
+    (selectedEngine.is_gguf || /flux|z-image|stable-diffusion-3/i.test(selectedEngine.repo_id));
 
   // Preferred default inpaint engine from Settings (reuses the outpaint default).
   useEffect(() => {
@@ -143,12 +149,14 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
     setEngine(target.slug);
   }, [inpaintEngines, engine, defaultEngine, settingsLoaded, setEngine]);
 
-  // FLUX Fill wants a higher guidance (~30) and more steps (~50) than SD inpaint.
+  // Apply the selected engine's tuned defaults (steps / guidance) when it changes —
+  // otherwise the form keeps generic values for every engine (Z-Image wants 9 steps /
+  // guidance 0, FLUX Fill 28 / 30, SD 30 / 7.5).
   useEffect(() => {
-    if (!fluxEngine) return;
-    setGuidance(30);
-    setSteps(50);
-  }, [fluxEngine, setGuidance, setSteps]);
+    if (!selectedEngine) return;
+    setSteps(selectedEngine.defaults.steps);
+    setGuidance(selectedEngine.defaults.guidance_scale);
+  }, [selectedEngine, setSteps, setGuidance]);
 
   const sourcePrompt = source?.kind === "gallery" ? sourceMeta?.prompt?.trim() || null : null;
   const engineDl = selectedEngine ? downloads.progress[selectedEngine.slug] : undefined;

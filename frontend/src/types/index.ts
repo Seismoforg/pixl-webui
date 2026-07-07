@@ -258,6 +258,7 @@ export interface UpscalerEngine extends QuantFields {
   min_vram_gb: number; // recommended VRAM — drives the per-row VRAM badge
   prompt_capable: boolean;
   is_gguf: boolean; // GGUF-quantized FLUX Fill outpaint engine (flow-matching)
+  defaults: EngineDefaults; // tuned steps/guidance/refine — applied by the forms on select
   downloaded: boolean;
   status: DownloadStatus;
   fit: FitInfo; // GPU-fit verdict at the effective load level

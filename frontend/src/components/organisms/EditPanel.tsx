@@ -9,7 +9,7 @@ import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { GenerationParams } from "@/components/molecules/GenerationParams";
@@ -74,8 +74,12 @@ export const EditPanel = ({ reloadToken, initialImageId }: EditPanelProps) => {
     initialImageId,
   );
 
-  const editEngines = engines.filter((e) => e.kind === "edit");
-  const selectedEngine = editEngines.find((e) => e.slug === engine) ?? editEngines[0] ?? null;
+  // Memoized so the selected engine + the defaults effect are stable across re-renders.
+  const editEngines = useMemo(() => engines.filter((e) => e.kind === "edit"), [engines]);
+  const selectedEngine = useMemo(
+    () => editEngines.find((e) => e.slug === engine) ?? editEngines[0] ?? null,
+    [editEngines, engine],
+  );
 
   // Default to the first downloaded edit engine (else the first listed) once loaded.
   // Intentional divergence from Reframe/Inpaint/Upscale: no `default_edit_engine`
@@ -85,6 +89,13 @@ export const EditPanel = ({ reloadToken, initialImageId }: EditPanelProps) => {
     const target = editEngines.find((e) => e.downloaded) ?? editEngines[0];
     setEngine(target.slug);
   }, [editEngines, engine, setEngine]);
+
+  // Apply the selected edit engine's tuned defaults (steps / guidance) when it changes.
+  useEffect(() => {
+    if (!selectedEngine) return;
+    setSteps(selectedEngine.defaults.steps);
+    setGuidance(selectedEngine.defaults.guidance_scale);
+  }, [selectedEngine, setSteps, setGuidance]);
 
   const engineDl = selectedEngine ? downloads.progress[selectedEngine.slug] : undefined;
   const needDownload = !!selectedEngine && !selectedEngine.downloaded;

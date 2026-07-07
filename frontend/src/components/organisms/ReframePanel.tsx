@@ -10,7 +10,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { InfoTip } from "@/components/molecules/InfoTip";
@@ -124,14 +124,30 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
     reloadSnippets();
   }, [reloadSnippets]);
 
-  // Only inpaint engines are selectable outpaint models.
-  const inpaintEngines = engines.filter((e) => e.kind === "inpaint");
+  // Only inpaint engines are selectable outpaint models. Memoized so the selected
+  // engine + the defaults effect are stable across unrelated re-renders.
+  const inpaintEngines = useMemo(() => engines.filter((e) => e.kind === "inpaint"), [engines]);
   // The chosen outpaint model (falls back to the first available inpaint engine).
-  const selectedEngine =
-    inpaintEngines.find((e) => e.slug === outpaintEngine) ?? inpaintEngines[0] ?? null;
-  // FLUX Fill (GGUF) is flow-matching: it ignores the sampler and wants a higher
-  // guidance / more steps than SD inpaint.
-  const fluxOutpaint = !!selectedEngine?.is_gguf;
+  const selectedEngine = useMemo(
+    () => inpaintEngines.find((e) => e.slug === outpaintEngine) ?? inpaintEngines[0] ?? null,
+    [inpaintEngines, outpaintEngine],
+  );
+  // Flow-matching engines (FLUX Fill GGUF/NF4, Z-Image, SD 3.x) keep their native
+  // scheduler (no sampler) and their own tuned defaults — SD-tuned source params don't
+  // transfer to them.
+  const flowMatchOutpaint =
+    !!selectedEngine &&
+    (selectedEngine.is_gguf || /flux|z-image|stable-diffusion-3/i.test(selectedEngine.repo_id));
+
+  // Apply the selected outpaint engine's tuned defaults (steps / guidance / refine
+  // steps) when the engine changes — otherwise the form keeps generic values for every
+  // engine (Z-Image wants 9 steps / guidance 0, FLUX Fill 28 / 30, SD 30 / 7.5).
+  useEffect(() => {
+    if (!selectedEngine) return;
+    setOutpaintSteps(selectedEngine.defaults.steps);
+    setOutpaintRefineSteps(selectedEngine.defaults.refine_steps);
+    setOutpaintGuidance(selectedEngine.defaults.guidance_scale);
+  }, [selectedEngine, setOutpaintSteps, setOutpaintRefineSteps, setOutpaintGuidance]);
 
   // Load the preferred default outpaint engine from Settings (best-effort).
   useEffect(() => {
@@ -159,28 +175,20 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
   // > 0 (a source that was itself a reframe/upscale carries sampler:"reframe" /
   // steps:0, which is skipped). Seed/batch are intentionally not adopted.
   useEffect(() => {
-    // For a Flux outpaint engine the Flux defaults below take precedence over the
-    // source's SD-tuned params, so skip this autofill then.
-    if (!sourceMeta || samplers.length === 0 || fluxOutpaint) return;
+    // For a flow-matching outpaint engine the engine's own defaults take precedence
+    // over the source's SD-tuned params, so skip this autofill then.
+    if (!sourceMeta || samplers.length === 0 || flowMatchOutpaint) return;
     if (sourceMeta.steps > 0) setOutpaintSteps(sourceMeta.steps);
     if (sourceMeta.guidance_scale > 0) setOutpaintGuidance(sourceMeta.guidance_scale);
     if (samplers.some((s) => s.id === sourceMeta.sampler)) setOutpaintSampler(sourceMeta.sampler);
   }, [
     sourceMeta,
     samplers,
-    fluxOutpaint,
+    flowMatchOutpaint,
     setOutpaintSteps,
     setOutpaintGuidance,
     setOutpaintSampler,
   ]);
-
-  // FLUX Fill wants a higher guidance (~30) and more steps (~50) than SD inpaint;
-  // apply those defaults when a Flux (GGUF) outpaint engine is selected.
-  useEffect(() => {
-    if (!fluxOutpaint) return;
-    setOutpaintGuidance(30);
-    setOutpaintSteps(50);
-  }, [fluxOutpaint, setOutpaintGuidance, setOutpaintSteps]);
 
   const outpaint = strategy === "outpaint";
   // Auto-fill source: a gallery image carries its original generation prompt in
@@ -550,7 +558,7 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
                   seed={outpaintSeed}
                   onSeed={setOutpaintSeed}
                   sampler={
-                    fluxOutpaint
+                    flowMatchOutpaint
                       ? undefined
                       : { list: samplers, value: outpaintSampler, onChange: setOutpaintSampler }
                   }
