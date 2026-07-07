@@ -94,5 +94,37 @@
     "gguf_repo_id": null,
     "gguf_filename": null,
     "defaults": { "steps": 9, "guidance_scale": 0.0, "width": 1024, "height": 1024 }
+  },
+  {
+    "slug": "flux2-klein-4b",
+    "repo_id": "black-forest-labs/FLUX.2-klein-4B",
+    "name": "FLUX.2 klein 4B",
+    "family": "FLUX.2",
+    "pipeline_tag": "text-to-image",
+    "description": "Compact 4B FLUX.2 model (Apache-2.0). Distilled, ~4 steps, no guidance. Loads at NF4 (auto, transformer + Qwen3 text encoder) → fits ~16 GB.",
+    "gated": false,
+    "approx_size_gb": 25.0,
+    "min_vram_gb": 30.0,
+    "variant": null,
+    "use_safetensors": true,
+    "gguf_repo_id": null,
+    "gguf_filename": null,
+    "defaults": { "steps": 4, "guidance_scale": 1.0, "width": 1024, "height": 1024 }
+  },
+  {
+    "slug": "flux2-klein-9b",
+    "repo_id": "black-forest-labs/FLUX.2-klein-9B",
+    "name": "FLUX.2 klein 9B",
+    "family": "FLUX.2",
+    "pipeline_tag": "text-to-image",
+    "description": "9B FLUX.2 model with an 8B Qwen3 text encoder. Gated (non-commercial) — needs a HuggingFace token. Distilled, ~4 steps. Loads at NF4 (auto, both modules) → fits ~16 GB.",
+    "gated": true,
+    "approx_size_gb": 35.0,
+    "min_vram_gb": 33.0,
+    "variant": null,
+    "use_safetensors": true,
+    "gguf_repo_id": null,
+    "gguf_filename": null,
+    "defaults": { "steps": 4, "guidance_scale": 1.0, "width": 1024, "height": 1024 }
   }
 ]

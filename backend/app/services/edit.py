@@ -19,6 +19,8 @@ from .. import config
 from ..config import load_settings
 from ..device import (
     get_compute_dtype,
+    get_torch_device,
+    load_flux2_pipe,
     load_gguf_pipe,
     load_quantized_pipe,
     make_generator,
@@ -65,7 +67,12 @@ def load(engine: UpscalerInfo):
     _inpaint_engine.unload()
     vram.release()
 
-    pipe = _load_flux_kontext_gguf(engine) if engine.is_gguf else _load_flux_kontext(engine)
+    if quantize.engine_family(engine) == "FLUX.2":
+        pipe = _load_flux2_edit(engine)
+    elif engine.is_gguf:
+        pipe = _load_flux_kontext_gguf(engine)
+    else:
+        pipe = _load_flux_kontext(engine)
     apply_perf(pipe, load_settings())
     with _lock:
         _pipe = pipe
@@ -102,6 +109,21 @@ def _load_flux_kontext(engine: UpscalerInfo):
         variant=engine.variant, use_safetensors=engine.use_safetensors,
     )
     return place_offloaded(pipe)
+
+
+def _load_flux2_edit(engine: UpscalerInfo):
+    """Build a FLUX.2 [klein] edit pipe (``Flux2KleinPipeline``, native img2img). At
+    NF4 both the transformer and the 8B Qwen3 text encoder are quantized (dual-module)
+    so the 9B fits ~16 GB; placed by the fit verdict (resident when it fits). Reuses the
+    generation weights (same slug), so no extra download."""
+    model_path = config.model_dir(engine.slug)
+    level = fit.effective_level(engine.slug, engine.min_vram_gb, "FLUX.2")
+    quant_cfg = quantize.flux2_quant_config(level) if level != "fp16" else None
+    fits_gpu = (
+        get_torch_device() == "cuda"
+        and fit.assess_for(engine.min_vram_gb, "FLUX.2", level).verdict == "fits_gpu"
+    )
+    return load_flux2_pipe(model_path, quant_cfg, fits_gpu)
 
 
 def edit_image(
@@ -152,7 +174,7 @@ def edit_image(
     ar = w0 / h0
     height = max(16, round(math.sqrt((1024 * 1024) / ar) / 16) * 16)
     width = max(16, round(math.sqrt((1024 * 1024) * ar) / 16) * 16)
-    latents = pipe(
+    call_kwargs = dict(
         prompt=prompt,
         image=img,
         height=height,
@@ -160,8 +182,15 @@ def edit_image(
         num_inference_steps=steps,
         guidance_scale=guidance,
         generator=generator,
-        output_type="latent",
         **kwargs,
-    ).images
-    result = _pipeline._decode_flux_latents(pipe, latents, width, height)
+    )
+    # FLUX.2 [klein] is resident (dual-NF4) and uses its own latent packing, so it
+    # decodes inline. FLUX.1 Kontext is CPU-offloaded → decode via output_type="latent"
+    # so the pipeline offloads the transformer first, then _decode_flux_latents runs with
+    # the GPU free (the inline decode is pathologically slow under offload).
+    if type(pipe).__name__.startswith("Flux2"):
+        result = pipe(**call_kwargs).images[0]
+    else:
+        latents = pipe(**call_kwargs, output_type="latent").images
+        result = _pipeline._decode_flux_latents(pipe, latents, width, height)
     return result.resize(img.size, Image.LANCZOS)

@@ -28,7 +28,7 @@ class ModelInfo(BaseModel):
     slug: str
     repo_id: str
     name: str
-    family: str  # "SD 1.5" | "SDXL" | "FLUX" | "SD 3.x"
+    family: str  # "SD 1.5" | "SDXL" | "FLUX" | "SD 3.x" | "Z-Image" | "FLUX.2"
     # HuggingFace pipeline tag, e.g. "text-to-image". Defaults so curated entries
     # and already-saved custom models report text-to-image without extra data.
     pipeline_tag: str = "text-to-image"

@@ -188,3 +188,25 @@
 - Impact: New AMD GPUs need a manual mapping update.
 - Proposed Resolution: Delegate arch detection to rocm-torch-windows where
   possible, or fetch the mapping from it.
+
+## FLUX.2 klein catalog sizes/min_vram are unverified  (added 2026-07-08)
+- Problem: The `flux2-klein-4b`/`flux2-klein-9b` entries (models + edit engines) ship
+  hand-estimated `approx_size_gb` (25/35) and `min_vram_gb` (30/33) — the 9B is a
+  gated 35 GB download, so the real footprint, distilled steps/guidance, and the exact
+  dual-NF4 resident VRAM were not measured. The `_HEAVY_PARAMS_B["FLUX.2"]` value (17.0,
+  both modules) is a single family figure that can't distinguish 4B from 9B.
+- Impact: The fit badge + auto-suggested NF4 level may be slightly off until tuned on a
+  real download; defaults may not match the model card.
+- Proposed Resolution: After a real gated download, measure resident NF4-both VRAM +
+  confirm the model-card steps/guidance and correct the catalog `min_vram_gb`/
+  `approx_size_gb`/`defaults`.
+
+## FLUX.2 klein outpaint/inpaint deferred  (added 2026-07-08)
+- Problem: FLUX.2 klein has NO mask pipeline in diffusers (issue #13005 open), so it is
+  wired only as a generation family + native-img2img `edit` engine. Mask-based
+  outpaint/inpaint (green-screen + an outpaint LoRA) was scoped as "Tier C" but deferred.
+- Impact: FLUX.2 klein is unavailable for the reframe=outpaint + user-mask inpaint flows
+  (SD/SDXL/FLUX.1-Fill/Z-Image still cover those).
+- Proposed Resolution: Revisit when diffusers ships a Flux2 inpaint pipeline, or wire the
+  green-screen + fal outpaint-LoRA path (4B base) through `inpaint_engine`. See feature
+  20260707-0015.

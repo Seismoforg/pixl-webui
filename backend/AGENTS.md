@@ -27,6 +27,11 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
   catalog; removed from the default catalog per ADR 0019): download the base repo
   without its transformer weights + the single `.gguf`, and load the quantized
   transformer via diffusers' GGUFQuantizationConfig so FLUX / SD 3.5 Large run in ~16 GB
+- Load FLUX.2 [klein] (family "FLUX.2", 4B + 9B) via `Flux2KleinPipeline` with a
+  DUAL-module NF4 load — BOTH the transformer AND the 8B Qwen3 text encoder are
+  bitsandbytes-quantized in one pipe (the encoder alone nearly fills 16 GB at bf16), so
+  the 9B fits ~16 GB resident. Flow-matching (sampler hidden); text2img only in v1 (no
+  reference/LoRA). 4B is Apache-2.0; 9B is gated (non-commercial)
 - Encode long/weighted prompts (>77 CLIP tokens, A1111 `(word:1.2)` weighting)
   via compel for SD 1.5 / SDXL; other families keep the native prompt path
 - Optional reference image: img2img variations, or IP-Adapter style (SD 1.5/SDXL)
@@ -56,7 +61,9 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
   lighting to a night scene") with FLUX.1 Kontext — a whole-image, mask-free,
   structure-preserving edit. A separate `edit`-kind engine loaded from a
   GGUF-quantized Kontext transformer (like the FLUX Fill engines, ~16 GB); its own
-  job/endpoint, VRAM-coordinated with the other model services
+  job/endpoint, VRAM-coordinated with the other model services. Also offered: FLUX.2
+  klein 4B/9B `edit` engines (native img2img via `Flux2KleinPipeline`, dual-NF4; reuse
+  the FLUX.2 generation weights — same slug — so no extra download)
 - Serve the curated upscale/outpaint/inpaint engine catalog (JSON-backed, editable
   in Settings) and download engines like generation models
 - Persist reusable positive/negative/upscale/outpaint/outpaint-negative prompt
@@ -73,8 +80,10 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                           `place_offloaded` (CPU-offload placement; keeps the VAE
                           resident on the GPU when the `vae_on_gpu` setting is on),
                           `make_generator` (seeded torch.Generator), `load_gguf_pipe`
-                          (GGUF transformer + pipe + offload) + `load_quantized_pipe`
-                          (bitsandbytes NF4/int8), used by generate/inpaint/edit loads)
+                          (GGUF transformer + pipe + offload), `load_quantized_pipe`
+                          (bitsandbytes NF4/int8) + `load_flux2_pipe` (FLUX.2
+                          `Flux2KleinPipeline`, dual-module NF4), used by
+                          generate/inpaint/edit loads)
 - app/catalog.py        — curated model catalog (domain data), JSON-backed:
                           `models_catalog.json` ships the default, a git-ignored
                           `data/models_catalog.json` override (written by the Settings
@@ -187,9 +196,10 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            on a ~1s tick (sampled). REST endpoints remain the fallback
 
 # Dependencies
-fastapi, uvicorn, diffusers (>=0.31 for GGUF), transformers, accelerate,
-huggingface_hub, pillow, pydantic, psutil, compel (long/weighted prompts), gguf
-(GGUF-quantized FLUX / SD 3.x transformers), peft (PEFT backend for LoRA
+fastapi, uvicorn, diffusers (>=0.31 for GGUF, >=0.39 for FLUX.2 `Flux2KleinPipeline`
++ `PipelineQuantizationConfig`), transformers (Qwen3 text encoder for FLUX.2),
+accelerate, huggingface_hub, pillow, pydantic, psutil, compel (long/weighted prompts),
+gguf (GGUF-quantized FLUX / SD 3.x transformers), peft (PEFT backend for LoRA
 load/blend); torch (CUDA/ROCm/CPU) installed by the root installer.
 
 # Related Modules

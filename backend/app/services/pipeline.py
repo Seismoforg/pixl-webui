@@ -19,6 +19,7 @@ from ..device import (
     get_device_info,
     get_dtype,
     get_torch_device,
+    load_flux2_pipe,
     load_gguf_pipe,
     load_quantized_pipe,
     make_generator,
@@ -153,6 +154,10 @@ def _load(model: ModelInfo):
         # GGUF loads a quantized transformer and always CPU-offloads (below), so no
         # separate fit-based placement is applied.
         pipe = _load_gguf(model)
+    elif model.family == "FLUX.2":
+        # FLUX.2 [klein] has its own pipeline class + a DUAL-module NF4 load (transformer
+        # + 8B Qwen3 text encoder), so it comes before the generic quant branch.
+        pipe = _load_flux2(model, level)
     elif model.family == "Z-Image":
         # Z-Image (S3-DiT) has its own pipeline class + handles its own quant, so it
         # comes before the generic quant branch. NF4 shrinks the 6B transformer enough
@@ -288,6 +293,17 @@ def _load_zimage(model: ModelInfo, quant_cfg, level: str):
         return pipe.to(device)
     pipe.enable_model_cpu_offload()
     return pipe
+
+
+def _load_flux2(model: ModelInfo, level: str):
+    """Build a FLUX.2 [klein] pipeline. At NF4/int8 (``level`` != fp16) BOTH the
+    transformer and the 8B Qwen3 text encoder are bitsandbytes-quantized (the encoder
+    alone nearly fills 16 GB at bf16), so the 9B fits ~16 GB resident; else full bf16.
+    Placed by the fit verdict at ``level`` — resident when it fits, else CPU offload."""
+    quant_cfg = quantize.flux2_quant_config(level) if level != "fp16" else None
+    device = get_torch_device()
+    fits_gpu = device == "cuda" and assess(model, level).verdict == "fits_gpu"
+    return load_flux2_pipe(config.model_dir(model.slug), quant_cfg, fits_gpu)
 
 
 def unload(slug: str | None = None) -> None:
@@ -550,9 +566,9 @@ def generate(
     # img2img pipe / running, so both the plain and img2img paths pick them up.
     _apply_loras(pipe, model, loras or [])
 
-    # Reference-image (img2img / IP-Adapter) is not wired for Z-Image yet (Phase 1
-    # is plain text2img); ignore any reference so the plain path always runs.
-    use_ref = init_image is not None and model.family != "Z-Image"
+    # Reference-image (img2img / IP-Adapter) is not wired for Z-Image / FLUX.2 yet
+    # (their v1 is plain text2img); ignore any reference so the plain path always runs.
+    use_ref = init_image is not None and model.family not in ("Z-Image", "FLUX.2")
     extra: dict = {}
     if use_ref and reference_mode == "img2img":
         _ensure_no_ip_adapter(pipe)

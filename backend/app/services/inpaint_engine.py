@@ -37,6 +37,12 @@ from .upscalers import UpscalerInfo
 SD_WORK = 768
 SDXL_WORK = 1024
 FLUX_WORK = 1024
+# Z-Image is NOT a trained fill model, so its outpaint border is composited back
+# against the pristine source — a two-pass (cap-then-upscale) composition leaves a
+# blurry-border vs sharp-source seam. A higher cap keeps common outpaint canvases
+# (e.g. 1024² → 16:9 ≈ 1824 wide) in ONE sharp pass. Z-Image is fast (Turbo, ~9
+# steps) and NF4-resident, so ~1.9 MP still fits ~16 GB.
+ZIMAGE_WORK = 2048
 # Native (minimum) working long-side per family. Diffusion models produce incoherent
 # noise when run well below their training resolution, so the user-mask inpaint crop
 # is scaled UP to at least this (and down to the cap above) before generating.
@@ -89,7 +95,9 @@ def is_zimage(pipe) -> bool:
 
 
 def working_cap(engine: UpscalerInfo, is_flux_pipe: bool) -> int:
-    """Family working long-side cap for ``engine`` (FLUX / SDXL / SD 1.x)."""
+    """Family working long-side cap for ``engine`` (Z-Image / FLUX / SDXL / SD 1.x)."""
+    if quantize.engine_family(engine) == "Z-Image":
+        return ZIMAGE_WORK
     if is_flux_pipe:
         return FLUX_WORK
     return SDXL_WORK if is_sdxl(config.model_dir(engine.slug)) else SD_WORK

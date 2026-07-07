@@ -117,6 +117,29 @@ def load_gguf_pipe(model_path, gguf_filename: str, transformer_cls, pipeline_cls
     return place_offloaded(pipe)
 
 
+def load_flux2_pipe(model_path, quant_config, fits_gpu: bool):
+    """Build a FLUX.2 [klein] pipe (``Flux2KleinPipeline``) in bf16.
+
+    When ``quant_config`` is given (a ``PipelineQuantizationConfig`` from
+    :func:`quantize.flux2_quant_config`) BOTH the transformer AND the 8B Qwen3 text
+    encoder are bitsandbytes-quantized in the one load, so the 9B fits ~16 GB; else it
+    loads full bf16. Placed by the fit verdict: resident on the GPU when it fits
+    (``fits_gpu``), else CPU-offloaded (encoders stream off the GPU). Shared by the
+    generation and edit-engine load paths."""
+    from diffusers import Flux2KleinPipeline
+
+    dtype = get_compute_dtype()
+    kwargs: dict = {"torch_dtype": dtype}
+    if quant_config is not None:
+        kwargs["quantization_config"] = quant_config
+    pipe = Flux2KleinPipeline.from_pretrained(str(model_path), **kwargs)
+
+    device = get_torch_device()
+    if device == "cpu" or fits_gpu:
+        return pipe.to(device)
+    return place_offloaded(pipe)
+
+
 def load_quantized_pipe(
     model_path,
     module_cls,

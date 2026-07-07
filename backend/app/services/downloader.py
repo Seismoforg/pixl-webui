@@ -52,8 +52,10 @@ def _download_with_retries(do_download) -> None:
             time.sleep(min(2 ** attempt, 15))
 
 # Non-weight files needed to load a diffusers model (configs, tokenizers). These
-# are tiny and may live at the repo root (e.g. model_index.json).
-_BASE_PATTERNS = ["*.json", "*.txt", "*.model"]
+# are tiny and may live at the repo root (e.g. model_index.json). ``*.jinja`` covers
+# a tokenizer's ``chat_template.jinja`` (e.g. FLUX.2's Qwen3 encoder), which the
+# pipeline needs to format the prompt — without it prompt encoding raises.
+_BASE_PATTERNS = ["*.json", "*.txt", "*.model", "*.jinja"]
 
 
 def _component_weight_files(

@@ -137,9 +137,12 @@ def inpaint_image(
     cw, ch = crop_img.size
 
     pipe = inpaint_engine.load(engine)
-    # Z-Image is flow-matching like FLUX → same crisp-mask / native-scheduler / no-
-    # negative / 1024-native / align-16 path; treat both under `is_flux`.
+    # is_flux = flow-matching (FLUX Fill + Z-Image): native scheduler, no negative,
+    # explicit size, 1024-native, align 16. is_fill = a trained fill model (FLUX Fill
+    # only) → crisp mask + unblurred seed; Z-Image takes the feathered SD-style mask +
+    # blurred seed (else a hard seam), while still using the flow-matching run path.
     is_flux = inpaint_engine.is_flux(pipe) or inpaint_engine.is_zimage(pipe)
+    is_fill = inpaint_engine.is_flux(pipe)
     if sampler and not is_flux:
         samplers.apply_sampler(pipe, sampler)
     cap = inpaint_engine.working_cap(engine, is_flux)
@@ -165,9 +168,10 @@ def inpaint_image(
     align = 16 if is_flux else 8
     ww, wh = _round_up(cw * scale, align), _round_up(ch * scale, align)
     fed_img = crop_img.resize((ww, wh), Image.LANCZOS)
-    fed_mask = _fed_mask(crop_mask, ww, wh, is_flux, mask_softness)
-    # Seed blur has no effect on FLUX (it zeroes the masked init), so only SD/SDXL.
-    fed_seed = fed_img if is_flux else _seed_under_mask(fed_img, fed_mask, ww, wh, seed_softness)
+    fed_mask = _fed_mask(crop_mask, ww, wh, is_fill, mask_softness)
+    # Unblurred seed only for a fill model (it zeroes the masked init); Z-Image + SD/SDXL
+    # get the blurred seed under the mask so the boundary isn't a hard mirror line.
+    fed_seed = fed_img if is_fill else _seed_under_mask(fed_img, fed_mask, ww, wh, seed_softness)
 
     pass_total = 2 if (two_pass and refine) else 1
     gen = inpaint_engine.run_inpaint(
@@ -181,7 +185,7 @@ def inpaint_image(
         # inpaint over the same region (slow, full-res pass).
         fw, fh = _round_up(cw, align), _round_up(ch, align)
         up = gen.resize((fw, fh), Image.LANCZOS)
-        full_mask = _fed_mask(crop_mask, fw, fh, is_flux, mask_softness)
+        full_mask = _fed_mask(crop_mask, fw, fh, is_fill, mask_softness)
         gen = inpaint_engine.run_inpaint(
             pipe, up, full_mask, prompt, negative, report, 2, 2,
             steps=refine_steps, strength=inpaint_engine.REFINE_STRENGTH,

@@ -81,6 +81,10 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             (unlike GGUF). Family "Z-Image" → `ZImagePipeline` in bf16 (not bnb-quantized;
             `quantize.quantizable` excludes it), placed by the fit verdict (resident when
             it fits, else CPU offload); text2img only for now (reference-image ignored).
+            Family "FLUX.2" → `_load_flux2` → `device.load_flux2_pipe` (`Flux2KleinPipeline`,
+            DUAL-module NF4: transformer + 8B Qwen3 text encoder via
+            `quantize.flux2_quant_config`), placed by the fit verdict; text2img only in v1
+            (reference-image ignored), inline decode.
             ROCm: load prologue enables TunableOp (GEMM tuning) per the
             `tunable_ops` setting, after `_prune_stale_tunable_cache` drops a cache whose
             validators (rocBLAS/hipBLASLt version) no longer match the runtime; post apply_perf
@@ -156,20 +160,26 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             params: steps (composition), refine_steps (hires), guidance, optional sampler
             (samplers.apply_sampler when supported), seed (seeded torch.Generator). Used by
             reframe=outpaint
-- edit.py — prompt-based whole-image editing (FLUX.1 Kontext). Loads an `edit` engine
-            into a `FluxKontextPipeline` (own cached pipe + `unload`, CPU-offloaded):
-            GGUF → `_load_flux_kontext_gguf`; non-GGUF fp16 → `_load_flux_kontext` (NF4/
-            int8-quantized per effective level, else fp16). `edit_image` = one Kontext
-            pass (source + instruction, NO
-            mask, NO negative — auto-resizes to ~1 MP internally bounding VRAM, result
-            scaled back to source size), step-reported (phase "editing"). VRAM-
-            coordinated: loading frees generation/upscale/inpaint, each frees it before
-            load (mutual lazy-import unload). Driven by the edit job
+- edit.py — prompt-based whole-image editing. Loads an `edit` engine into its own cached
+            pipe (+ `unload`): FLUX.1 Kontext (`FluxKontextPipeline`, CPU-offloaded) — GGUF
+            → `_load_flux_kontext_gguf`; non-GGUF fp16 → `_load_flux_kontext` (NF4/int8 per
+            effective level, else fp16). FLUX.2 (`engine_family` "FLUX.2") →
+            `_load_flux2_edit` (`Flux2KleinPipeline` native img2img, dual-module NF4 via
+            `device.load_flux2_pipe`; reuses the FLUX.2 generation weights — same slug).
+            `edit_image` = one pass (source + instruction, NO mask, NO negative — auto-resizes
+            to ~1 MP internally bounding VRAM, result scaled back to source size),
+            step-reported (phase "editing"); FLUX.2 decodes inline (resident, own latent
+            packing), FLUX.1 Kontext via output_type="latent" (offloaded). VRAM-coordinated:
+            loading frees generation/upscale/inpaint, each frees it before load (mutual
+            lazy-import unload). Driven by the edit job
 - quantize.py — on-the-fly bitsandbytes quantization (ADR 0019): `quant_config(level,
             family)` → diffusers `BitsAndBytesConfig` (nf4 4-bit / int8) or None (fp16 /
-            bnb absent); `available()` guard; `bytes_per_param`/`heavy_module_gb_fp16`
-            VRAM heuristics; `engine_family(engine)` → "FLUX" for the quant-capable Fill/
-            Kontext engines. bnb is installer-managed (platform-specific, like torch)
+            bnb absent); `flux2_quant_config(level)` → a `PipelineQuantizationConfig` that
+            NF4/int8s BOTH FLUX.2 modules (transformer + Qwen3 text encoder) in one pipe
+            load; `available()` guard; `bytes_per_param`/`heavy_module_gb_fp16` VRAM
+            heuristics; `engine_family(engine)` → "FLUX.2" for FLUX.2 klein engines, else
+            "FLUX" for the quant-capable Fill/Kontext engines. bnb is installer-managed
+            (platform-specific, like torch)
 - fit.py — assess(model, level): fits_gpu / fits_offload / too_large / cpu_only vs live
             VRAM+RAM at a load level; drives the UI badge + pipeline device placement.
             Primitive cores (`est_vram_for`/`assess_for`/`quant_levels_for`/`suggest_for`/

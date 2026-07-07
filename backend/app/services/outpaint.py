@@ -50,9 +50,11 @@ def reframe_image(
     canvases; when false the upscaled composition is used directly."""
     report({"phase": "loading"})
     pipe = inpaint_engine.load(engine)
-    # Z-Image is flow-matching like FLUX → same crisp-mask / native-scheduler / no-
-    # negative / 1024-native path; treat both under `is_flux`.
+    # is_flux = flow-matching (FLUX Fill + Z-Image): native scheduler, no negative,
+    # explicit size, 1024-native. is_fill = a trained fill model (FLUX Fill only) →
+    # crisp mask; Z-Image takes the feathered SD-style mask/seed (else a hard seam).
     is_flux = inpaint_engine.is_flux(pipe) or inpaint_engine.is_zimage(pipe)
+    is_fill = inpaint_engine.is_flux(pipe)
     if sampler and not is_flux:
         samplers.apply_sampler(pipe, sampler)
     cap = inpaint_engine.working_cap(engine, is_flux)
@@ -60,7 +62,7 @@ def reframe_image(
         pipe, image.convert("RGB"), ratio, prompt,
         inpaint_engine.effective_negative(negative), report, cap,
         mask_softness, seam_softness, seed_softness, pos_x, pos_y, scale,
-        steps, refine_steps, guidance, inpaint_engine.make_generator(seed), is_flux, refine,
+        steps, refine_steps, guidance, inpaint_engine.make_generator(seed), is_flux, is_fill, refine,
     )
 
 
@@ -70,7 +72,12 @@ def _reframe_single(pipe, img, ratio, prompt, negative, report, cap,
                     steps=inpaint_engine.DEFAULT_STEPS,
                     refine_steps=inpaint_engine.DEFAULT_REFINE_STEPS,
                     guidance=inpaint_engine.DEFAULT_GUIDANCE,
-                    generator=None, is_flux=False, refine=False):
+                    generator=None, is_flux=False, is_fill=False, refine=False):
+    # ``is_flux`` = flow-matching engine (FLUX Fill + Z-Image): drives run_inpaint
+    # (explicit size, no negative). ``is_fill`` = a TRAINED fill model (FLUX Fill only):
+    # gets a crisp binary mask + unblurred seed (it zeroes the masked init in latent
+    # space). Z-Image is flow-matching but NOT a fill model, so it takes the feathered
+    # mask + blurred seed like SD/SDXL — a crisp mask leaves a hard seam on it.
     from PIL import Image, ImageFilter
 
     rw, rh = ratio
@@ -105,12 +112,12 @@ def _reframe_single(pipe, img, ratio, prompt, negative, report, cap,
     # grey haze ring — the composite seam (feathered_keep_mask, below) does the blend
     # instead. The mask/seed widths stay user-scalable for SD/SDXL (0.5 = default).
     canvas = reframe.reflect_fill(src, (cw, ch), (ox, oy))
-    if not is_flux:
+    if not is_fill:
         seed_blur = reframe.scale_softness(reframe.default_seed_blur(cw, ch), seed_softness)
         if seed_blur > 0:
             canvas = canvas.filter(ImageFilter.GaussianBlur(seed_blur))
     canvas.paste(src, (ox, oy))
-    mask_feather = 0 if is_flux else reframe.scale_softness(
+    mask_feather = 0 if is_fill else reframe.scale_softness(
         reframe.default_mask_feather(cw, ch), mask_softness
     )
     mask = reframe.build_mask((cw, ch), (ox, oy, nw, nh), feather=mask_feather)
@@ -138,8 +145,8 @@ def _reframe_single(pipe, img, ratio, prompt, negative, report, cap,
     # Either way the pristine full-res source is composited back pixel-exact.
     result = gen.resize((cw_full, ch_full), Image.LANCZOS)
     if refine:
-        # Crisp mask for FLUX (see the composition pass above); feathered for SD/SDXL.
-        full_feather = 0 if is_flux else reframe.scale_softness(
+        # Crisp mask for a fill model (see the composition pass above); feathered otherwise.
+        full_feather = 0 if is_fill else reframe.scale_softness(
             reframe.default_mask_feather(cw_full, ch_full), mask_softness
         )
         full_mask = reframe.build_mask(

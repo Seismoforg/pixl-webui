@@ -29,6 +29,10 @@ _HEAVY_PARAMS_B = {
     "FLUX": 11.9,
     "SD 3.x": 8.1,
     "Z-Image": 6.0,
+    # FLUX.2 [klein]: the 9B transformer + the 8B Qwen3 text encoder are BOTH NF4'd
+    # (dual-module), so the "heavy" figure covers both modules the quant actually
+    # shrinks. Family value = the 9B worst case; per-entry min_vram is the real fit knob.
+    "FLUX.2": 17.0,
 }
 
 # GB occupied by one billion fp16 params (2 bytes/param, GiB): 1e9 * 2 / 1024**3.
@@ -58,6 +62,10 @@ def engine_family(engine) -> str | None:
     repo = getattr(engine, "repo_id", "").lower()
     if "z-image" in repo:
         return "Z-Image"
+    # FLUX.2 before the generic FLUX branch: its repo also contains "flux", but it
+    # loads via Flux2KleinPipeline with the dual-module NF4 path, not FLUX Fill/Kontext.
+    if "flux.2" in repo or "flux2" in repo:
+        return "FLUX.2"
     if kind == "edit" or "flux" in repo:
         return "FLUX"
     return None
@@ -87,10 +95,45 @@ def quant_config(level: str, family: str):
 
     if level == "int8":
         return BitsAndBytesConfig(load_in_8bit=True)
-    compute = torch.bfloat16 if family in ("FLUX", "SD 3.x", "Z-Image") else torch.float16
+    compute = torch.bfloat16 if family in ("FLUX", "SD 3.x", "Z-Image", "FLUX.2") else torch.float16
     return BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
         bnb_4bit_compute_dtype=compute,
         bnb_4bit_use_double_quant=True,
+    )
+
+
+def flux2_quant_config(level: str):
+    """A ``PipelineQuantizationConfig`` that bitsandbytes-quantizes BOTH heavy FLUX.2
+    modules — the ``Flux2Transformer2DModel`` transformer AND the 8B Qwen3
+    ``text_encoder`` — in a single ``Flux2KleinPipeline.from_pretrained`` load. Returns
+    ``None`` for fp16 / an unknown level / when bitsandbytes is unavailable.
+
+    FLUX.2's Qwen3 text encoder alone nearly fills a 16 GB card at bf16, so unlike the
+    other families (where :func:`quant_config` NF4s only the denoising module) the
+    encoder MUST be quantized too — hence a multi-component config here. nf4 uses a bf16
+    compute dtype (FLUX.2's trained dtype); int8 uses LLM.int8.
+    """
+    if level not in ("int8", "nf4") or not available():
+        return None
+    import torch
+    from diffusers.quantizers import PipelineQuantizationConfig
+
+    components = ["transformer", "text_encoder"]
+    if level == "int8":
+        return PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_8bit",
+            quant_kwargs={"load_in_8bit": True},
+            components_to_quantize=components,
+        )
+    return PipelineQuantizationConfig(
+        quant_backend="bitsandbytes_4bit",
+        quant_kwargs={
+            "load_in_4bit": True,
+            "bnb_4bit_quant_type": "nf4",
+            "bnb_4bit_compute_dtype": torch.bfloat16,
+            "bnb_4bit_use_double_quant": True,
+        },
+        components_to_quantize=components,
     )

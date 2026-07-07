@@ -117,5 +117,39 @@
     "gguf_repo_id": null,
     "gguf_filename": null,
     "defaults": { "steps": 28, "guidance_scale": 2.5, "refine_steps": 0 }
+  },
+  {
+    "slug": "flux2-klein-4b",
+    "kind": "edit",
+    "name": "FLUX.2 klein 4B (edit)",
+    "description": "Prompt-based image editing (native img2img). Compact 4B, Apache-2.0. NF4 (auto) → ~16 GB. Reuses the FLUX.2 klein 4B generation weights (no extra download).",
+    "repo_id": "black-forest-labs/FLUX.2-klein-4B",
+    "filename": null,
+    "scale": 1,
+    "approx_size_gb": 25.0,
+    "min_vram_gb": 30.0,
+    "prompt_capable": true,
+    "variant": null,
+    "use_safetensors": true,
+    "gguf_repo_id": null,
+    "gguf_filename": null,
+    "defaults": { "steps": 4, "guidance_scale": 1.0, "refine_steps": 0 }
+  },
+  {
+    "slug": "flux2-klein-9b",
+    "kind": "edit",
+    "name": "FLUX.2 klein 9B (edit)",
+    "description": "Prompt-based image editing (native img2img). 9B + 8B Qwen3 encoder. Gated (non-commercial) — needs a HuggingFace token. NF4 (auto) → ~16 GB. Reuses the FLUX.2 klein 9B generation weights.",
+    "repo_id": "black-forest-labs/FLUX.2-klein-9B",
+    "filename": null,
+    "scale": 1,
+    "approx_size_gb": 35.0,
+    "min_vram_gb": 33.0,
+    "prompt_capable": true,
+    "variant": null,
+    "use_safetensors": true,
+    "gguf_repo_id": null,
+    "gguf_filename": null,
+    "defaults": { "steps": 4, "guidance_scale": 1.0, "refine_steps": 0 }
   }
 ]
