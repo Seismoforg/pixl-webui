@@ -57,6 +57,10 @@ class Settings(BaseModel):
     # this flag (no VRAM auto-switch). Default off: SDPA is memory-efficient and big
     # models are already bounded by CPU offload; enable it only if a tight GPU OOMs.
     attention_slicing: bool = False
+    # Keep the VAE resident on the GPU for CPU-offloaded models (e.g. FLUX) instead of
+    # shuttling it CPU<->GPU each run. Costs a few hundred MB VRAM, saves the per-run
+    # move. Default off; no effect on models that already sit fully on the GPU.
+    vae_on_gpu: bool = False
     xformers: bool = True
     # Compile the denoising module (transformer/UNet) with torch.compile on load for
     # faster iterations. Default off: the first run after enabling pays a long

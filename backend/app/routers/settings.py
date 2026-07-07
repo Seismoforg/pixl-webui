@@ -9,7 +9,8 @@ from ..services import pipeline, upscale
 router = APIRouter(prefix="/api", tags=["settings"])
 
 _PERF_FIELDS = (
-    "vae_tiling", "vae_slicing", "attention_slicing", "xformers", "torch_compile", "tunable_ops",
+    "vae_tiling", "vae_slicing", "attention_slicing", "vae_on_gpu",
+    "xformers", "torch_compile", "tunable_ops",
 )
 
 

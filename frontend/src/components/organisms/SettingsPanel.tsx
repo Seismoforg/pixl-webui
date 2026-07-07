@@ -79,6 +79,7 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
     vae_tiling: true,
     vae_slicing: true,
     attention_slicing: false,
+    vae_on_gpu: false,
     xformers: true,
     torch_compile: false,
     tunable_ops: true,
@@ -110,6 +111,7 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
           vae_tiling: s.vae_tiling,
           vae_slicing: s.vae_slicing,
           attention_slicing: s.attention_slicing,
+          vae_on_gpu: s.vae_on_gpu,
           xformers: s.xformers,
           torch_compile: s.torch_compile,
           tunable_ops: s.tunable_ops,
@@ -245,6 +247,12 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
                 help={t("settings.performance.attentionSlicingHelp")}
                 checked={perf.attention_slicing}
                 onChange={setFlag("attention_slicing")}
+              />
+              <PerfSwitch
+                label={t("settings.performance.vaeOnGpu")}
+                help={t("settings.performance.vaeOnGpuHelp")}
+                checked={perf.vae_on_gpu}
+                onChange={setFlag("vae_on_gpu")}
               />
               <PerfSwitch
                 label={t("settings.performance.xformers")}

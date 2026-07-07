@@ -90,6 +90,7 @@ export interface AppSettings {
   vae_tiling: boolean;
   vae_slicing: boolean;
   attention_slicing: boolean;
+  vae_on_gpu: boolean;
   xformers: boolean;
   torch_compile: boolean;
   tunable_ops: boolean;

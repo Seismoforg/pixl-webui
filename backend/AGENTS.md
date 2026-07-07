@@ -8,7 +8,8 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
   models into `models/<slug>`
 - Assess whether a model fits the current GPU (full / CPU-offload / too large)
 - Persist user settings (HuggingFace token + performance toggles: VAE tiling/
-  slicing, attention slicing [pure setting, no VRAM auto-switch; default off], xformers,
+  slicing, attention slicing [pure setting, no VRAM auto-switch; default off],
+  vae_on_gpu [keep the VAE resident on the GPU for offloaded models], xformers,
   torch.compile — applied to every pipe on load; plus the SD x4 upscaler step count and
   the outpaint negative-prompt default,
   read per-run; plus preferred default dropdown selections
@@ -69,9 +70,11 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                           ROCm TunableOp results file into `data/`
 - app/device.py         — device/backend detection + dtype selection (fp16 normal;
                           bf16 compute dtype for GGUF FLUX). Shared pipe helpers:
-                          `place_offloaded` (CPU-offload placement), `make_generator`
-                          (seeded torch.Generator), `load_gguf_pipe` (GGUF transformer +
-                          pipe + offload, used by generate/inpaint/edit GGUF loads)
+                          `place_offloaded` (CPU-offload placement; keeps the VAE
+                          resident on the GPU when the `vae_on_gpu` setting is on),
+                          `make_generator` (seeded torch.Generator), `load_gguf_pipe`
+                          (GGUF transformer + pipe + offload) + `load_quantized_pipe`
+                          (bitsandbytes NF4/int8), used by generate/inpaint/edit loads)
 - app/catalog.py        — curated model catalog (domain data), JSON-backed:
                           `models_catalog.json` ships the default, a git-ignored
                           `data/models_catalog.json` override (written by the Settings

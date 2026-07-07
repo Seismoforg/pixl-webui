@@ -142,7 +142,9 @@ export const GenerationResult = () => {
                   mx: "auto",
                   maxWidth: "100%",
                   maxHeight: "60vh",
-                  aspectRatio: `${width} / ${height}`,
+                  // No forced aspectRatio: a finished result keeps its own intrinsic
+                  // ratio. Deriving it from the live form width/height would stretch
+                  // the last result when the resolution is changed after a run.
                   borderRadius: 1,
                 }}
               />

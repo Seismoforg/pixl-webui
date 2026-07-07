@@ -503,6 +503,8 @@
       "vaeSlicingHelp": "Decode images one at a time — saves memory on batches.",
       "attentionSlicing": "Attention slicing",
       "attentionSlicingHelp": "Compute attention in slices — saves VRAM but is slower. Off by default; enable only if a tight GPU runs out of memory.",
+      "vaeOnGpu": "Keep VAE on GPU",
+      "vaeOnGpuHelp": "For CPU-offloaded models (e.g. FLUX): keep the VAE resident on the GPU instead of moving it CPU↔GPU each run. Costs a few hundred MB VRAM, saves the per-run move. No effect on models that already fit fully on the GPU.",
       "xformers": "xformers attention",
       "xformersHelp": "Faster, memory-efficient attention (only if xformers is installed; otherwise ignored).",
       "torchCompile": "torch.compile",

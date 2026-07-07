@@ -64,9 +64,25 @@ def get_compute_dtype():
 
 def place_offloaded(pipe):
     """Place a loaded pipe: plain .to("cpu") on CPU, else CPU-offload so encoders
-    stream off the GPU during denoising (bounds peak VRAM). Returns the pipe."""
+    stream off the GPU during denoising (bounds peak VRAM). Returns the pipe.
+
+    With the ``vae_on_gpu`` setting on, the VAE is excluded from the offload so it
+    stays resident on the GPU (avoids the per-run CPU<->GPU move); costs a little VRAM."""
     if get_torch_device() == "cpu":
         return pipe.to("cpu")
+    from .config import load_settings
+
+    if load_settings().vae_on_gpu and getattr(pipe, "vae", None) is not None:
+        # enable_model_cpu_offload honours `_exclude_from_cpu_offload` ONLY for
+        # components not in `model_cpu_offload_seq` (the offload chain hooks the rest
+        # first). The VAE is in that chain, so also drop it from the chain. Assign NEW
+        # values (don't mutate the shared class-level attributes for every instance).
+        seq = getattr(pipe, "model_cpu_offload_seq", None)
+        if seq:
+            pipe.model_cpu_offload_seq = "->".join(p for p in seq.split("->") if p != "vae")
+        exclude = list(getattr(pipe, "_exclude_from_cpu_offload", []))
+        if "vae" not in exclude:
+            pipe._exclude_from_cpu_offload = exclude + ["vae"]
     pipe.enable_model_cpu_offload()
     return pipe
 
