@@ -25,11 +25,9 @@ from ..services import (
     upscalers,
 )
 from ..services.upscalers import UpscalerInfo
-from .upscale import BatchProgress
+from ..services.jobs import BatchProgress
 
 router = APIRouter(prefix="/api/reframe", tags=["reframe"])
-
-_SEED_MAX = 2**32 - 1
 
 
 class ReframeRequest(BaseModel):
@@ -131,13 +129,13 @@ def _run_outpaint(job, req, image, ratio, engine, on_progress, pub_key) -> None:
     """Generate ``batch`` outpaint variants with incrementing seeds; each is
     composited back pixel-exact and saved. The inpaint pipe is loaded once (cached
     across the batch) and freed afterwards. No upscaler runs."""
-    base_seed = req.outpaint_seed if req.outpaint_seed is not None else random.randint(0, _SEED_MAX)
+    base_seed = req.outpaint_seed if req.outpaint_seed is not None else random.randint(0, jobs.SEED_MAX)
     sampler = req.outpaint_sampler or samplers.DEFAULT_SAMPLER
     with _store.lock:
         job.batch_size = req.outpaint_batch
     try:
         for i in range(req.outpaint_batch):
-            seed_i = (base_seed + i) % (_SEED_MAX + 1)
+            seed_i = (base_seed + i) % (jobs.SEED_MAX + 1)
             with _store.lock:
                 job.batch_index = i + 1
             result = outpaint_svc.reframe_image(
@@ -240,20 +238,4 @@ def reframe_progress(job_id: str) -> BatchProgress:
         job = _store.get(job_id)
         if job is None:
             raise HTTPException(404, messages.JOB_NOT_FOUND.format(job_id=job_id))
-        return BatchProgress(
-            job_id=job.job_id,
-            status=job.status,
-            phase=job.phase,
-            current_tile=job.current_tile,
-            total_tiles=job.total_tiles,
-            current_step=job.current_step,
-            total_steps=job.total_steps,
-            its=job.its,
-            elapsed=round(job.elapsed(), 1),
-            engine_name=job.engine_name,
-            image_id=job.image_id,
-            error=job.error,
-            batch_index=job.batch_index,
-            batch_size=job.batch_size,
-            image_ids=list(job.image_ids),
-        )
+        return jobs.to_batch_progress(job)

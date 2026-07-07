@@ -74,29 +74,7 @@ class UpscaleStarted(BaseModel):
     job_id: str
 
 
-class UpscaleProgress(BaseModel):
-    job_id: str
-    status: str  # "running" | "done" | "error"
-    phase: str  # "loading" | "upscaling" | "finalizing"
-    current_tile: int
-    total_tiles: int
-    current_step: int
-    total_steps: int
-    its: float | None  # iterations/second (SD x4 steps); None until measurable
-    elapsed: float  # seconds since the job started
-    engine_name: str
-    image_id: str | None = None
-    error: str | None = None
-
-
-class BatchProgress(UpscaleProgress):
-    """A batch job's progress = the shared upscale shape plus batch fields (a superset,
-    so the frontend's upscale-based live-stats UI keeps working unchanged). Shared by
-    the reframe, inpaint and edit jobs, which each generate a batch of variants."""
-
-    batch_index: int = 0
-    batch_size: int = 1
-    image_ids: list[str] = []
+# UpscaleProgress/BatchProgress moved to services.jobs (shared by the batch routers).
 
 
 _store: jobs.JobStore[jobs.JobState] = jobs.JobStore("ups")
@@ -257,23 +235,10 @@ def start_upscale(req: UpscaleRequest) -> UpscaleStarted:
     return UpscaleStarted(job_id=job.job_id)
 
 
-@router.get("/{job_id}", response_model=UpscaleProgress)
-def upscale_progress(job_id: str) -> UpscaleProgress:
+@router.get("/{job_id}", response_model=jobs.UpscaleProgress)
+def upscale_progress(job_id: str) -> jobs.UpscaleProgress:
     with _store.lock:
         job = _store.get(job_id)
         if job is None:
             raise HTTPException(404, messages.JOB_NOT_FOUND.format(job_id=job_id))
-        return UpscaleProgress(
-            job_id=job.job_id,
-            status=job.status,
-            phase=job.phase,
-            current_tile=job.current_tile,
-            total_tiles=job.total_tiles,
-            current_step=job.current_step,
-            total_steps=job.total_steps,
-            its=job.its,
-            elapsed=round(job.elapsed(), 1),
-            engine_name=job.engine_name,
-            image_id=job.image_id,
-            error=job.error,
-        )
+        return jobs.to_upscale_progress(job)

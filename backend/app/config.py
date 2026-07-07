@@ -44,10 +44,6 @@ os.environ.setdefault("MIOPEN_FIND_MODE", "2")  # FAST: prefer find-db over long
 # off ROCm: the file is only written when TunableOp is enabled.
 os.environ.setdefault("PYTORCH_TUNABLEOP_FILENAME", str(DATA_DIR / "tunableop_results.csv"))
 
-# Backend host/port (kept here so install/start scripts and code agree).
-BACKEND_HOST = os.environ.get("PIXL_BACKEND_HOST", "127.0.0.1")
-BACKEND_PORT = int(os.environ.get("PIXL_BACKEND_PORT", "8000"))
-
 
 class Settings(BaseModel):
     """User-configurable settings persisted to ``data/settings.json``."""

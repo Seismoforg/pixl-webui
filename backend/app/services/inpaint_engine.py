@@ -16,7 +16,9 @@ import threading
 from . import callbacks, vram
 from .. import config
 from ..config import load_settings
-from ..device import get_compute_dtype, get_dtype, get_torch_device
+# make_generator re-exported so `inpaint_engine.make_generator` callers (inpaint,
+# outpaint) keep working after the move to device.
+from ..device import get_dtype, load_gguf_pipe, make_generator, place_offloaded
 from .optimizations import apply_perf
 from .upscalers import UpscalerInfo
 
@@ -123,10 +125,7 @@ def load(engine: UpscalerInfo):
             kwargs["safety_checker"] = None
             kwargs["requires_safety_checker"] = False
         pipe = AutoPipelineForInpainting.from_pretrained(str(model_path), **kwargs)
-        if get_torch_device() == "cpu":
-            pipe = pipe.to("cpu")
-        else:
-            pipe.enable_model_cpu_offload()
+        pipe = place_offloaded(pipe)
         pipe.enable_attention_slicing()
 
     apply_perf(pipe, load_settings())
@@ -137,38 +136,12 @@ def load(engine: UpscalerInfo):
 
 
 def _load_flux_fill(engine: UpscalerInfo, model_path):
-    """Build a FLUX.1-Fill inpaint pipe from the engine's GGUF transformer.
+    """Build a FLUX.1-Fill inpaint pipe from the engine's GGUF transformer (shared
+    GGUF load path). Only the transformer is quantized; the base repo supplies the
+    VAE/text encoders/scheduler. CPU-offloaded to keep peak VRAM within ~16 GB."""
+    from diffusers import FluxFillPipeline, FluxTransformer2DModel
 
-    Only the transformer is quantized (from the local ``.gguf``); the base repo
-    supplies the VAE/text encoders/scheduler. Always CPU-offloads so the T5 encoder
-    streams off the GPU during denoising, keeping peak VRAM within ~16 GB."""
-    from diffusers import FluxFillPipeline, FluxTransformer2DModel, GGUFQuantizationConfig
-
-    dtype = get_compute_dtype()
-    transformer = FluxTransformer2DModel.from_single_file(
-        str(model_path / engine.gguf_filename),
-        config=str(model_path / "transformer"),
-        quantization_config=GGUFQuantizationConfig(compute_dtype=dtype),
-        torch_dtype=dtype,
-    )
-    pipe = FluxFillPipeline.from_pretrained(
-        str(model_path), transformer=transformer, torch_dtype=dtype
-    )
-    if get_torch_device() == "cpu":
-        pipe = pipe.to("cpu")
-    else:
-        pipe.enable_model_cpu_offload()
-    return pipe
-
-
-def make_generator(seed: int | None):
-    """A seeded ``torch.Generator`` on the active device for a reproducible fill,
-    or None (random) when no seed is given."""
-    if seed is None:
-        return None
-    import torch
-
-    return torch.Generator(device=get_torch_device()).manual_seed(int(seed))
+    return load_gguf_pipe(model_path, engine.gguf_filename, FluxTransformer2DModel, FluxFillPipeline)
 
 
 def effective_negative(negative: str) -> str:

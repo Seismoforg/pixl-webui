@@ -19,11 +19,10 @@ from pydantic import BaseModel, Field
 from .. import live, messages, samplers
 from ..catalog import get_model
 from ..services import gallery, grid, job_guard, jobs, pipeline
-from .upscale import BatchProgress
+from ..services.jobs import BatchProgress
 
 router = APIRouter(prefix="/api/compare", tags=["compare"])
 
-_SEED_MAX = 2**32 - 1
 # Bound the combinatorial blow-up: the product of the axis lengths can't exceed this.
 MAX_CELLS = 64
 
@@ -107,7 +106,7 @@ def _coerce(param: str, values: list) -> list:
                 out.append(iv)
             elif param == "seed":
                 iv = int(v)
-                if not 0 <= iv <= _SEED_MAX:
+                if not 0 <= iv <= jobs.SEED_MAX:
                     raise ValueError
                 out.append(iv)
             elif param == "guidance_scale":
@@ -150,7 +149,7 @@ def _run(job: _Job, req: CompareRequest, model, axes: list[tuple[str, list]]) ->
     y_param, y_values = axes[1] if len(axes) > 1 else ("", [None])
     z_param, z_values = axes[2] if len(axes) > 2 else ("", [None])
 
-    base_seed = req.seed if req.seed is not None else random.randint(0, _SEED_MAX)
+    base_seed = req.seed if req.seed is not None else random.randint(0, jobs.SEED_MAX)
 
     try:
         cell_no = 0

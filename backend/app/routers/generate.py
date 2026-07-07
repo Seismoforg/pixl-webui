@@ -20,8 +20,6 @@ from ..services import downloader, gallery, job_guard, jobs, loras as loras_svc,
 
 router = APIRouter(prefix="/api", tags=["generate"])
 
-_SEED_MAX = 2**32 - 1
-
 
 class LoraRef(BaseModel):
     slug: str
@@ -151,7 +149,7 @@ def _run(job: _Job, req: GenerateRequest, model, init_image) -> None:
                 job.preview = None
             live.publish(key)
 
-            seed_i = (job.seed + i) % (_SEED_MAX + 1)
+            seed_i = (job.seed + i) % (jobs.SEED_MAX + 1)
             image, effective_sampler = pipeline.generate(
                 model=model,
                 prompt=req.prompt,
@@ -245,7 +243,7 @@ def start_generation(req: GenerateRequest) -> GenerateStarted:
             raise HTTPException(400, messages.LORA_NOT_DOWNLOADED.format(slug=ref.slug))
 
     with _store.lock:
-        seed = req.seed if req.seed is not None else random.randint(0, _SEED_MAX)
+        seed = req.seed if req.seed is not None else random.randint(0, jobs.SEED_MAX)
         job = _Job(
             _store.new_id(),
             seed=seed,

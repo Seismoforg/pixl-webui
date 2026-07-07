@@ -26,11 +26,9 @@ from ..services import (
     upscalers,
 )
 from ..services.upscalers import UpscalerInfo
-from .upscale import BatchProgress
+from ..services.jobs import BatchProgress
 
 router = APIRouter(prefix="/api/inpaint", tags=["inpaint"])
-
-_SEED_MAX = 2**32 - 1
 
 
 class InpaintRequest(BaseModel):
@@ -73,13 +71,13 @@ def _run(job: jobs.JobState, req: InpaintRequest, image, mask, engine: UpscalerI
     pub_key = f"inpaint:{job.job_id}"
     on_progress = jobs.make_on_progress(job, _store.lock, pub_key)
 
-    base_seed = req.seed if req.seed is not None else random.randint(0, _SEED_MAX)
+    base_seed = req.seed if req.seed is not None else random.randint(0, jobs.SEED_MAX)
     sampler = req.sampler or samplers.DEFAULT_SAMPLER
     with _store.lock:
         job.batch_size = req.batch
     try:
         for i in range(req.batch):
-            seed_i = (base_seed + i) % (_SEED_MAX + 1)
+            seed_i = (base_seed + i) % (jobs.SEED_MAX + 1)
             with _store.lock:
                 job.batch_index = i + 1
             result = inpaint_svc.inpaint_image(
@@ -164,20 +162,4 @@ def inpaint_progress(job_id: str) -> BatchProgress:
         job = _store.get(job_id)
         if job is None:
             raise HTTPException(404, messages.JOB_NOT_FOUND.format(job_id=job_id))
-        return BatchProgress(
-            job_id=job.job_id,
-            status=job.status,
-            phase=job.phase,
-            current_tile=job.current_tile,
-            total_tiles=job.total_tiles,
-            current_step=job.current_step,
-            total_steps=job.total_steps,
-            its=job.its,
-            elapsed=round(job.elapsed(), 1),
-            engine_name=job.engine_name,
-            image_id=job.image_id,
-            error=job.error,
-            batch_index=job.batch_index,
-            batch_size=job.batch_size,
-            image_ids=list(job.image_ids),
-        )
+        return jobs.to_batch_progress(job)

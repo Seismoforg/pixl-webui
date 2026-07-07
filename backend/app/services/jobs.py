@@ -2,9 +2,10 @@
 
 The upscale/reframe/inpaint/edit routers each run one job on a background thread,
 tracked in an in-memory store guarded by a lock, and report progress via the shared
-`BatchProgress`/`UpscaleProgress` shape (defined in routers/upscale.py). This module
-holds the parts that were identical across them: the job-state record, the store +
-id counter, source resolution, the progress callback, and the gallery-save tail.
+`UpscaleProgress`/`BatchProgress` shape (defined here). This module holds the parts
+that were identical across them: the progress schemas + response builders, the
+job-state record, the store + id counter, the seed cap, source resolution, the
+progress callback, and the gallery-save tail.
 
 Generation (routers/generate.py) has richer per-job state (live preview, its() timing,
 per-batch resets) and keeps its own `_Job`, but reuses `JobStore` for the store/lock.
@@ -15,8 +16,38 @@ import threading
 import time
 from typing import Callable, Generic, Protocol, TypeVar
 
+from pydantic import BaseModel
+
 from .. import live, messages
 from . import gallery
+
+# Seed cap for random seeds + batch seed-wrapping (32-bit), shared by the job routers.
+SEED_MAX = 2**32 - 1
+
+
+class UpscaleProgress(BaseModel):
+    job_id: str
+    status: str  # "running" | "done" | "error"
+    phase: str  # "loading" | "upscaling" | "finalizing"
+    current_tile: int
+    total_tiles: int
+    current_step: int
+    total_steps: int
+    its: float | None  # iterations/second (SD x4 steps); None until measurable
+    elapsed: float  # seconds since the job started
+    engine_name: str
+    image_id: str | None = None
+    error: str | None = None
+
+
+class BatchProgress(UpscaleProgress):
+    """A batch job's progress = the shared upscale shape plus batch fields (a superset,
+    so the frontend's upscale-based live-stats UI keeps working unchanged). Shared by
+    the reframe, inpaint and edit jobs, which each generate a batch of variants."""
+
+    batch_index: int = 0
+    batch_size: int = 1
+    image_ids: list[str] = []
 
 
 class JobState:
@@ -111,3 +142,33 @@ def save_result(store: JobStore[JobState], job: JobState, result, meta: dict) ->
         if job.image_id is None:
             job.image_id = saved.id
         job.image_ids.append(saved.id)
+
+
+def to_upscale_progress(job: JobState) -> UpscaleProgress:
+    """Snapshot a JobState as the single-image `UpscaleProgress` response. Caller holds
+    `store.lock` (as the progress endpoints do)."""
+    return UpscaleProgress(
+        job_id=job.job_id,
+        status=job.status,
+        phase=job.phase,
+        current_tile=job.current_tile,
+        total_tiles=job.total_tiles,
+        current_step=job.current_step,
+        total_steps=job.total_steps,
+        its=job.its,
+        elapsed=round(job.elapsed(), 1),
+        engine_name=job.engine_name,
+        image_id=job.image_id,
+        error=job.error,
+    )
+
+
+def to_batch_progress(job: JobState) -> BatchProgress:
+    """Snapshot a JobState as a `BatchProgress` response (upscale shape + batch fields).
+    Caller holds `store.lock`."""
+    return BatchProgress(
+        **to_upscale_progress(job).model_dump(),
+        batch_index=job.batch_index,
+        batch_size=job.batch_size,
+        image_ids=list(job.image_ids),
+    )

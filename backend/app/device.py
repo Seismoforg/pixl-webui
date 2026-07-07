@@ -60,3 +60,42 @@ def get_compute_dtype():
     import torch
 
     return torch.bfloat16 if get_torch_device() == "cuda" else torch.float32
+
+
+def place_offloaded(pipe):
+    """Place a loaded pipe: plain .to("cpu") on CPU, else CPU-offload so encoders
+    stream off the GPU during denoising (bounds peak VRAM). Returns the pipe."""
+    if get_torch_device() == "cpu":
+        return pipe.to("cpu")
+    pipe.enable_model_cpu_offload()
+    return pipe
+
+
+def make_generator(seed: int | None):
+    """A seeded ``torch.Generator`` on the active device for a reproducible run, or
+    None (random) when no seed is given."""
+    if seed is None:
+        return None
+    import torch
+
+    return torch.Generator(device=get_torch_device()).manual_seed(int(seed))
+
+
+def load_gguf_pipe(model_path, gguf_filename: str, transformer_cls, pipeline_cls):
+    """Build a GGUF-quantized pipe: only the transformer is quantized (from the local
+    ``.gguf``); the base repo at ``model_path`` supplies VAE/text-encoders/scheduler.
+    CPU-offloaded so the T5 encoder streams off the GPU (keeps peak VRAM ~16 GB).
+    Shared by the FLUX Fill/Kontext engines and the generation GGUF path."""
+    from diffusers import GGUFQuantizationConfig
+
+    dtype = get_compute_dtype()
+    transformer = transformer_cls.from_single_file(
+        str(model_path / gguf_filename),
+        config=str(model_path / "transformer"),
+        quantization_config=GGUFQuantizationConfig(compute_dtype=dtype),
+        torch_dtype=dtype,
+    )
+    pipe = pipeline_cls.from_pretrained(
+        str(model_path), transformer=transformer, torch_dtype=dtype
+    )
+    return place_offloaded(pipe)

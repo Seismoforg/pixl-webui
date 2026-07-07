@@ -17,7 +17,7 @@ import threading
 from .. import config, messages
 from ..catalog import GenerationDefaults, ModelInfo
 from ..config import load_settings
-from ..device import get_dtype, get_torch_device
+from ..device import get_dtype, get_torch_device, place_offloaded
 from . import callbacks
 from . import downloader
 from . import vram
@@ -292,10 +292,7 @@ def _load_sd_x4(engine: UpscalerInfo):
                 torch_dtype=get_dtype(),
                 variant=engine.variant,
             )
-            if get_torch_device() == "cpu":
-                pipe = pipe.to("cpu")
-            else:
-                pipe.enable_model_cpu_offload()
+            pipe = place_offloaded(pipe)
             pipe.enable_attention_slicing()
             # The x4 upscaler's final VAE decode of the full 4× image is the slow,
             # memory-heavy tail. VAE tiling (via the shared perf settings) decodes

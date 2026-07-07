@@ -14,7 +14,13 @@ from typing import Callable
 from .. import config, messages, samplers
 from ..catalog import ModelInfo
 from ..config import load_settings
-from ..device import get_compute_dtype, get_device_info, get_dtype, get_torch_device
+from ..device import (
+    get_device_info,
+    get_dtype,
+    get_torch_device,
+    load_gguf_pipe,
+    make_generator,
+)
 from . import callbacks
 from . import preview as preview_svc
 from . import prompt_embeds
@@ -151,8 +157,6 @@ def _load_gguf(model: ModelInfo):
     from the base repo. Always uses CPU offloading so the large text encoders stream
     off the GPU during denoising, keeping peak VRAM low enough to fit ~16 GB.
     """
-    from diffusers import GGUFQuantizationConfig
-
     if model.family == "FLUX":
         from diffusers import FluxPipeline, FluxTransformer2DModel
 
@@ -165,23 +169,7 @@ def _load_gguf(model: ModelInfo):
         raise ValueError(messages.GGUF_UNSUPPORTED_FAMILY.format(family=model.family))
 
     model_path = config.model_dir(model.slug)
-    dtype = get_compute_dtype()
-    transformer = TransformerCls.from_single_file(
-        str(model_path / model.gguf_filename),
-        config=str(model_path / "transformer"),
-        quantization_config=GGUFQuantizationConfig(compute_dtype=dtype),
-        torch_dtype=dtype,
-    )
-    pipe = PipelineCls.from_pretrained(
-        str(model_path),
-        transformer=transformer,
-        torch_dtype=dtype,
-    )
-    if get_torch_device() == "cpu":
-        pipe = pipe.to("cpu")
-    else:
-        pipe.enable_model_cpu_offload()
-    return pipe
+    return load_gguf_pipe(model_path, model.gguf_filename, TransformerCls, PipelineCls)
 
 
 def unload(slug: str | None = None) -> None:
@@ -438,7 +426,7 @@ def generate(
 
     effective_sampler = samplers.apply_sampler(run_pipe, sampler)
 
-    generator = torch.Generator(device=get_torch_device()).manual_seed(seed)
+    generator = make_generator(seed)
 
     # CLIP families (SD 1.5 / SDXL) truncate the prompt at 77 tokens; build long-
     # prompt / weighted embeddings and pass those instead. Best-effort: None keeps
