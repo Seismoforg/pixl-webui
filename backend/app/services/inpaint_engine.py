@@ -205,7 +205,7 @@ def _load_zimage_inpaint(engine: UpscalerInfo, model_path):
         )
     fits_gpu = (
         get_torch_device() == "cuda"
-        and fit.assess_for(engine.min_vram_gb, "Z-Image", engine.approx_size_gb, level).verdict
+        and fit.assess_for(engine.min_vram_gb, "Z-Image", level).verdict
         == "fits_gpu"
     )
     if get_torch_device() == "cpu" or fits_gpu:

@@ -144,9 +144,9 @@ def list_engines() -> list[UpscalerEntry]:
         qfam = quantize.engine_family(u)
         if qfam is not None:
             level = fit.effective_level(u.slug, u.min_vram_gb, qfam)
-            quant = fit.quant_levels_for(u.min_vram_gb, qfam, u.approx_size_gb)
+            quant = fit.quant_levels_for(u.min_vram_gb, qfam)
             suggested = fit.suggest_for(u.min_vram_gb, qfam)
-            fit_info = fit.assess_for(u.min_vram_gb, qfam, u.approx_size_gb, level)
+            fit_info = fit.assess_for(u.min_vram_gb, qfam, level)
         else:
             level, suggested, quant = "fp16", "fp16", []
             fit_info = fit.assess(upscale_svc.to_model_info(u))

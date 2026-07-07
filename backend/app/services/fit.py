@@ -70,30 +70,34 @@ def est_vram_for(min_vram_gb: float, family: str, level: str = "fp16") -> float:
     return round(max(min_vram_gb - heavy_fp16 + scaled, 0.5), 2)
 
 
-def _verdict(est: float, approx_size_gb: float, gpu: float | None, ram: float | None) -> str:
+def _verdict(est: float, gpu: float | None, ram: float | None) -> str:
+    # The RAM/offload check uses the LOADED footprint (`est`), not the on-disk download
+    # size: CPU offload streams the loaded (fp16/NF4) weights through RAM, ~= est. This
+    # keeps the fit verdict independent of the (display-only) download size, so a large
+    # fp32 download that loads small (Z-Image, SD 3.5) isn't wrongly flagged too_large.
     if gpu is None:
         return "cpu_only"
     if est <= gpu * _VRAM_USABLE:
         return "fits_gpu"
-    if ram is not None and approx_size_gb <= ram * _RAM_USABLE:
+    if ram is not None and est <= ram * _RAM_USABLE:
         return "fits_offload"
     return "too_large"
 
 
-def assess_for(min_vram_gb: float, family: str, approx_size_gb: float, level: str = "fp16") -> FitInfo:
+def assess_for(min_vram_gb: float, family: str, level: str = "fp16") -> FitInfo:
     """Fit verdict from raw entry facts at load ``level`` — used for the quant-capable
     engines (which aren't ``ModelInfo``) and, via ``assess``, the model catalog."""
     est = est_vram_for(min_vram_gb, family, level)
     gpu, ram = _gpu_total_gb(), _ram_total_gb()
     return FitInfo(
-        verdict=_verdict(est, approx_size_gb, gpu, ram),
+        verdict=_verdict(est, gpu, ram),
         est_vram_gb=est,
         gpu_total_gb=gpu,
         ram_total_gb=ram,
     )
 
 
-def quant_levels_for(min_vram_gb: float, family: str, approx_size_gb: float) -> list[QuantLevel]:
+def quant_levels_for(min_vram_gb: float, family: str) -> list[QuantLevel]:
     """Per-level VRAM estimate + fit verdict for each quantization level. Empty when
     bitsandbytes is unavailable or the family isn't quant-capable (fp16-only)."""
     if not quantize.available() or not quantize.quantizable(family):
@@ -102,7 +106,7 @@ def quant_levels_for(min_vram_gb: float, family: str, approx_size_gb: float) -> 
     out = []
     for level in quantize.LEVELS:
         est = est_vram_for(min_vram_gb, family, level)
-        out.append(QuantLevel(level=level, est_vram_gb=est, verdict=_verdict(est, approx_size_gb, gpu, ram)))
+        out.append(QuantLevel(level=level, est_vram_gb=est, verdict=_verdict(est, gpu, ram)))
     return out
 
 
@@ -147,12 +151,12 @@ def assess(model: ModelInfo, level: str = "fp16") -> FitInfo:
 
     ``level`` != "fp16" scales the estimate down for a bitsandbytes NF4/int8 load.
     """
-    return assess_for(model.min_vram_gb, model.family, model.approx_size_gb, level)
+    return assess_for(model.min_vram_gb, model.family, level)
 
 
 def quant_levels(model: ModelInfo) -> list[QuantLevel]:
     """Per-level estimate + verdict for the Models-page selector (empty = fp16-only)."""
-    return quant_levels_for(model.min_vram_gb, model.family, model.approx_size_gb)
+    return quant_levels_for(model.min_vram_gb, model.family)
 
 
 def suggest_level(model: ModelInfo) -> str:
