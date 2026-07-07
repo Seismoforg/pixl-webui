@@ -1,5 +1,19 @@
 # Technical Debt
 
+## Batch `_run` job loop duplicated across edit/inpaint/reframe routers  (added 2026-07-07)
+- Problem: The `_run` background-job loop in `routers/edit.py`, `routers/inpaint.py`
+  and `routers/reframe.py` is near-identical: base-seed pick, `job.batch_size` set,
+  per-item `(base+i) % (SEED_MAX+1)` seed, `job.batch_index`, call the service,
+  `phase="finalizing"` + `live.publish`, `jobs.save_result(meta)`, then the same
+  done/except/finally (unload + `job_guard.release`). Only the service call, the meta
+  dict and the failure message differ. The shared store/resolve/progress/save/schema
+  infra was extracted to `services/jobs.py` (2026-07-07 audit); this loop was NOT.
+- Impact: A change to seed-wrapping or progress ordering must be made in 3+ places.
+- Proposed Resolution: A `jobs.run_batch(store, job, batch, seed, per_item_fn, meta_fn,
+  fail_msg, unload)` helper. Deferred from the 2026-07-07 audit: behavior-preserving
+  but the per-router ordering/meta differences make it verifiable only by running real
+  GPU jobs, so it was held back from that audit's import/TestClient-verified scope.
+
 ## Curated LoRA entries depend on community repo filenames  (added 2026-07-06)
 - Problem: The curated LoRA catalog (`app/loras_catalog.json`) pins each entry's
   `repo_id` + exact `filename` (e.g. `nerijs/pixel-art-xl` → `pixel-art-xl.safetensors`).

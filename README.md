@@ -43,8 +43,9 @@ and opens the browser.
 
 ```
 pixl-webui/
-  install.ps1     Installer (GPU detection, PyTorch, deps)
-  start.bat       Starts backend + frontend
+  install.ps1        Installer (GPU detection, PyTorch, deps)
+  start.bat          Starts backend + frontend
+  test-frontend.bat  Playwright inspect harness (backend + frontend dev + shared browser)
   backend/        FastAPI + diffusers inference backend
   frontend/       Next.js + MUI frontend
   docs/           Architecture docs and ADRs

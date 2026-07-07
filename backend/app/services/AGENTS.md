@@ -34,16 +34,21 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
 - prompt_templates.py — reusable prompt-snippet JSON store
 - resources.py      — live CPU/RAM/VRAM/GPU% stats
 - gpu_win.py        — Windows GPU% fallback (PowerShell perf counter)
+- optimizations.py  — perf toggles applied on pipe load: apply_perf (VAE tiling/
+                      slicing, xformers), apply_compile (torch.compile)
 - vram.py           — release(): gc + empty_cache
 
 # Key Components
-- jobs.py — shared background-job infra for the image-op routers: `JobState`
-            (batch-capable progress record + elapsed()), `JobStore[J]` (per-router
-            in-memory store + id counter + the lock guarding job mutations),
-            `resolve_source(req, missing_msg)` (gallery id OR data URL → PIL; raises
-            SOURCE_DECODE_FAILED on bad decode), `make_on_progress` (setattr-loop +
-            live.publish callback), `save_result` (gallery.save + record image_id/
-            image_ids). generate keeps its own richer `_Job` but reuses `JobStore`
+- jobs.py — shared background-job infra for the image-op routers: `SEED_MAX` (32-bit
+            seed cap), `UpscaleProgress`/`BatchProgress` response schemas +
+            `to_upscale_progress`/`to_batch_progress` builders (snapshot a JobState under
+            the store lock), `JobState` (batch-capable progress record + elapsed()),
+            `JobStore[J]` (per-router in-memory store + id counter + the lock guarding
+            job mutations), `resolve_source(req, missing_msg)` (gallery id OR data URL →
+            PIL; raises SOURCE_DECODE_FAILED on bad decode), `make_on_progress`
+            (setattr-loop + live.publish callback), `save_result` (gallery.save + record
+            image_id/image_ids). generate keeps its own richer `_Job` but reuses
+            `JobStore`; compare hand-builds its `BatchProgress`
 - job_guard.py — process-wide single-heavy-job guard: acquire(job_id, kind)/
             release(job_id). Every job router acquires on start (409 JOB_BUSY when any
             job runs) + releases in `_run` finally. See ADR 0014
@@ -102,31 +107,31 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             loaded at a time; `pipeline.unload()`/`upscale.unload()` before load
             (VRAM-coordinated)
 - inpaint.py — user-mask inpainting: repaint the white-masked region with an `inpaint`
-            engine. `_padded_box` crops a padded box (a `mask_expand` knob first grows
-            the region to swallow a subject's soft fringe → no halo), scales the crop
-            into the model working range (UP to family native res so small edits don't
-            fall below training size → noise; DOWN to cap for huge crops), generates,
-            composites back over the pixel-exact full-res source (feathered seam). Three
-            feather knobs mirror reframe (mask_softness = mask-edge gradient to diffuser,
-            seed_softness = source blur under mask, seam_softness = composite alpha) +
-            optional hires refine on large crops. FLUX Fill: CRISP binary mask +
-            unblurred init (zeroes masked init, reads mask in latent space; soft edge →
-            grey haze ring) — composite seam blends; SD/SDXL keep feathered mask + seed
-            blur. Uses inpaint_engine + reframe geometry. Driven by the inpaint job
-- outpaint.py — extend to a target ratio by generating the new area with a selectable
+            engine. `_padded_box` crops a padded box (`mask_expand` knob grows the region
+            first to swallow a subject's soft fringe → no halo). Scale crop into model
+            working range: UP to family native res (small edits below training size →
+            noise), DOWN to cap for huge crops. Generate, composite back over the
+            pixel-exact full-res source (feathered seam). Three feather knobs mirror
+            reframe: mask_softness (mask-edge gradient to diffuser), seed_softness (source
+            blur under mask), seam_softness (composite alpha); optional hires refine on
+            large crops. FLUX Fill: CRISP binary mask + unblurred init (zeroes masked
+            init, reads mask in latent space; soft edge → grey haze ring), composite seam
+            blends. SD/SDXL keep feathered mask + seed blur. Uses inpaint_engine + reframe
+            geometry. Driven by the inpaint job
+- outpaint.py — extend to a target ratio: generate the new area with a selectable
             inpaint pipe (load/run via inpaint_engine; `unload` re-exported). Whole-canvas
-            composition at a family cap (SD 1.x 768 / SDXL 1024 / FLUX 1024) — full canvas
-            when it fits, else generated at cap + upscaled, then (only if `refine`, off
-            by default) a short low-strength hires pass re-adds full-res border. Pristine
+            composition at a family cap (SD 1.x 768 / SDXL 1024 / FLUX 1024): full canvas
+            when it fits, else generated at cap + upscaled, then (only if `refine`, off by
+            default) a short low-strength hires pass re-adds the full-res border. Pristine
             source composited back (feathered seam) → source pixel-exact, only border AI;
             VRAM-coordinated. mask/seam/seed widths user-scalable (0..1, 0.5 = default),
-            placement via pos_x/pos_y (0.5 = centred). FLUX-aware (like inpaint): FLUX
-            Fill gets CRISP binary border mask + UNBLURRED init → mask_softness/
-            seed_softness inert, only seam_softness applies; SD/SDXL keep feathered mask
-            + seed blur. Negative = Settings.outpaint_negative default + per-run negative.
-            Per-run params: steps (composition) + refine_steps (hires) + guidance +
-            optional sampler (samplers.apply_sampler when supported) + seed (seeded
-            torch.Generator). Used by reframe=outpaint
+            placement via pos_x/pos_y (0.5 = centred). FLUX-aware (like inpaint): FLUX Fill
+            gets CRISP binary border mask + UNBLURRED init → mask_softness/seed_softness
+            inert, only seam_softness applies; SD/SDXL keep feathered mask + seed blur.
+            Negative = Settings.outpaint_negative default + per-run negative. Per-run
+            params: steps (composition), refine_steps (hires), guidance, optional sampler
+            (samplers.apply_sampler when supported), seed (seeded torch.Generator). Used by
+            reframe=outpaint
 - edit.py — prompt-based whole-image editing (FLUX.1 Kontext). Loads an `edit` engine's
             GGUF transformer into a `FluxKontextPipeline` (own cached pipe + `unload`,
             CPU-offloaded). `edit_image` = one Kontext pass (source + instruction, NO

@@ -26,17 +26,17 @@ and download models, configure settings, and generate images.
                              ReframeProvider, InpaintProvider, EditProvider,
                              ActivityProvider, DownloadProvider.
                              Grouped here so navigation-surviving state has one home
-- src/theme/theme.ts        — theme tokens only: Inter (body) + JetBrains Mono (numbers)
-                             fonts (loaded by next/font in app/layout.tsx, read via the
-                             `--font-inter` / `--font-mono` CSS vars; mono exposed as the
-                             `typography.fontFamilyMono` token, used by the `MonoText`
-                             atom), a cohesive light/dark palette (background/paper/
-                             divider/text, AA contrast; light-mode warning/error/info
-                             mains darkened so small outlined-chip labels clear AA), the
-                             type scale, `fontWeightMedium` emphasis token, tinted soft
-                             elevation shadows (levels 1-2), a tactile button `:active`
-                             press (reduced-motion gated), and `layout` size tokens (incl.
-                             `contentMaxWidth`). ColorModeProvider now lives in providers/
+- src/theme/theme.ts        — theme tokens only. Fonts: Inter (body) + JetBrains Mono
+                             (numbers), loaded by next/font in app/layout.tsx via
+                             `--font-inter`/`--font-mono` CSS vars; mono = the
+                             `typography.fontFamilyMono` token (used by `MonoText`).
+                             Light/dark palette (background/paper/divider/text, AA;
+                             light-mode warning/error/info mains darkened so small
+                             outlined-chip labels clear AA). Type scale,
+                             `fontWeightMedium`, tinted elevation shadows (levels 1-2),
+                             tactile button `:active` press (reduced-motion gated),
+                             `layout` size tokens (incl. `contentMaxWidth`).
+                             ColorModeProvider lives in providers/
 - src/i18n/                 — self-contained i18n module: minimal provider +
                              `useTranslations` + locales/en.json (all static UI text)
 - src/lib/                  — backend-communication infra + pure helpers
@@ -90,6 +90,9 @@ and download models, configure settings, and generate images.
 - Heading hierarchy is semantic: one `h1` (app title in AppChrome), page/section
   titles are `h2` and sub-sections `h3` — always via the `SectionHeading` atom,
   never a visual-only `variant`
+- Formatting/lint: Prettier (`.prettierrc.json`: printWidth 100, semi, double quotes,
+  trailing commas) + ESLint (`next/core-web-vitals`). Scripts: `npm run format` /
+  `format:check` / `lint`. Run format before commit
 
 # Dependencies
 next, react, @mui/material, @mui/icons-material, @mui/material-nextjs,

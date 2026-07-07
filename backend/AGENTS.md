@@ -59,8 +59,11 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 - app/main.py           — FastAPI app, CORS, router registration (controller entry)
 - app/config.py         — paths, HF cache redirection, settings store; also pins the
                           ROCm TunableOp results file into `data/`
-- app/device.py         — device/backend detection and dtype selection (fp16 for
-                          normal loads; bf16 compute dtype for the GGUF FLUX path)
+- app/device.py         — device/backend detection + dtype selection (fp16 normal;
+                          bf16 compute dtype for GGUF FLUX). Shared pipe helpers:
+                          `place_offloaded` (CPU-offload placement), `make_generator`
+                          (seeded torch.Generator), `load_gguf_pipe` (GGUF transformer +
+                          pipe + offload, used by generate/inpaint/edit GGUF loads)
 - app/catalog.py        — curated model catalog (domain data), JSON-backed:
                           `models_catalog.json` ships the default, a git-ignored
                           `data/models_catalog.json` override (written by the Settings
@@ -119,26 +122,22 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            engine); upscales and saves to the gallery. Also defines the
                            shared `UpscaleProgress`/`BatchProgress` models (reused by
                            reframe/inpaint/edit). Reframing is now a separate router
-- routers/reframe.py     — POST /api/reframe (gallery-id or uploaded data URL +
-                           target_ratio (+ optional target_width/target_height for a
-                           custom exact resolution) + reframe strategy + outpaint_prompt +
-                           outpaint_negative + outpaint_engine + outpaint seam-blend
-                           softness mask/seam/seed_softness + source position
-                           pos_x/pos_y + source scale (shrinks the source within the
-                           frame; area-adding strategies) + outpaint generation params
-                           outpaint_steps/refine_steps/guidance/sampler/seed/batch +
-                           an outpaint_refine flag gating the slow full-res hires
-                           refinement pass, off by default)
-                           as a background job that reframes the
-                           image to a target aspect ratio WITHOUT upscaling
-                           (cover/contain/edge = pure PIL; outpaint = the outpaint
-                           service, generating `outpaint_batch` variants with
-                           incrementing seeds) and saves to the gallery;
-                           GET /api/reframe/{job_id} returns `BatchProgress` (the
-                           upscale `UpscaleProgress` shape + batch_index/batch_size/
-                           image_ids; phase incl. "outpainting"/steps/elapsed).
-                           Uses the shared services.jobs store; publishes the `reframe`
-                           WS channel
+- routers/reframe.py     — background job: reframe to a target aspect ratio WITHOUT
+                           upscaling, saved to the gallery. POST /api/reframe body:
+                           gallery-id or data URL, target_ratio (+ optional
+                           target_width/target_height for exact resolution), strategy,
+                           outpaint_prompt/outpaint_negative/outpaint_engine, outpaint
+                           seam-blend softness mask/seam/seed_softness, source position
+                           pos_x/pos_y, source scale (shrinks source in frame;
+                           area-adding strategies), outpaint gen params
+                           outpaint_steps/refine_steps/guidance/sampler/seed/batch,
+                           outpaint_refine flag (gates the slow full-res hires pass, off
+                           by default). cover/contain/edge = pure PIL; outpaint = the
+                           outpaint service (`outpaint_batch` variants, incrementing
+                           seeds). GET /api/reframe/{job_id} → `BatchProgress` (the
+                           `UpscaleProgress` shape + batch_index/batch_size/image_ids;
+                           phase incl. "outpainting"/steps/elapsed). Shared services.jobs
+                           store; `reframe` WS channel
 - routers/inpaint.py     — POST /api/inpaint (gallery-id or uploaded data URL +
                            mask_data painted-mask data URL + engine + prompt +
                            negative + feather softness mask/seam/seed_softness +

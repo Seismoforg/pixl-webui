@@ -9,7 +9,8 @@ Backend-communication infrastructure and small pure helpers shared across the UI
 
 # File Structure
 - api.ts    — typed backend client (REST); one `request<T>` core + per-endpoint
-              methods. Base URL from `NEXT_PUBLIC_API_BASE` (default :8000)
+              methods. Exports `API_BASE` (`NEXT_PUBLIC_API_BASE`, default :8000),
+              the single backend origin reused by ws.ts
 - ws.ts     — module-level singleton `live` (reconnecting, multiplexed) + `useLive`:
               subscribes a channel and falls back to REST polling while the socket
               is down. Used for generation/upscale progress, system stats, downloads.
