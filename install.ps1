@@ -10,7 +10,10 @@
       AMD    -> ROCm PyTorch via the fetched rocm-torch-windows module (pinned)
       other  -> CPU-only PyTorch
 
-    Node.js is checked and installed automatically (winget) if missing or too old.
+    Python 3.10-3.13 is used from PATH / the py launcher if present; otherwise a
+    pinned project-local CPython (python-build-standalone) is fetched into .python\
+    so the system Python is never changed. Node.js is checked and installed
+    automatically (winget) if missing or too old.
 
 .PARAMETER Force
     Rebuild the Python virtual environment from scratch.
@@ -36,6 +39,18 @@ $RocmModuleRepo = "Seismoforg/rocm-torch-windows"
 $RocmModuleRef = "20a28c717ceccfdc9bd6419faece9015215ef4d2"
 $RocmModuleDir = Join-Path $root ".rocm-module"
 
+# Project-local Python fallback: a PINNED python-build-standalone (astral) CPython
+# build, fetched ONLY when no suitable system Python (3.10-3.13) is found — so a
+# machine with e.g. only 3.9 installs without touching the system Python. The
+# `install_only` archive extracts to `.python\python\python.exe`.
+$PyStandaloneVersion = "3.12.13"
+$PyStandaloneTag = "20260623"
+$PyStandaloneUrl = "https://github.com/astral-sh/python-build-standalone/releases/download/$PyStandaloneTag/cpython-$PyStandaloneVersion+$PyStandaloneTag-x86_64-pc-windows-msvc-install_only.tar.gz"
+$PyDir = Join-Path $root ".python"
+$PyExe = Join-Path $PyDir "python\python.exe"
+# The interpreter used to create the venv — resolved by Resolve-Python.
+$script:PythonExe = $null
+
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Write-Info($msg) { Write-Host "    $msg" -ForegroundColor Gray }
 function Write-Warn($msg) { Write-Host "    WARNING: $msg" -ForegroundColor Yellow }
@@ -58,16 +73,61 @@ function Get-TorchTag {
 }
 
 # --- Python -----------------------------------------------------------------
-function Test-Python {
-    Write-Step "Checking Python (3.10 - 3.13)"
-    $python = Get-Command python -ErrorAction SilentlyContinue
-    if (-not $python) { Fail "Python not found on PATH. Install Python 3.10-3.13 (winget install Python.Python.3.12)." }
-    $version = & python -c "import sys; print('%d.%d' % sys.version_info[:2])"
-    $parts = $version.Split(".")
-    if ([int]$parts[0] -ne 3 -or [int]$parts[1] -lt 10 -or [int]$parts[1] -gt 13) {
-        Fail "Python $version is not supported. Need 3.10 - 3.13."
+# True if $exe is a working CPython in the supported 3.10-3.13 range.
+function Test-PythonVersion($exe) {
+    $v = & $exe -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $v) { return $false }
+    $p = "$v".Trim().Split(".")
+    return ([int]$p[0] -eq 3 -and [int]$p[1] -ge 10 -and [int]$p[1] -le 13)
+}
+
+# Download + extract the pinned project-local Python (once) and return its exe. The
+# `install_only` tarball extracts to `.python\python\python.exe`. Uses bsdtar (`tar`,
+# bundled in Windows 10 1803+) for the .tar.gz.
+function Get-StandalonePython {
+    if (Test-Path $PyExe) { return $PyExe }
+    if (-not (Get-Command tar -ErrorAction SilentlyContinue)) {
+        Fail "No suitable Python found and 'tar' is unavailable to unpack a local one. Install Python 3.10-3.13 (winget install Python.Python.3.12)."
     }
-    Write-Info "Python $version OK"
+    Write-Step "Fetching a project-local Python $PyStandaloneVersion (no system Python change)"
+    New-Item -ItemType Directory -Force -Path $PyDir | Out-Null
+    $tarball = Join-Path $PyDir "python.tar.gz"
+    Write-Info "Downloading $PyStandaloneUrl"
+    Invoke-WebRequest -Uri $PyStandaloneUrl -OutFile $tarball -Headers @{ "User-Agent" = "pixl-webui-installer" } -UseBasicParsing
+    & tar -xzf $tarball -C $PyDir
+    if ($LASTEXITCODE -ne 0) { Fail "Failed to unpack the local Python archive." }
+    Remove-Item $tarball -Force
+    if (-not (Test-Path $PyExe)) { Fail "Local Python unpack did not produce $PyExe." }
+    return $PyExe
+}
+
+# Resolve the interpreter used to build the venv, into $script:PythonExe. Prefers an
+# existing suitable Python (so nothing is downloaded when one is present); falls back
+# to the pinned project-local build otherwise.
+function Resolve-Python {
+    Write-Step "Checking Python (3.10 - 3.13)"
+    # 1) `python` on PATH
+    $onPath = Get-Command python -ErrorAction SilentlyContinue
+    if ($onPath -and (Test-PythonVersion $onPath.Source)) {
+        $script:PythonExe = $onPath.Source
+        Write-Info "Using system Python on PATH ($($onPath.Source))"
+        return
+    }
+    # 2) the Windows `py` launcher, newest supported first
+    if (Get-Command py -ErrorAction SilentlyContinue) {
+        foreach ($v in "3.13", "3.12", "3.11", "3.10") {
+            $exe = & py "-$v" -c "import sys; print(sys.executable)" 2>$null
+            if ($LASTEXITCODE -eq 0 -and $exe -and (Test-Path "$exe".Trim())) {
+                $script:PythonExe = "$exe".Trim()
+                Write-Info "Using Python $v via the py launcher"
+                return
+            }
+        }
+    }
+    # 3) pinned project-local Python (system Python is missing or out of range)
+    Write-Info "No suitable system Python (3.10-3.13) found; using a project-local build."
+    $script:PythonExe = Get-StandalonePython
+    Write-Info "Using project-local Python ($script:PythonExe)"
 }
 
 # --- Node.js ----------------------------------------------------------------
@@ -216,7 +276,7 @@ function New-Venv {
             Write-Info ".venv already exists (use -Force to rebuild)"
         }
     }
-    if (-not (Test-Path $venv)) { & python -m venv $venv }
+    if (-not (Test-Path $venv)) { & $script:PythonExe -m venv $venv }
     if (-not (Test-Path $venvPython)) { Fail "Virtual environment creation failed ($venvPython missing)." }
     Invoke-Pip install --upgrade pip --quiet
 }
@@ -314,7 +374,7 @@ function Install-Frontend {
 }
 
 # --- Run --------------------------------------------------------------------
-Test-Python
+Resolve-Python
 Test-Node
 $gpu = Get-GpuVendor
 New-Venv

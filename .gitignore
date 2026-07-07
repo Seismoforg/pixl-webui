@@ -1,5 +1,8 @@
 # Python
 .venv/
+# Project-local Python (python-build-standalone, fetched at install time when no
+# suitable system Python is present)
+.python/
 # Fetched rocm-torch-windows module (downloaded at install time, pinned)
 .rocm-module/
 __pycache__/

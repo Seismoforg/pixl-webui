@@ -13,7 +13,9 @@ settings to speed up downloads and access gated models.
 ## Requirements
 
 - Windows 10/11
-- Python 3.10 – 3.13 (on `PATH`)
+- Python 3.10 – 3.13 (on `PATH` or via the `py` launcher) — optional: if none is
+  found, the installer fetches a project-local Python into `.python\` without touching
+  your system Python
 - Node.js 18+ (on `PATH`)
 - A supported GPU (NVIDIA, or AMD per the rocm-torch-windows compatibility list) — CPU works but is slow
 

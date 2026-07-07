@@ -9,7 +9,9 @@ Diffusion family) models on Windows, with a Next.js frontend and a Python
 - Host the two application modules (`backend/`, `frontend/`) and docs
 
 # File Structure
-- install.ps1        — GPU detection + PyTorch (CUDA/ROCm) + dependency install
+- install.ps1        — GPU detection + PyTorch (CUDA/ROCm) + dependency install;
+                       provisions a pinned project-local Python into `.python\` when no
+                       suitable system Python (3.10-3.13) is found (system Python untouched)
 - start.bat          — starts backend (uvicorn) and frontend (next) together
 - test-frontend.bat  — one-click Playwright inspect harness: starts backend + frontend
                        DEV server + a shared browser you drive; Claude attaches over CDP
@@ -26,7 +28,8 @@ Diffusion family) models on Windows, with a Next.js frontend and a Python
 - test-frontend.bat — Playwright inspect harness for UI/UX work (see frontend/e2e)
 
 # Dependencies
-Python 3.10–3.13, Node.js 18+, PyTorch (CUDA or ROCm), diffusers, Next.js, MUI.
+Python 3.10–3.13 (auto-provisioned into `.python\` from python-build-standalone if not
+found), Node.js 18+, PyTorch (CUDA or ROCm), diffusers, Next.js, MUI.
 AMD/ROCm install is delegated to the `rocm-torch-windows` module, fetched from
 GitHub at install time (pinned commit) — see docs/adr/0018. Needs network reach
 to github.com at install.
