@@ -51,7 +51,7 @@ class InpaintRequest(BaseModel):
     # Generation parameters: inpaint/refine step counts, CFG scale, scheduler id,
     # RNG seed (None → random), and how many variants to generate (incrementing seeds).
     steps: int = Field(default=inpaint_engine.DEFAULT_STEPS, ge=1, le=150)
-    refine_steps: int = Field(default=inpaint_engine.DEFAULT_REFINE_STEPS, ge=1, le=150)
+    refine_steps: int = Field(default=inpaint_engine.DEFAULT_REFINE_STEPS, ge=0, le=150)
     # Whether to run the slow full-resolution hires refine pass on large crops.
     refine: bool = False
     guidance: float = Field(default=inpaint_engine.DEFAULT_GUIDANCE, ge=0.0, le=30.0)

@@ -67,7 +67,7 @@ class ReframeRequest(BaseModel):
     # composition/refinement step counts, CFG scale, scheduler id, RNG seed
     # (None → random), and how many variants to generate (incrementing seeds).
     outpaint_steps: int = Field(default=inpaint_engine.DEFAULT_STEPS, ge=1, le=150)
-    outpaint_refine_steps: int = Field(default=inpaint_engine.DEFAULT_REFINE_STEPS, ge=1, le=150)
+    outpaint_refine_steps: int = Field(default=inpaint_engine.DEFAULT_REFINE_STEPS, ge=0, le=150)
     # Whether to run the (slow, full-resolution) hires refinement pass on large
     # canvases. Off by default — see outpaint._reframe_single.
     outpaint_refine: bool = False
