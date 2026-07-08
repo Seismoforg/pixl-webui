@@ -44,6 +44,11 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 - Upscale an image (from the gallery or an upload) with a selectable AI upscaler
   (Real-ESRGAN via spandrel, or the SD x4 diffusion upscaler), downloading the
   engine on demand and optionally tiling large inputs
+- Restore faces in old / blurry / re-photographed portraits with CodeFormer
+  (`face_restore` engine kind): facexlib detects+aligns each face, CodeFormer
+  restores it at a user-set fidelity (identity↔smoothness), pasted back onto the
+  source — identity-preserving, unlike the diffusion tools (see ADR 0022). Detection
+  runs on CPU (ROCm/gfx1201 MIOpen batch-norm crash on GPU); restore runs on GPU
 - Reframe an image to a target aspect ratio WITHOUT upscaling (cover/contain/edge,
   or AI outpaint with a selectable inpaint model + its own outpaint prompt) — a
   standalone job/endpoint, separate from upscaling. A "custom" target instead pins an
@@ -82,9 +87,11 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                           resident on the GPU when the `vae_on_gpu` setting is on),
                           `make_generator` (seeded torch.Generator), `load_gguf_pipe`
                           (GGUF transformer + pipe + offload), `load_quantized_pipe`
-                          (bitsandbytes NF4/int8) + `load_flux2_pipe` (FLUX.2
-                          `Flux2KleinPipeline`, dual-module NF4), used by
-                          generate/inpaint/edit loads)
+                          (bitsandbytes NF4/int8), `load_flux_engine_pipe` (FLUX.1
+                          Fill/Kontext fp16 engines, quant-or-fp16 + offload),
+                          `load_zimage_pipe` (Z-Image gen/inpaint, quant + fit
+                          placement) + `load_flux2_pipe` (FLUX.2 `Flux2KleinPipeline`,
+                          dual-module NF4), used by generate/inpaint/edit loads)
 - app/catalog.py        — curated model catalog (domain data), JSON-backed:
                           `models_catalog.json` ships the default, a git-ignored
                           `data/models_catalog.json` override (written by the Settings
@@ -143,11 +150,12 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            DELETE /engines/{slug} (remove from disk);
                            POST /api/upscale (engine + gallery-id or uploaded data URL
                            + upscaler prompt + tile flag + per-run sd_x4_steps
-                           override) as a background job,
+                           override + per-run `fidelity` for the CodeFormer
+                           `face_restore` engine) as a background job,
                            GET /api/upscale/{job_id} (phase/tiles/steps/elapsed/
-                           engine); upscales and saves to the gallery. Also defines the
-                           shared `UpscaleProgress`/`BatchProgress` models (reused by
-                           reframe/inpaint/edit). Reframing is now a separate router
+                           engine); upscales and saves to the gallery. The shared
+                           `UpscaleProgress`/`BatchProgress` models live in
+                           services/jobs.py. Reframing is now a separate router
 - routers/reframe.py     — background job: reframe to a target aspect ratio WITHOUT
                            upscaling, saved to the gallery. POST /api/reframe body:
                            gallery-id or data URL, target_ratio (+ optional
@@ -202,7 +210,9 @@ fastapi, uvicorn, diffusers (>=0.31 for GGUF, >=0.39 for FLUX.2 `Flux2KleinPipel
 + `PipelineQuantizationConfig`), transformers (Qwen3 text encoder for FLUX.2),
 accelerate, huggingface_hub, pillow, pydantic, psutil, compel (long/weighted prompts),
 gguf (GGUF-quantized FLUX / SD 3.x transformers), peft (PEFT backend for LoRA
-load/blend); torch (CUDA/ROCm/CPU) installed by the root installer.
+load/blend), spandrel + spandrel_extra_arches (Real-ESRGAN + CodeFormer .pth),
+facexlib (face detect/align/paste for CodeFormer restoration; 0.3.0 needs no basicsr);
+torch (CUDA/ROCm/CPU) installed by the root installer.
 
 # Related Modules
 - Parent: ../  (project root)

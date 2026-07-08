@@ -20,20 +20,6 @@
 - Proposed Resolution: Extend the engine quant path to UNet inpaint pipelines
   (`AutoPipelineForInpainting` with a pre-quantized `unet=`) if the VRAM saving is wanted.
 
-## Batch `_run` job loop duplicated across edit/inpaint/reframe routers  (added 2026-07-07)
-- Problem: The `_run` background-job loop in `routers/edit.py`, `routers/inpaint.py`
-  and `routers/reframe.py` is near-identical: base-seed pick, `job.batch_size` set,
-  per-item `(base+i) % (SEED_MAX+1)` seed, `job.batch_index`, call the service,
-  `phase="finalizing"` + `live.publish`, `jobs.save_result(meta)`, then the same
-  done/except/finally (unload + `job_guard.release`). Only the service call, the meta
-  dict and the failure message differ. The shared store/resolve/progress/save/schema
-  infra was extracted to `services/jobs.py` (2026-07-07 audit); this loop was NOT.
-- Impact: A change to seed-wrapping or progress ordering must be made in 3+ places.
-- Proposed Resolution: A `jobs.run_batch(store, job, batch, seed, per_item_fn, meta_fn,
-  fail_msg, unload)` helper. Deferred from the 2026-07-07 audit: behavior-preserving
-  but the per-router ordering/meta differences make it verifiable only by running real
-  GPU jobs, so it was held back from that audit's import/TestClient-verified scope.
-
 ## Curated LoRA entries depend on community repo filenames  (added 2026-07-06)
 - Problem: The curated LoRA catalog (`app/loras_catalog.json`) pins each entry's
   `repo_id` + exact `filename` (e.g. `nerijs/pixel-art-xl` → `pixel-art-xl.safetensors`).
@@ -220,6 +206,20 @@
   selected model; no pre-flight guard. Ultra Real 9B is marked "9B ONLY" only in prose.
 - Proposed Resolution: Split the family (e.g. "FLUX.2-4B" / "FLUX.2-9B") or add a size
   tag to LoraInfo + validate it against the model before load, surfacing a clear message.
+
+## CodeFormer face restoration — deps + weight source + GPU detector  (added 2026-07-08)
+- Problem: (a) facexlib auto-downloads its RetinaFace + parsing weights (~100 MB) from
+  its own URLs to `models/facexlib` on first restore — needs network the first time,
+  not covered by the normal engine download. (b) The `codeformer.pth` weight comes
+  from a community HF mirror (`Arun-Subramanian/codeformer-v0.1.0`), not an official
+  upstream repo — could vanish. (c) Face detection runs on CPU because RetinaFace
+  batch-norm forward raises `miopenStatusUnknownError` on ROCm/gfx1201 GPU.
+- Impact: First face restore needs internet even after the engine is "downloaded";
+  a removed mirror breaks new installs; CPU detection adds a little latency (tiny net,
+  negligible) and the MIOpen GPU crash is unexplained (may bite other small nets).
+- Proposed Resolution: Fold the facexlib weights into the engine download (or host all
+  three files in one owned repo); revisit GPU detection once the MIOpen issue is
+  understood (or a newer ROCm fixes it).
 
 ## Civitai downloads are unvalidated + no delete/size pre-check  (added 2026-07-08)
 - Problem: `downloader.start_civitai_download` streams a Civitai version file with the

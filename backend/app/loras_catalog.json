@@ -208,5 +208,17 @@
     "description": "Photoreal detailing for FLUX.2 klein 9B. 9B ONLY — won't apply to the 4B model. Civitai source: set a Civitai API key in Settings. Add the trigger to the prompt.",
     "trigger": "This is a high-quality photograph of a",
     "approx_size_gb": 0.16
+  },
+  {
+    "slug": "lora--image-repair-klein-4b",
+    "repo_id": "",
+    "filename": "FK4B_Image_Repair_V1.safetensors",
+    "name": "Image Repair - Klein 4B",
+    "family": "FLUX.2",
+    "civitai_version_id": 2659402,
+    "kind": "other",
+    "description": "Compression-artifact repair / quality boost for FLUX.2 klein 4B — trained to fix web-image artifacts while preserving identity. 4B ONLY — won't apply to the 9B model. Civitai source: set a Civitai API key in Settings. Add the trigger to the prompt.",
+    "trigger": "make image high quality",
+    "approx_size_gb": 0.09
   }
 ]

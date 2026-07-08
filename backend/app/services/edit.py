@@ -14,17 +14,15 @@ from __future__ import annotations
 
 import threading
 
-from . import callbacks, fit, quantize, vram
-from .. import config, messages
+from . import callbacks, fit, loras as loras_svc, model_slots, quantize, vram
+from .. import config
 from ..config import load_settings
 from ..device import (
-    get_compute_dtype,
     get_torch_device,
     load_flux2_pipe,
+    load_flux_engine_pipe,
     load_gguf_pipe,
-    load_quantized_pipe,
     make_generator,
-    place_offloaded,
 )
 from .optimizations import apply_perf
 from .upscalers import UpscalerInfo
@@ -52,6 +50,9 @@ def unload() -> None:
     vram.release()
 
 
+model_slots.register("edit", unload)
+
+
 def load(engine: UpscalerInfo):
     """Return the cached Kontext pipe for ``engine``, loading (and freeing every
     other model) on a slug change."""
@@ -60,16 +61,8 @@ def load(engine: UpscalerInfo):
         if _pipe is not None and _slug == engine.slug:
             return _pipe
 
-    # Free every other resident model before loading (lazy imports avoid the
-    # cross-service import cycle: pipeline/upscale/inpaint_engine import this too).
-    from . import inpaint_engine as _inpaint_engine
-    from . import pipeline as _pipeline
-    from . import upscale as _upscale
-
-    _pipeline.unload()
-    _upscale.unload()
-    _inpaint_engine.unload()
-    vram.release()
+    # Free every other resident model before loading (registry).
+    model_slots.acquire("edit")
 
     if quantize.engine_family(engine) == "FLUX.2":
         pipe = _load_flux2_edit(engine)
@@ -86,56 +79,11 @@ def load(engine: UpscalerInfo):
 
 
 def _apply_edit_loras(pipe, engine: UpscalerInfo, requested: list[tuple[str, float]]) -> None:
-    """Load + activate the requested LoRA adapters on the edit ``pipe``, blended by
-    weight. Each LoRA's family must match the engine's family (FLUX / FLUX.2) and be
-    downloaded; GGUF engines can't take LoRAs. A no-op when the wanted set already
-    matches what's loaded. Mirrors ``pipeline._apply_loras`` for the edit pipe."""
-    from . import loras as loras_svc
-    from .downloader import is_downloaded
-
-    if not requested:
-        if _loaded_loras:
-            try:
-                pipe.unload_lora_weights()
-            except Exception:  # noqa: BLE001 - best-effort; state reset regardless
-                pass
-            _loaded_loras.clear()
-        return
-    if engine.is_gguf:
-        raise ValueError(messages.LORA_GGUF_UNSUPPORTED)
-
-    family = quantize.engine_family(engine)
-    resolved: list[tuple[str, float, "object"]] = []
-    for slug, weight in requested:
-        info = loras_svc.get(slug)
-        if info is None:
-            raise ValueError(messages.LORA_NOT_FOUND.format(slug=slug))
-        if info.family != family:
-            raise ValueError(
-                messages.LORA_INCOMPATIBLE.format(
-                    name=info.name, lora_family=info.family, family=family
-                )
-            )
-        if not is_downloaded(slug):
-            raise ValueError(messages.LORA_NOT_DOWNLOADED.format(slug=slug))
-        resolved.append((slug, weight, info))
-
-    wanted = {slug: weight for slug, weight, _info in resolved}
-    if wanted == _loaded_loras:
-        return
-    try:
-        pipe.unload_lora_weights()
-    except Exception:  # noqa: BLE001 - best-effort before the reload
-        pass
-    _loaded_loras.clear()
-    for slug, _weight, info in resolved:
-        pipe.load_lora_weights(
-            str(config.model_dir(slug)), weight_name=info.filename, adapter_name=slug
-        )
-    pipe.set_adapters(
-        [slug for slug, _w, _i in resolved], [weight for _s, weight, _i in resolved]
+    """Blend the requested ``(slug, weight)`` LoRAs onto the edit pipe via the shared
+    ``loras.apply_lora_set`` core (family = the engine's FLUX / FLUX.2)."""
+    loras_svc.apply_lora_set(
+        pipe, quantize.engine_family(engine), engine.is_gguf, requested, _loaded_loras
     )
-    _loaded_loras.update(wanted)
 
 
 def _load_flux_kontext_gguf(engine: UpscalerInfo):
@@ -149,24 +97,16 @@ def _load_flux_kontext_gguf(engine: UpscalerInfo):
 
 
 def _load_flux_kontext(engine: UpscalerInfo):
-    """Build a FLUX.1 Kontext pipe from the fp16 repo, quantized on the fly (NF4/int8)
-    per the engine's effective level, else full fp16. Transformer quantized, CPU-
-    offloaded (bounds VRAM; ~16 GB at NF4)."""
+    """Build a FLUX.1 Kontext pipe via the shared FLUX-engine loader (NF4/int8 per
+    the engine's effective level, else fp16; CPU-offloaded either way)."""
     from diffusers import FluxKontextPipeline, FluxTransformer2DModel
 
-    model_path = config.model_dir(engine.slug)
     level = fit.effective_level(engine.slug, engine.min_vram_gb, "FLUX")
     quant_cfg = quantize.quant_config(level, "FLUX") if level != "fp16" else None
-    if quant_cfg is not None:
-        return load_quantized_pipe(
-            model_path, FluxTransformer2DModel, FluxKontextPipeline, quant_cfg,
-            component="transformer", family="FLUX", variant=engine.variant,
-        )
-    pipe = FluxKontextPipeline.from_pretrained(
-        str(model_path), torch_dtype=get_compute_dtype(),
-        variant=engine.variant, use_safetensors=engine.use_safetensors,
+    return load_flux_engine_pipe(
+        config.model_dir(engine.slug), FluxTransformer2DModel, FluxKontextPipeline,
+        quant_cfg, variant=engine.variant, use_safetensors=engine.use_safetensors,
     )
-    return place_offloaded(pipe)
 
 
 def _load_flux2_edit(engine: UpscalerInfo):
@@ -228,7 +168,7 @@ def edit_image(
     # transformer first, then we decode with the GPU free (pipeline._decode_flux_latents).
     import math
 
-    from . import pipeline as _pipeline
+    from .pipeline import decode_flux_latents
 
     w0, h0 = img.size
     ar = w0 / h0
@@ -252,5 +192,5 @@ def edit_image(
         result = pipe(**call_kwargs).images[0]
     else:
         latents = pipe(**call_kwargs, output_type="latent").images
-        result = _pipeline._decode_flux_latents(pipe, latents, width, height)
+        result = decode_flux_latents(pipe, latents, width, height)
     return result.resize(img.size, Image.LANCZOS)

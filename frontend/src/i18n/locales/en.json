@@ -230,6 +230,10 @@
       "off": "Off",
       "help": "Splits large images into tiles and stitches the result — bounds VRAM and speeds up inference. Auto only tiles when the image exceeds the tile size."
     },
+    "fidelity": {
+      "label": "Fidelity",
+      "help": "Face restoration only: high keeps the person's identity (more faithful, may stay a touch blurry), low restores more aggressively (sharper/smoother, can drift from the real face). 0.7 is a good start."
+    },
     "run": "Upscale",
     "running": "Upscaling…",
     "clear": "Clear",

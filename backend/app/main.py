@@ -4,10 +4,12 @@ Run with: ``uvicorn app.main:app`` from the ``backend`` directory.
 """
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from . import config
+from .services import jobs
 from .routers import (
     compare,
     edit,
@@ -35,6 +37,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# jobs.start_job raises JobBusy (a service can't raise HTTPException — layering);
+# map it centrally to the 409 every job router used to raise inline.
+@app.exception_handler(jobs.JobBusy)
+def job_busy_handler(_request: Request, exc: jobs.JobBusy) -> JSONResponse:
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
 
 app.include_router(system.router)
 app.include_router(settings.router)

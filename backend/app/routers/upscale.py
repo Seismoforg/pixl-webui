@@ -7,8 +7,6 @@ saves the result to the gallery, polled via ``GET /api/upscale/{job_id}``.
 """
 from __future__ import annotations
 
-import threading
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -16,7 +14,6 @@ from .. import live, messages
 from ..services import (
     downloader,
     fit,
-    job_guard,
     jobs,
     outpaint as outpaint_svc,
     quantize,
@@ -75,6 +72,9 @@ class UpscaleRequest(BaseModel):
     tile: bool = True
     # Per-run SD x4 denoising steps; None → the persisted `sd_x4_steps` setting.
     sd_x4_steps: int | None = None
+    # CodeFormer identity↔smoothness weight for the `face_restore` engine (0..1,
+    # high = keep identity); None → the service default.
+    fidelity: float | None = None
 
 
 class UpscaleStarted(BaseModel):
@@ -94,14 +94,16 @@ def _run(
     prompt: str,
     tile: bool,
     sd_x4_steps: int | None,
+    fidelity: float | None,
 ) -> None:
     # Wakes the WebSocket pusher after each state change (no-op with no subscriber).
     pub_key = f"upscale:{job.job_id}"
     on_progress = jobs.make_on_progress(job, _store.lock, pub_key)
 
-    try:
+    with jobs.job_run(_store, job, pub_key, messages.UPSCALE_FAILED):
         result = upscale_svc.upscale(
-            engine, image, prompt, tile, on_progress=on_progress, sd_x4_steps=sd_x4_steps
+            engine, image, prompt, tile, on_progress=on_progress,
+            sd_x4_steps=sd_x4_steps, fidelity=fidelity,
         )
         with _store.lock:
             job.phase = "finalizing"
@@ -123,16 +125,6 @@ def _run(
                 "sampler": "upscale",
             },
         )
-        with _store.lock:
-            job.status = "done"
-        live.publish(pub_key)
-    except Exception as exc:  # noqa: BLE001 - surfaced to the UI via job state
-        with _store.lock:
-            job.status = "error"
-            job.error = messages.UPSCALE_FAILED.format(detail=str(exc))
-        live.publish(pub_key)
-    finally:
-        job_guard.release(job.job_id)
 
 
 @router.get("/engines", response_model=list[UpscalerEntry])
@@ -239,20 +231,11 @@ def start_upscale(req: UpscaleRequest) -> UpscaleStarted:
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
-    with _store.lock:
-        job = jobs.JobState(_store.new_id(), engine.name)
-    busy = job_guard.acquire(job.job_id, "upscale")
-    if busy is not None:
-        raise HTTPException(409, messages.JOB_BUSY.format(kind=busy))
-    with _store.lock:
-        _store.add(job)
-
-    thread = threading.Thread(
-        target=_run,
-        args=(job, engine, image, req.prompt, req.tile, req.sd_x4_steps),
-        daemon=True,
+    job = jobs.start_job(
+        _store, "upscale", _run,
+        engine, image, req.prompt, req.tile, req.sd_x4_steps, req.fidelity,
+        engine_name=engine.name,
     )
-    thread.start()
     return UpscaleStarted(job_id=job.job_id)
 
 

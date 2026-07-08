@@ -1,26 +1,10 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
-import { clearJob, saveJob } from "@/lib/jobPersistence";
-import { useJobRehydrate, usePublishJobActivity } from "@/lib/jobHooks";
-import { useJobTracker } from "@/lib/ws";
+import { useJob } from "@/lib/useJob";
 import type { UpscaleProgress, UpscaleRequest, UpscaleSource } from "@/types";
-
-// Re-exported for existing importers (Reframe/Inpaint/Edit providers); the
-// canonical definition now lives in types/index.ts alongside the other shared
-// job/progress shapes.
-export type { UpscaleSource } from "@/types";
 
 /**
  * Holds the upscale job lifecycle (running job + polling loop) AND the form
@@ -37,11 +21,13 @@ interface UpscaleContextValue {
   prompt: string;
   tile: boolean;
   sdX4Steps: number; // per-run SD x4 steps; seeded from the global default
+  fidelity: number; // CodeFormer face-restore identity↔smoothness weight (0..1)
   setEngineSlug: (v: string) => void;
   setSource: (v: UpscaleSource | null) => void;
   setPrompt: (v: string) => void;
   setTile: (v: boolean) => void;
   setSdX4Steps: (v: number) => void;
+  setFidelity: (v: number) => void;
   // job
   progress: UpscaleProgress | null;
   resultId: string | null;
@@ -52,8 +38,6 @@ interface UpscaleContextValue {
 }
 
 const UpscaleContext = createContext<UpscaleContextValue | null>(null);
-
-const POLL_MS = 700;
 
 export const useUpscale = () => {
   const ctx = useContext(UpscaleContext);
@@ -67,13 +51,13 @@ interface UpscaleProviderProps {
 }
 
 export const UpscaleProvider = ({ onUpscaled, children }: UpscaleProviderProps) => {
-  const t = useTranslations();
-
   const [engineSlug, setEngineSlug] = useState("");
   const [source, setSource] = useState<UpscaleSource | null>(null);
   const [prompt, setPrompt] = useState("");
   const [tile, setTile] = useState(true);
   const [sdX4Steps, setSdX4Steps] = useState(50);
+  // CodeFormer face-restore fidelity (identity-leaning default, mirrors the backend).
+  const [fidelity, setFidelity] = useState(0.7);
 
   // Seed the per-run SD x4 step count from the global default once. The provider
   // never unmounts, so this runs a single time and later per-run edits persist.
@@ -84,65 +68,18 @@ export const UpscaleProvider = ({ onUpscaled, children }: UpscaleProviderProps) 
       .catch(() => undefined);
   }, []);
 
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [progress, setProgress] = useState<UpscaleProgress | null>(null);
-  const [resultId, setResultId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const running = jobId !== null;
-
-  // Track the running upscale job over the WebSocket, with a REST poll fallback
-  // while the socket is down (see useJobTracker).
-  useJobTracker<UpscaleProgress>(
-    jobId,
-    "upscale",
-    (id) => api.getUpscaleProgress(id),
-    (p) => {
-      setProgress(p);
-      if (p.status === "done") {
-        setResultId(p.image_id);
-        setJobId(null);
-        clearJob("upscale");
-        onUpscaled();
-      } else if (p.status === "error") {
-        setError(p.error ?? t("common.error"));
-        setJobId(null);
-        clearJob("upscale");
-      }
-    },
-    (message) => {
-      setError(message);
-      setJobId(null);
-      clearJob("upscale");
-    },
-    POLL_MS,
-  );
-
-  // Re-attach to a job that was still running when the page reloaded (see the
-  // generation provider for the rationale).
-  useJobRehydrate("upscale", (id) => api.getUpscaleProgress(id), setJobId);
-
-  // Publish the running job to the shared activity store for the off-route bubble.
-  usePublishJobActivity("upscale", "/upscale", "activity.upscale", running, progress);
-
-  const start = useCallback(async (req: UpscaleRequest) => {
-    setError(null);
-    setResultId(null);
-    setProgress(null);
-    try {
-      const { job_id } = await api.upscale(req);
-      setJobId(job_id);
-      saveJob("upscale", job_id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, []);
-
-  const reset = useCallback(() => {
-    setResultId(null);
-    setError(null);
-    setProgress(null);
-  }, []);
+  // The whole job lifecycle (start/track/rehydrate/bubble/reset) is the shared hook.
+  const { progress, resultId, error, running, start, reset } = useJob<
+    UpscaleProgress,
+    UpscaleRequest
+  >({
+    kind: "upscale",
+    startRequest: api.upscale,
+    getProgress: api.getUpscaleProgress,
+    pollMs: 700,
+    onDone: onUpscaled,
+    activity: { route: "/upscale", titleKey: "activity.upscale" },
+  });
 
   const value = useMemo<UpscaleContextValue>(
     () => ({
@@ -151,11 +88,13 @@ export const UpscaleProvider = ({ onUpscaled, children }: UpscaleProviderProps) 
       prompt,
       tile,
       sdX4Steps,
+      fidelity,
       setEngineSlug,
       setSource,
       setPrompt,
       setTile,
       setSdX4Steps,
+      setFidelity,
       progress,
       resultId,
       error,
@@ -163,7 +102,20 @@ export const UpscaleProvider = ({ onUpscaled, children }: UpscaleProviderProps) 
       start,
       reset,
     }),
-    [engineSlug, source, prompt, tile, sdX4Steps, progress, resultId, error, running, start, reset],
+    [
+      engineSlug,
+      source,
+      prompt,
+      tile,
+      sdX4Steps,
+      fidelity,
+      progress,
+      resultId,
+      error,
+      running,
+      start,
+      reset,
+    ],
   );
 
   return <UpscaleContext.Provider value={value}>{children}</UpscaleContext.Provider>;

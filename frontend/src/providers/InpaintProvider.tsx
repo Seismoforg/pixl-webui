@@ -1,22 +1,11 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
-import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
-import { clearJob, saveJob } from "@/lib/jobPersistence";
-import { useJobRehydrate, usePublishJobActivity } from "@/lib/jobHooks";
-import { useJobTracker } from "@/lib/ws";
-import type { InpaintProgress, InpaintRequest, Sampler } from "@/types";
-import type { UpscaleSource } from "@/providers/UpscaleProvider";
+import { useJob } from "@/lib/useJob";
+import { useSamplers } from "@/lib/useSamplers";
+import type { InpaintProgress, InpaintRequest, Sampler, UpscaleSource } from "@/types";
 
 /**
  * Holds the inpaint job lifecycle (running job + live tracking) AND the form
@@ -79,8 +68,6 @@ interface InpaintContextValue {
 
 const InpaintContext = createContext<InpaintContextValue | null>(null);
 
-const POLL_MS = 700;
-
 export const useInpaint = () => {
   const ctx = useContext(InpaintContext);
   if (!ctx) throw new Error("useInpaint must be used within InpaintProvider");
@@ -93,8 +80,6 @@ interface InpaintProviderProps {
 }
 
 export const InpaintProvider = ({ onInpainted, children }: InpaintProviderProps) => {
-  const t = useTranslations();
-
   const [source, setSource] = useState<UpscaleSource | null>(null);
   const [maskData, setMaskData] = useState<string | null>(null);
   const [engine, setEngine] = useState("");
@@ -118,79 +103,23 @@ export const InpaintProvider = ({ onInpainted, children }: InpaintProviderProps)
   const [sampler, setSampler] = useState("");
   const [seed, setSeed] = useState("");
   const [batch, setBatch] = useState(1);
-  const [samplers, setSamplers] = useState<Sampler[]>([]);
 
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [progress, setProgress] = useState<InpaintProgress | null>(null);
-  const [resultId, setResultId] = useState<string | null>(null);
-  const [resultIds, setResultIds] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  // Sampler list + default seed into the (empty) selection.
+  const samplers: Sampler[] = useSamplers((d) => setSampler((cur) => cur || d));
 
-  // Load the sampler list once; seed the default into the (empty) selection.
-  useEffect(() => {
-    api
-      .getSamplers()
-      .then((list) => {
-        setSamplers(list.samplers);
-        setSampler((cur) => cur || list.default);
-      })
-      .catch(() => setSamplers([]));
-  }, []);
-
-  const running = jobId !== null;
-
-  useJobTracker<InpaintProgress>(
-    jobId,
-    "inpaint",
-    (id) => api.getInpaintProgress(id),
-    (p) => {
-      setProgress(p);
-      setResultIds(p.image_ids);
-      if (p.status === "done") {
-        setResultId(p.image_id ?? p.image_ids[0] ?? null);
-        setJobId(null);
-        clearJob("inpaint");
-        onInpainted();
-      } else if (p.status === "error") {
-        setError(p.error ?? t("common.error"));
-        setJobId(null);
-        clearJob("inpaint");
-      }
-    },
-    (message) => {
-      setError(message);
-      setJobId(null);
-      clearJob("inpaint");
-    },
-    POLL_MS,
-  );
-
-  // Re-attach to a job that was still running when the page reloaded.
-  useJobRehydrate("inpaint", (id) => api.getInpaintProgress(id), setJobId);
-
-  // Publish the running job to the shared activity store for the off-route bubble.
-  usePublishJobActivity("inpaint", "/inpaint", "activity.inpaint", running, progress);
-
-  const start = useCallback(async (req: InpaintRequest) => {
-    setError(null);
-    setResultId(null);
-    setResultIds([]);
-    setProgress(null);
-    try {
-      const { job_id } = await api.inpaint(req);
-      setJobId(job_id);
-      saveJob("inpaint", job_id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, []);
-
-  const reset = useCallback(() => {
-    setResultId(null);
-    setResultIds([]);
-    setError(null);
-    setProgress(null);
-  }, []);
+  // The whole job lifecycle (start/track/rehydrate/bubble/reset) is the shared hook;
+  // resultIds fill live as each batch variant finishes.
+  const { progress, resultId, resultIds, error, running, start, reset } = useJob<
+    InpaintProgress,
+    InpaintRequest
+  >({
+    kind: "inpaint",
+    startRequest: api.inpaint,
+    getProgress: api.getInpaintProgress,
+    pollMs: 700,
+    onDone: onInpainted,
+    activity: { route: "/inpaint", titleKey: "activity.inpaint" },
+  });
 
   const value = useMemo<InpaintContextValue>(
     () => ({

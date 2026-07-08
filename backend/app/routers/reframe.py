@@ -8,20 +8,15 @@ publishes ``reframe:{job_id}`` wakes to the WebSocket pusher.
 """
 from __future__ import annotations
 
-import random
-import threading
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import live, messages, samplers
+from .. import live, messages
 from ..services import (
     downloader,
     inpaint_engine,
-    job_guard,
     jobs,
     outpaint as outpaint_svc,
-    quantize,
     reframe as reframe_svc,
     upscalers,
 )
@@ -94,106 +89,84 @@ def _run(
 ) -> None:
     # Wakes the WebSocket pusher after each state change (no-op with no subscriber).
     pub_key = f"reframe:{job.job_id}"
-    on_progress = jobs.make_on_progress(job, _store.lock, pub_key)
+    is_outpaint = req.reframe == "outpaint" and outpaint_engine is not None
 
-    strategy = req.reframe
-    is_outpaint = strategy == "outpaint" and outpaint_engine is not None
-
-    try:
+    with jobs.job_run(_store, job, pub_key, messages.REFRAME_FAILED):
         if is_outpaint:
-            _run_outpaint(job, req, image, ratio, outpaint_engine, on_progress, pub_key)
+            try:
+                _run_outpaint(job, req, image, ratio, outpaint_engine, pub_key)
+            finally:
+                # Unload lives with the load: only this path builds an inpaint pipe,
+                # so job_run gets no unload (cover/contain/edge are pure PIL).
+                outpaint_svc.unload()
         else:
             # cover / contain / edge are cheap PIL ops — no engine, near-instant.
             result = reframe_svc.apply(
-                image.convert("RGB"), ratio, strategy, req.pos_x, req.pos_y, req.scale
+                image.convert("RGB"), ratio, req.reframe, req.pos_x, req.pos_y, req.scale
             )
             with _store.lock:
                 job.phase = "finalizing"
                 job.mark_decode()
             live.publish(pub_key)
-            _save_result(job, req, result, "reframe", "Reframe", steps=0, guidance=0.0, seed=0,
-                         sampler="reframe")
-        with _store.lock:
-            job.status = "done"
-        live.publish(pub_key)
-    except Exception as exc:  # noqa: BLE001 - surfaced to the UI via job state
-        with _store.lock:
-            job.status = "error"
-            job.error = messages.REFRAME_FAILED.format(detail=str(exc))
-        live.publish(pub_key)
-    finally:
-        # No pipe unload here: only the outpaint path loads one, so its unload lives
-        # with the load in _run_outpaint's finally (cover/contain/edge are pure PIL).
-        job_guard.release(job.job_id)
+            result = reframe_svc.to_exact_size(result, req.target_width, req.target_height)
+            jobs.save_result(
+                _store, job, result,
+                _meta(req, result, "reframe", "Reframe",
+                      steps=0, guidance=0.0, seed=0, sampler="reframe"),
+            )
 
 
-def _run_outpaint(job, req, image, ratio, engine, on_progress, pub_key) -> None:
+def _run_outpaint(job, req, image, ratio, engine, pub_key) -> None:
     """Generate ``batch`` outpaint variants with incrementing seeds; each is
-    composited back pixel-exact and saved. The inpaint pipe is loaded once (cached
-    across the batch) and freed afterwards. No upscaler runs."""
-    base_seed = req.outpaint_seed if req.outpaint_seed is not None else random.randint(0, jobs.SEED_MAX)
-    # Flow-matching engines (FLUX Fill, Z-Image) keep their native scheduler — the
-    # service skips apply_sampler — so record NATIVE, not the requested id, to match
-    # what actually ran (mirrors generate's effective_sampler; see samplers.apply_sampler).
-    flow_matching = quantize.engine_family(engine) is not None
-    sampler = samplers.NATIVE if flow_matching else (req.outpaint_sampler or samplers.DEFAULT_SAMPLER)
-    with _store.lock:
-        job.batch_size = req.outpaint_batch
-    try:
-        for i in range(req.outpaint_batch):
-            seed_i = (base_seed + i) % (jobs.SEED_MAX + 1)
-            with _store.lock:
-                job.batch_index = i + 1
-                job.start_image()
-            result = outpaint_svc.reframe_image(
-                image, ratio, req.outpaint_prompt, on_progress, engine,
-                mask_softness=req.mask_softness,
-                seam_softness=req.seam_softness,
-                seed_softness=req.seed_softness,
-                pos_x=req.pos_x, pos_y=req.pos_y, scale=req.scale,
-                negative=req.outpaint_negative,
-                steps=req.outpaint_steps,
-                refine_steps=req.outpaint_refine_steps,
-                refine=req.outpaint_refine,
-                guidance=req.outpaint_guidance,
-                sampler=req.outpaint_sampler,
-                seed=seed_i,
-            )
-            with _store.lock:
-                job.phase = "finalizing"
-                job.mark_decode()
-            live.publish(pub_key)
-            _save_result(
-                job, req, result, engine.slug, engine.name,
-                steps=req.outpaint_steps, guidance=req.outpaint_guidance,
-                seed=seed_i, sampler=sampler,
-            )
-    finally:
-        outpaint_svc.unload()  # free the inpaint pipe
+    composited back pixel-exact, resized to any custom target, and saved. The inpaint
+    pipe is loaded once (cached across the batch); the caller frees it. No upscaler runs."""
+    on_progress = jobs.make_on_progress(job, _store.lock, pub_key)
+    sampler = jobs.resolve_sampler(engine, req.outpaint_sampler)
 
+    def render(_i: int, seed_i: int):
+        result = outpaint_svc.reframe_image(
+            image, ratio, req.outpaint_prompt, on_progress, engine,
+            mask_softness=req.mask_softness,
+            seam_softness=req.seam_softness,
+            seed_softness=req.seed_softness,
+            pos_x=req.pos_x, pos_y=req.pos_y, scale=req.scale,
+            negative=req.outpaint_negative,
+            steps=req.outpaint_steps,
+            refine_steps=req.outpaint_refine_steps,
+            refine=req.outpaint_refine,
+            guidance=req.outpaint_guidance,
+            sampler=req.outpaint_sampler,
+            seed=seed_i,
+        )
+        # Custom target resolution: resize to the exact size after the strategy has
+        # set the aspect (single choke point for both the PIL and outpaint paths).
+        return reframe_svc.to_exact_size(result, req.target_width, req.target_height)
 
-def _save_result(job, req, result, model_slug, model_name, *, steps, guidance, seed, sampler) -> None:
-    """Resize to a custom target (if any), then persist + record via jobs.save_result."""
-    # Custom target resolution: resize to the exact size after the strategy has set
-    # the aspect (single choke point for both the PIL and outpaint paths).
-    result = reframe_svc.to_exact_size(result, req.target_width, req.target_height)
-    jobs.save_result(
-        _store,
-        job,
-        result,
-        {
-            "model_slug": model_slug,
-            "model_name": model_name,
-            "prompt": f"Reframed · {req.target_ratio} · {req.reframe}",
-            "negative_prompt": req.outpaint_negative or None,
-            "steps": steps,
-            "guidance_scale": guidance,
-            "width": result.width,
-            "height": result.height,
-            "seed": seed,
-            "sampler": sampler,
-        },
+    def meta(seed_i: int, result) -> dict:
+        return _meta(req, result, engine.slug, engine.name,
+                     steps=req.outpaint_steps, guidance=req.outpaint_guidance,
+                     seed=seed_i, sampler=sampler)
+
+    jobs.run_batch(
+        _store, job, pub_key,
+        batch=req.outpaint_batch, seed=req.outpaint_seed, render=render, meta=meta,
     )
+
+
+def _meta(req, result, model_slug, model_name, *, steps, guidance, seed, sampler) -> dict:
+    """Gallery metadata shared by the PIL and outpaint paths."""
+    return {
+        "model_slug": model_slug,
+        "model_name": model_name,
+        "prompt": f"Reframed · {req.target_ratio} · {req.reframe}",
+        "negative_prompt": req.outpaint_negative or None,
+        "steps": steps,
+        "guidance_scale": guidance,
+        "width": result.width,
+        "height": result.height,
+        "seed": seed,
+        "sampler": sampler,
+    }
 
 
 @router.post("", response_model=ReframeStarted)
@@ -223,20 +196,9 @@ def start_reframe(req: ReframeRequest) -> ReframeStarted:
         raise HTTPException(400, str(exc)) from exc
 
     engine_name = outpaint_engine.name if outpaint_engine else "Reframe"
-    with _store.lock:
-        job = jobs.JobState(_store.new_id(), engine_name)
-    busy = job_guard.acquire(job.job_id, "reframe")
-    if busy is not None:
-        raise HTTPException(409, messages.JOB_BUSY.format(kind=busy))
-    with _store.lock:
-        _store.add(job)
-
-    thread = threading.Thread(
-        target=_run,
-        args=(job, req, image, ratio, outpaint_engine),
-        daemon=True,
+    job = jobs.start_job(
+        _store, "reframe", _run, req, image, ratio, outpaint_engine, engine_name=engine_name
     )
-    thread.start()
     return ReframeStarted(job_id=job.job_id)
 
 

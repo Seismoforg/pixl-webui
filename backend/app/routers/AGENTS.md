@@ -5,7 +5,8 @@ registered in `app/main.py`. Controllers only validate/parse requests, dispatch 
 
 # Responsibilities
 - Define request/response Pydantic schemas + route handlers
-- Start background jobs (thread + `services.jobs` store), acquire `job_guard`
+- Start background jobs via the `services/jobs.py` kernel (`start_job` spawn +
+  `job_run` tail + `run_batch` loop; `jobs.JobBusy` → 409 handled app-wide in main.py)
 - Map service errors to HTTP status codes; publish WS wakes via `app/live.py`
 
 # File Structure

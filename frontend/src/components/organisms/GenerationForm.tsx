@@ -23,6 +23,7 @@ import { useGeneration } from "@/providers/GenerationProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { formLockStyle } from "@/lib/formLock";
+import { stickyActionBarSx } from "@/lib/stickyActionBar";
 import { supportsSamplerChoice, supportsStyleTransfer } from "@/lib/modelFamily";
 import { useAsyncData } from "@/lib/useAsyncData";
 import type { ModelEntry } from "@/types";
@@ -289,15 +290,18 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
           </Stack>
         </fieldset>
 
-        <Button
-          type="submit"
-          variant="contained"
-          size="large"
-          disabled={!canSubmit}
-          startIcon={gen.running ? <CircularProgress size={18} color="inherit" /> : undefined}
-        >
-          {gen.running ? t("generate.running") : t("generate.run")}
-        </Button>
+        {/* Sticky bottom action bar (display:grid keeps the button full-width). */}
+        <Box sx={{ ...stickyActionBarSx, display: "grid" }}>
+          <Button
+            type="submit"
+            variant="contained"
+            size="large"
+            disabled={!canSubmit}
+            startIcon={gen.running ? <CircularProgress size={18} color="inherit" /> : undefined}
+          >
+            {gen.running ? t("generate.running") : t("generate.run")}
+          </Button>
+        </Box>
       </Stack>
     </Paper>
   );

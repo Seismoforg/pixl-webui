@@ -6,6 +6,10 @@ Kinds supported and selectable by the user:
   weight via :mod:`spandrel`. No prompt, general purpose.
 * ``sd_x4`` — Stable Diffusion x4 latent upscaler (a diffusers repo) run with an
   optional text prompt. Slower and more VRAM-heavy.
+* ``face_restore`` — CodeFormer identity-preserving face restoration loaded from a
+  single ``.pth`` via :mod:`spandrel` (+ ``spandrel_extra_arches``); faces are
+  detected/aligned with :mod:`facexlib` and pasted back. A fidelity weight trades
+  identity vs smoothness. No prompt.
 * ``inpaint`` — an inpaint model used for the outpaint reframe strategy.
 * ``edit`` — a FLUX.1 Kontext model for prompt-based whole-image editing (Post
   Processing); loads from a GGUF-quantized transformer like the FLUX Fill engines.
@@ -40,7 +44,7 @@ class EngineDefaults(BaseModel):
 
 class UpscalerInfo(BaseModel):
     slug: str
-    kind: str  # "realesrgan" | "sd_x4" | "inpaint" | "edit"
+    kind: str  # "realesrgan" | "sd_x4" | "face_restore" | "inpaint" | "edit"
     name: str
     description: str
     repo_id: str

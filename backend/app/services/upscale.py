@@ -20,6 +20,7 @@ from ..config import load_settings
 from ..device import get_dtype, get_torch_device, place_offloaded
 from . import callbacks
 from . import downloader
+from . import model_slots
 from . import vram
 from .downloader import is_downloaded
 from .optimizations import apply_perf, force_vae_tiling
@@ -38,6 +39,8 @@ _lock = threading.Lock()
 _realesrgan_cache: dict[str, object] = {}
 _sd_x4_pipe = None
 _sd_x4_slug: str | None = None
+# slug -> spandrel CodeFormer descriptor (face restoration)
+_facerestore_cache: dict[str, object] = {}
 
 
 def to_model_info(engine: UpscalerInfo) -> ModelInfo:
@@ -66,7 +69,7 @@ def to_model_info(engine: UpscalerInfo) -> ModelInfo:
 
 def start_engine_download(engine: UpscalerInfo, token: str | None) -> None:
     """Download an engine's weights into ``models/<slug>`` (background)."""
-    if engine.kind == "realesrgan" and engine.filename is not None:
+    if engine.kind in ("realesrgan", "face_restore") and engine.filename is not None:
         downloader.start_file_download(engine.slug, engine.repo_id, engine.filename, token)
     else:
         downloader.start_download(to_model_info(engine), token)
@@ -83,14 +86,20 @@ def unload(keep_slug: str | None = None) -> None:
         for slug in list(_realesrgan_cache):
             if slug != keep_slug:
                 _realesrgan_cache.pop(slug, None)
+        for slug in list(_facerestore_cache):
+            if slug != keep_slug:
+                _facerestore_cache.pop(slug, None)
         if _sd_x4_slug != keep_slug:
             _sd_x4_pipe = None
             _sd_x4_slug = None
     vram.release()
 
 
+model_slots.register("upscale", unload)
+
+
 def upscale(engine: UpscalerInfo, image, prompt: str = "", tile: bool = True, on_progress=None,
-            sd_x4_steps: int | None = None):
+            sd_x4_steps: int | None = None, fidelity: float | None = None):
     """Upscale a PIL ``image`` with ``engine``; returns a new PIL image.
 
     With ``tile`` set, large images are split into overlapping tiles and stitched
@@ -102,6 +111,9 @@ def upscale(engine: UpscalerInfo, image, prompt: str = "", tile: bool = True, on
     ``sd_x4_steps`` overrides the denoising step count for the SD x4 engine for
     this run; ``None`` falls back to the persisted ``sd_x4_steps`` setting.
 
+    ``fidelity`` (``face_restore`` only) is CodeFormer's identity↔smoothness weight
+    (0..1, high = keep identity); ``None`` falls back to a sensible default.
+
     ``on_progress(update: dict)`` is called (if given) as work proceeds with a
     partial stats update (``phase`` / ``current_tile`` / ``total_tiles`` /
     ``current_step`` / ``total_steps``) that the caller merges, so live inference
@@ -110,16 +122,9 @@ def upscale(engine: UpscalerInfo, image, prompt: str = "", tile: bool = True, on
     if not is_downloaded(engine.slug):
         raise ValueError(messages.MODEL_NOT_DOWNLOADED.format(slug=engine.slug))
 
-    # Maximise VRAM headroom: drop the generation pipeline, the edit pipe and any
-    # other cached upscaler engine, keeping only the one about to run. Lazy imports
-    # avoid the pipeline <-> upscale <-> edit import cycle.
-    from . import edit as _edit
-    from . import outpaint as _outpaint
-    from . import pipeline as _pipeline
-
-    _pipeline.unload()
-    _outpaint.unload()
-    _edit.unload()
+    # Maximise VRAM headroom: drop every other model service (registry) and any other
+    # cached upscaler engine, keeping only the one about to run.
+    model_slots.acquire("upscale")
     unload(keep_slug=engine.slug)
 
     report = on_progress or (lambda _u: None)
@@ -128,6 +133,8 @@ def upscale(engine: UpscalerInfo, image, prompt: str = "", tile: bool = True, on
         return _upscale_realesrgan(engine, img, tile, report)
     if engine.kind == "sd_x4":
         return _upscale_sd_x4(engine, img, prompt, tile, report, sd_x4_steps)
+    if engine.kind == "face_restore":
+        return _restore_faces(engine, img, fidelity, report)
     raise ValueError(messages.UPSCALER_NOT_FOUND.format(slug=engine.slug))
 
 
@@ -232,6 +239,107 @@ def _upscale_realesrgan(engine: UpscalerInfo, img, tile: bool, report):
     out = _tiled_infer(model, tensor, _TILE if tile else 0, scale, report)
     out = out.float().clamp(0.0, 1.0).squeeze(0).permute(1, 2, 0).cpu().numpy()
     return Image.fromarray((out * 255.0).round().astype("uint8"))
+
+
+# --- CodeFormer face restoration (spandrel + facexlib) ------------------------
+
+# CodeFormer's identity↔smoothness weight when the request omits one (identity-leaning).
+DEFAULT_FIDELITY = 0.7
+_extra_arches_registered = False
+
+
+def _load_codeformer(engine: UpscalerInfo):
+    """Load (and cache) the CodeFormer restoration net on the compute device.
+
+    Registers ``spandrel_extra_arches`` once so spandrel recognises the CodeFormer
+    architecture, then loads the single ``.pth`` like the Real-ESRGAN path.
+    """
+    global _extra_arches_registered
+    with _lock:
+        cached = _facerestore_cache.get(engine.slug)
+    if cached is not None:
+        return cached
+
+    from spandrel import MAIN_REGISTRY, ModelLoader
+
+    if not _extra_arches_registered:
+        from spandrel_extra_arches import EXTRA_REGISTRY
+
+        MAIN_REGISTRY.add(*EXTRA_REGISTRY)
+        _extra_arches_registered = True
+
+    weight = config.model_dir(engine.slug) / (engine.filename or "")
+    model = ModelLoader().load_from_file(str(weight)).model
+    model.to(get_torch_device()).eval()
+    with _lock:
+        _facerestore_cache[engine.slug] = model
+    return model
+
+
+def _face_to_tensor(bgr, device):
+    """A 512×512 BGR uint8 face crop → a normalised NCHW tensor in [-1, 1] on device."""
+    import torch
+
+    rgb = bgr[:, :, ::-1].astype("float32") / 255.0
+    t = torch.from_numpy(rgb.transpose(2, 0, 1).copy())
+    return ((t - 0.5) / 0.5).unsqueeze(0).to(device)
+
+
+def _tensor_to_face(t):
+    """A restored [-1, 1] NCHW tensor → a 512×512 BGR uint8 face crop."""
+    t = t.squeeze(0).clamp(-1, 1)
+    arr = (((t + 1) / 2).detach().cpu().float().numpy().transpose(1, 2, 0) * 255)
+    return arr.round().astype("uint8")[:, :, ::-1]  # RGB -> BGR
+
+
+def _restore_faces(engine: UpscalerInfo, img, fidelity: float | None, report):
+    """Detect faces, restore each with CodeFormer at ``fidelity``, paste back.
+
+    Face DETECTION/alignment (facexlib RetinaFace + parsing) runs on the CPU: on
+    ROCm/gfx1201 their batch-norm forward raises ``miopenStatusUnknownError`` on the
+    GPU, and the nets are tiny so CPU is fine. The heavy CodeFormer restore runs on
+    the compute device. Images with no detectable face pass through unchanged.
+    """
+    import numpy as np
+    from PIL import Image
+
+    weight = DEFAULT_FIDELITY if fidelity is None else max(0.0, min(1.0, fidelity))
+    device = get_torch_device()
+    report({"phase": "loading", "current_tile": 0, "total_tiles": 0,
+            "current_step": 0, "total_steps": 0})
+    model = _load_codeformer(engine)
+
+    from facexlib.utils.face_restoration_helper import FaceRestoreHelper
+
+    face_cache = config.MODELS_DIR / "facexlib"
+    face_cache.mkdir(parents=True, exist_ok=True)
+    helper = FaceRestoreHelper(
+        upscale_factor=1, face_size=512, crop_ratio=(1, 1),
+        det_model="retinaface_resnet50", save_ext="png",
+        device="cpu", model_rootpath=str(face_cache),
+    )
+    helper.clean_all()
+    bgr = np.asarray(img)[:, :, ::-1]  # PIL RGB -> BGR
+    helper.read_image(bgr)
+    n = helper.get_face_landmarks_5(only_center_face=False, resize=640, eye_dist_threshold=5)
+    if not n:
+        report({"phase": "restoring", "current_tile": 0, "total_tiles": 0})
+        return img  # no face detected → return the source unchanged
+    helper.align_warp_face()
+
+    import torch
+
+    total = len(helper.cropped_faces)
+    for i, face in enumerate(helper.cropped_faces):
+        report({"phase": "restoring", "current_tile": i, "total_tiles": total})
+        with torch.no_grad():
+            out = model(_face_to_tensor(face, device), weight=weight)
+            out = out[0] if isinstance(out, (tuple, list)) else out
+        helper.add_restored_face(_tensor_to_face(out))
+    report({"phase": "restoring", "current_tile": total, "total_tiles": total})
+    helper.get_inverse_affine(None)
+    result = helper.paste_faces_to_input_image(upsample_img=None)  # BGR
+    return Image.fromarray(result[:, :, ::-1])  # BGR -> RGB
 
 
 # --- Stable Diffusion x4 upscaler (diffusers) ---------------------------------

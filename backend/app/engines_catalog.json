@@ -34,6 +34,23 @@
     "defaults": { "steps": 50, "guidance_scale": 0.0, "refine_steps": 0 }
   },
   {
+    "slug": "restore--codeformer",
+    "kind": "face_restore",
+    "name": "CodeFormer (face restoration)",
+    "description": "Identity-preserving face restoration for old / blurry / re-photographed portraits. Sharpens faces while keeping the person's features; the fidelity slider trades identity vs smoothness. Runs in ~3 GB.",
+    "repo_id": "Arun-Subramanian/codeformer-v0.1.0",
+    "filename": "codeformer.pth",
+    "scale": 1,
+    "approx_size_gb": 0.38,
+    "min_vram_gb": 3.0,
+    "prompt_capable": false,
+    "variant": null,
+    "use_safetensors": true,
+    "gguf_repo_id": null,
+    "gguf_filename": null,
+    "defaults": { "steps": 0, "guidance_scale": 0.0, "refine_steps": 0 }
+  },
+  {
     "slug": "outpaint--sd-inpaint",
     "kind": "inpaint",
     "name": "Stable Diffusion Inpainting (outpaint)",

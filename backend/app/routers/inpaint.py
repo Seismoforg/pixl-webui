@@ -9,21 +9,16 @@ pusher.
 """
 from __future__ import annotations
 
-import random
-import threading
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import live, messages, samplers
+from .. import messages
 from ..services import (
     downloader,
     gallery,
     inpaint as inpaint_svc,
     inpaint_engine,
-    job_guard,
     jobs,
-    quantize,
     upscalers,
 )
 from ..services.upscalers import UpscalerInfo
@@ -71,67 +66,43 @@ _store: jobs.JobStore[jobs.JobState] = jobs.JobStore("inpaint")
 def _run(job: jobs.JobState, req: InpaintRequest, image, mask, engine: UpscalerInfo) -> None:
     pub_key = f"inpaint:{job.job_id}"
     on_progress = jobs.make_on_progress(job, _store.lock, pub_key)
+    sampler = jobs.resolve_sampler(engine, req.sampler)
 
-    base_seed = req.seed if req.seed is not None else random.randint(0, jobs.SEED_MAX)
-    # Flow-matching engines (FLUX Fill, Z-Image) keep their native scheduler — the
-    # service skips apply_sampler — so record NATIVE, not the requested id, to match
-    # what actually ran (mirrors generate's effective_sampler; see samplers.apply_sampler).
-    flow_matching = quantize.engine_family(engine) is not None
-    sampler = samplers.NATIVE if flow_matching else (req.sampler or samplers.DEFAULT_SAMPLER)
-    with _store.lock:
-        job.batch_size = req.batch
-    try:
-        for i in range(req.batch):
-            seed_i = (base_seed + i) % (jobs.SEED_MAX + 1)
-            with _store.lock:
-                job.batch_index = i + 1
-                job.start_image()
-            result = inpaint_svc.inpaint_image(
-                image, mask, req.prompt, on_progress, engine,
-                mask_softness=req.mask_softness,
-                seam_softness=req.seam_softness,
-                seed_softness=req.seed_softness,
-                mask_expand=req.mask_expand,
-                negative=req.negative,
-                steps=req.steps,
-                refine_steps=req.refine_steps,
-                refine=req.refine,
-                guidance=req.guidance,
-                sampler=req.sampler,
-                seed=seed_i,
-            )
-            with _store.lock:
-                job.phase = "finalizing"
-                job.mark_decode()
-            live.publish(pub_key)
-            jobs.save_result(
-                _store,
-                job,
-                result,
-                {
-                    "model_slug": engine.slug,
-                    "model_name": engine.name,
-                    "prompt": req.prompt or "Inpaint",
-                    "negative_prompt": req.negative or None,
-                    "steps": req.steps,
-                    "guidance_scale": req.guidance,
-                    "width": result.width,
-                    "height": result.height,
-                    "seed": seed_i,
-                    "sampler": sampler,
-                },
-            )
-        with _store.lock:
-            job.status = "done"
-        live.publish(pub_key)
-    except Exception as exc:  # noqa: BLE001 - surfaced to the UI via job state
-        with _store.lock:
-            job.status = "error"
-            job.error = messages.INPAINT_FAILED.format(detail=str(exc))
-        live.publish(pub_key)
-    finally:
-        inpaint_engine.unload()  # free the inpaint pipe
-        job_guard.release(job.job_id)
+    def render(_i: int, seed_i: int):
+        return inpaint_svc.inpaint_image(
+            image, mask, req.prompt, on_progress, engine,
+            mask_softness=req.mask_softness,
+            seam_softness=req.seam_softness,
+            seed_softness=req.seed_softness,
+            mask_expand=req.mask_expand,
+            negative=req.negative,
+            steps=req.steps,
+            refine_steps=req.refine_steps,
+            refine=req.refine,
+            guidance=req.guidance,
+            sampler=req.sampler,
+            seed=seed_i,
+        )
+
+    def meta(seed_i: int, result) -> dict:
+        return {
+            "model_slug": engine.slug,
+            "model_name": engine.name,
+            "prompt": req.prompt or "Inpaint",
+            "negative_prompt": req.negative or None,
+            "steps": req.steps,
+            "guidance_scale": req.guidance,
+            "width": result.width,
+            "height": result.height,
+            "seed": seed_i,
+            "sampler": sampler,
+        }
+
+    # unload frees the inpaint pipe when the batch ends (success or error).
+    with jobs.job_run(_store, job, pub_key, messages.INPAINT_FAILED, unload=inpaint_engine.unload):
+        jobs.run_batch(
+            _store, job, pub_key, batch=req.batch, seed=req.seed, render=render, meta=meta
+        )
 
 
 @router.post("", response_model=InpaintStarted)
@@ -148,18 +119,9 @@ def start_inpaint(req: InpaintRequest) -> InpaintStarted:
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
-    with _store.lock:
-        job = jobs.JobState(_store.new_id(), engine.name)
-    busy = job_guard.acquire(job.job_id, "inpaint")
-    if busy is not None:
-        raise HTTPException(409, messages.JOB_BUSY.format(kind=busy))
-    with _store.lock:
-        _store.add(job)
-
-    thread = threading.Thread(
-        target=_run, args=(job, req, image, mask, engine), daemon=True
+    job = jobs.start_job(
+        _store, "inpaint", _run, req, image, mask, engine, engine_name=engine.name
     )
-    thread.start()
     return InpaintStarted(job_id=job.job_id)
 
 

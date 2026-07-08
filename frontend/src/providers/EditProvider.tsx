@@ -1,14 +1,10 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
-import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
-import { clearJob, saveJob } from "@/lib/jobPersistence";
-import { useJobRehydrate, usePublishJobActivity } from "@/lib/jobHooks";
-import { useJobTracker } from "@/lib/ws";
-import type { EditProgress, EditRequest, LoraRef } from "@/types";
-import type { UpscaleSource } from "@/providers/UpscaleProvider";
+import { useJob } from "@/lib/useJob";
+import type { EditProgress, EditRequest, LoraRef, UpscaleSource } from "@/types";
 
 /**
  * Holds the Post-Processing (FLUX Kontext) edit job lifecycle (running job + live
@@ -48,8 +44,6 @@ interface EditContextValue {
 
 const EditContext = createContext<EditContextValue | null>(null);
 
-const POLL_MS = 700;
-
 export const useEdit = () => {
   const ctx = useContext(EditContext);
   if (!ctx) throw new Error("useEdit must be used within EditProvider");
@@ -62,8 +56,6 @@ interface EditProviderProps {
 }
 
 export const EditProvider = ({ onEdited, children }: EditProviderProps) => {
-  const t = useTranslations();
-
   const [source, setSource] = useState<UpscaleSource | null>(null);
   const [engine, setEngine] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -73,66 +65,18 @@ export const EditProvider = ({ onEdited, children }: EditProviderProps) => {
   const [batch, setBatch] = useState(1);
   const [loras, setLoras] = useState<LoraRef[]>([]);
 
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [progress, setProgress] = useState<EditProgress | null>(null);
-  const [resultId, setResultId] = useState<string | null>(null);
-  const [resultIds, setResultIds] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  const running = jobId !== null;
-
-  useJobTracker<EditProgress>(
-    jobId,
-    "edit",
-    (id) => api.getEditProgress(id),
-    (p) => {
-      setProgress(p);
-      setResultIds(p.image_ids);
-      if (p.status === "done") {
-        setResultId(p.image_id ?? p.image_ids[0] ?? null);
-        setJobId(null);
-        clearJob("edit");
-        onEdited();
-      } else if (p.status === "error") {
-        setError(p.error ?? t("common.error"));
-        setJobId(null);
-        clearJob("edit");
-      }
-    },
-    (message) => {
-      setError(message);
-      setJobId(null);
-      clearJob("edit");
-    },
-    POLL_MS,
-  );
-
-  // Re-attach to a job that was still running when the page reloaded.
-  useJobRehydrate("edit", (id) => api.getEditProgress(id), setJobId);
-
-  // Publish the running job to the shared activity store for the off-route bubble.
-  usePublishJobActivity("edit", "/edit", "activity.edit", running, progress);
-
-  const start = useCallback(async (req: EditRequest) => {
-    setError(null);
-    setResultId(null);
-    setResultIds([]);
-    setProgress(null);
-    try {
-      const { job_id } = await api.edit(req);
-      setJobId(job_id);
-      saveJob("edit", job_id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, []);
-
-  const reset = useCallback(() => {
-    setResultId(null);
-    setResultIds([]);
-    setError(null);
-    setProgress(null);
-  }, []);
+  // The whole job lifecycle (start/track/rehydrate/bubble/reset) is the shared hook.
+  const { progress, resultId, resultIds, error, running, start, reset } = useJob<
+    EditProgress,
+    EditRequest
+  >({
+    kind: "edit",
+    startRequest: api.edit,
+    getProgress: api.getEditProgress,
+    pollMs: 700,
+    onDone: onEdited,
+    activity: { route: "/edit", titleKey: "activity.edit" },
+  });
 
   const value = useMemo<EditContextValue>(
     () => ({

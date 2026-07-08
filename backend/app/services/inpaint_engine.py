@@ -13,17 +13,17 @@ from __future__ import annotations
 
 import threading
 
-from . import callbacks, fit, quantize, vram
+from . import callbacks, fit, model_slots, quantize, vram
 from .. import config
 from ..config import load_settings
 # make_generator re-exported so `inpaint_engine.make_generator` callers (inpaint,
 # outpaint) keep working after the move to device.
 from ..device import (
-    get_compute_dtype,
     get_dtype,
     get_torch_device,
+    load_flux_engine_pipe,
     load_gguf_pipe,
-    load_quantized_pipe,
+    load_zimage_pipe,
     make_generator,
     place_offloaded,
 )
@@ -69,6 +69,9 @@ def unload() -> None:
         _pipe = None
         _slug = None
     vram.release()
+
+
+model_slots.register("inpaint", unload)
 
 
 def is_sdxl(model_path) -> bool:
@@ -120,16 +123,8 @@ def load(engine: UpscalerInfo):
         if _pipe is not None and _slug == engine.slug:
             return _pipe
 
-    # Free everything else before loading the inpaint pipe (lazy imports avoid a
-    # cycle: pipeline/upscale/edit import this module too).
-    from . import edit as _edit
-    from . import pipeline as _pipeline
-    from . import upscale as _upscale
-
-    _pipeline.unload()
-    _upscale.unload()
-    _edit.unload()
-    vram.release()
+    # Free every other model service before loading the inpaint pipe (registry).
+    model_slots.acquire("inpaint")
 
     model_path = config.model_dir(engine.slug)
     if engine.is_gguf:
@@ -172,53 +167,33 @@ def _load_flux_fill_gguf(engine: UpscalerInfo, model_path):
 
 
 def _load_flux_fill(engine: UpscalerInfo, model_path):
-    """Build a FLUX.1-Fill inpaint pipe from the fp16 repo, quantized on the fly
-    (NF4/int8) per the engine's effective level, else full fp16. Transformer
-    quantized, CPU-offloaded (bounds VRAM; ~16 GB at NF4). LoRA-compatible unlike GGUF."""
+    """Build a FLUX.1-Fill inpaint pipe via the shared FLUX-engine loader (NF4/int8
+    per the engine's effective level, else fp16; CPU-offloaded either way)."""
     from diffusers import FluxFillPipeline, FluxTransformer2DModel
 
     level = fit.effective_level(engine.slug, engine.min_vram_gb, "FLUX")
     quant_cfg = quantize.quant_config(level, "FLUX") if level != "fp16" else None
-    if quant_cfg is not None:
-        return load_quantized_pipe(
-            model_path, FluxTransformer2DModel, FluxFillPipeline, quant_cfg,
-            component="transformer", family="FLUX", variant=engine.variant,
-        )
-    pipe = FluxFillPipeline.from_pretrained(
-        str(model_path), torch_dtype=get_compute_dtype(),
+    return load_flux_engine_pipe(
+        model_path, FluxTransformer2DModel, FluxFillPipeline, quant_cfg,
         variant=engine.variant, use_safetensors=engine.use_safetensors,
     )
-    return place_offloaded(pipe)
 
 
 def _load_zimage_inpaint(engine: UpscalerInfo, model_path):
-    """Build a Z-Image inpaint/outpaint pipe from the shared Z-Image weights. NF4
-    shrinks the transformer so the pipe fits 16 GB resident (no offload shuffle);
-    fp16 keeps bf16. Placed by the fit verdict — resident when it fits, else offload."""
-    from diffusers import ZImageInpaintPipeline, ZImageTransformer2DModel
+    """Build a Z-Image inpaint/outpaint pipe via the shared Z-Image loader (NF4 →
+    16 GB resident; placed by the fit verdict). Reuses the shared Z-Image weights."""
+    from diffusers import ZImageInpaintPipeline
 
-    dtype = get_compute_dtype()
     level = fit.effective_level(engine.slug, engine.min_vram_gb, "Z-Image")
     quant_cfg = quantize.quant_config(level, "Z-Image") if level != "fp16" else None
-    if quant_cfg is not None:
-        transformer = ZImageTransformer2DModel.from_pretrained(
-            str(model_path), subfolder="transformer", quantization_config=quant_cfg, torch_dtype=dtype
-        )
-        pipe = ZImageInpaintPipeline.from_pretrained(
-            str(model_path), transformer=transformer, torch_dtype=dtype
-        )
-    else:
-        pipe = ZImageInpaintPipeline.from_pretrained(
-            str(model_path), torch_dtype=dtype, use_safetensors=engine.use_safetensors
-        )
     fits_gpu = (
         get_torch_device() == "cuda"
-        and fit.assess_for(engine.min_vram_gb, "Z-Image", level).verdict
-        == "fits_gpu"
+        and fit.assess_for(engine.min_vram_gb, "Z-Image", level).verdict == "fits_gpu"
     )
-    if get_torch_device() == "cpu" or fits_gpu:
-        return pipe.to(get_torch_device())
-    return place_offloaded(pipe)
+    return load_zimage_pipe(
+        model_path, ZImageInpaintPipeline, quant_cfg, fits_gpu,
+        use_safetensors=engine.use_safetensors,
+    )
 
 
 def effective_negative(negative: str) -> str:
@@ -284,10 +259,10 @@ def run_inpaint(
     # pipeline._decode_flux_latents). Z-Image (is_flux_pipe via the combined flag) is
     # resident, so it keeps the inline path.
     if is_flux(pipe):
-        from . import pipeline as _pipeline
+        from .pipeline import decode_flux_latents
 
         latents = pipe(**call_kwargs, output_type="latent").images
-        img = _pipeline._decode_flux_latents(pipe, latents, image.width, image.height)
+        img = decode_flux_latents(pipe, latents, image.width, image.height)
     else:
         img = pipe(**call_kwargs).images[0]
     return img.resize(image.size)

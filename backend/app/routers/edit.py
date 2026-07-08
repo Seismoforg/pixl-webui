@@ -8,17 +8,13 @@ shape, shared live-stats UI). Uses the shared ``services.jobs`` store; publishes
 """
 from __future__ import annotations
 
-import random
-import threading
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import live, messages
+from .. import messages
 from ..services import (
     downloader,
     edit as edit_svc,
-    job_guard,
     jobs,
     upscalers,
 )
@@ -55,54 +51,34 @@ def _run(job: jobs.JobState, req: EditRequest, image, engine: UpscalerInfo) -> N
     pub_key = f"edit:{job.job_id}"
     on_progress = jobs.make_on_progress(job, _store.lock, pub_key)
 
-    base_seed = req.seed if req.seed is not None else random.randint(0, jobs.SEED_MAX)
-    with _store.lock:
-        job.batch_size = req.batch
-    try:
-        for i in range(req.batch):
-            seed_i = (base_seed + i) % (jobs.SEED_MAX + 1)
-            with _store.lock:
-                job.batch_index = i + 1
-                job.start_image()
-            result = edit_svc.edit_image(
-                image, req.prompt, on_progress, engine,
-                steps=req.steps,
-                guidance=req.guidance,
-                seed=seed_i,
-                loras=[(lora.slug, lora.weight) for lora in req.loras],
-            )
-            with _store.lock:
-                job.phase = "finalizing"
-                job.mark_decode()
-            live.publish(pub_key)
-            jobs.save_result(
-                _store,
-                job,
-                result,
-                {
-                    "model_slug": engine.slug,
-                    "model_name": engine.name,
-                    "prompt": req.prompt,
-                    "negative_prompt": None,
-                    "steps": req.steps,
-                    "guidance_scale": req.guidance,
-                    "width": result.width,
-                    "height": result.height,
-                    "seed": seed_i,
-                    "sampler": "edit",
-                },
-            )
-        with _store.lock:
-            job.status = "done"
-        live.publish(pub_key)
-    except Exception as exc:  # noqa: BLE001 - surfaced to the UI via job state
-        with _store.lock:
-            job.status = "error"
-            job.error = messages.EDIT_FAILED.format(detail=str(exc))
-        live.publish(pub_key)
-    finally:
-        edit_svc.unload()  # free the Kontext pipe
-        job_guard.release(job.job_id)
+    def render(_i: int, seed_i: int):
+        return edit_svc.edit_image(
+            image, req.prompt, on_progress, engine,
+            steps=req.steps,
+            guidance=req.guidance,
+            seed=seed_i,
+            loras=[(lora.slug, lora.weight) for lora in req.loras],
+        )
+
+    def meta(seed_i: int, result) -> dict:
+        return {
+            "model_slug": engine.slug,
+            "model_name": engine.name,
+            "prompt": req.prompt,
+            "negative_prompt": None,
+            "steps": req.steps,
+            "guidance_scale": req.guidance,
+            "width": result.width,
+            "height": result.height,
+            "seed": seed_i,
+            "sampler": "edit",
+        }
+
+    # unload frees the Kontext pipe when the batch ends (success or error).
+    with jobs.job_run(_store, job, pub_key, messages.EDIT_FAILED, unload=edit_svc.unload):
+        jobs.run_batch(
+            _store, job, pub_key, batch=req.batch, seed=req.seed, render=render, meta=meta
+        )
 
 
 @router.post("", response_model=EditStarted)
@@ -120,16 +96,7 @@ def start_edit(req: EditRequest) -> EditStarted:
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
-    with _store.lock:
-        job = jobs.JobState(_store.new_id(), engine.name)
-    busy = job_guard.acquire(job.job_id, "edit")
-    if busy is not None:
-        raise HTTPException(409, messages.JOB_BUSY.format(kind=busy))
-    with _store.lock:
-        _store.add(job)
-
-    thread = threading.Thread(target=_run, args=(job, req, image, engine), daemon=True)
-    thread.start()
+    job = jobs.start_job(_store, "edit", _run, req, image, engine, engine_name=engine.name)
     return EditStarted(job_id=job.job_id)
 
 

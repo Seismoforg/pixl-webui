@@ -140,6 +140,54 @@ def load_flux2_pipe(model_path, quant_config, fits_gpu: bool):
     return place_offloaded(pipe)
 
 
+def load_flux_engine_pipe(
+    model_path, transformer_cls, pipeline_cls, quant_cfg, *, variant, use_safetensors
+):
+    """Build a FLUX.1 engine pipe (Fill / Kontext — ``pipeline_cls``) from the fp16
+    repo: transformer bitsandbytes-quantized when ``quant_cfg`` is given (NF4/int8 per
+    the engine's effective level), else full compute-dtype; CPU-offloaded either way
+    (bounds VRAM; ~16 GB at NF4). LoRA-compatible unlike GGUF. Shared by the
+    inpaint-engine (Fill) and edit (Kontext) load paths."""
+    if quant_cfg is not None:
+        return load_quantized_pipe(
+            model_path, transformer_cls, pipeline_cls, quant_cfg,
+            component="transformer", family="FLUX", variant=variant,
+        )
+    pipe = pipeline_cls.from_pretrained(
+        str(model_path), torch_dtype=get_compute_dtype(),
+        variant=variant, use_safetensors=use_safetensors,
+    )
+    return place_offloaded(pipe)
+
+
+def load_zimage_pipe(model_path, pipeline_cls, quant_cfg, fits_gpu: bool, *, use_safetensors):
+    """Build a Z-Image (S3-DiT) pipe (``ZImagePipeline`` / ``ZImageInpaintPipeline``)
+    in bf16. When ``quant_cfg`` is given the transformer is bitsandbytes-quantized on
+    the fly so the pipe fits ~16 GB resident. Placed by the fit verdict: resident when
+    ``fits_gpu``, else CPU-offloaded. Shared by the generation and inpaint-engine
+    load paths."""
+    from diffusers import ZImageTransformer2DModel
+
+    dtype = get_compute_dtype()
+    if quant_cfg is not None:
+        transformer = ZImageTransformer2DModel.from_pretrained(
+            str(model_path), subfolder="transformer",
+            quantization_config=quant_cfg, torch_dtype=dtype,
+        )
+        pipe = pipeline_cls.from_pretrained(
+            str(model_path), transformer=transformer, torch_dtype=dtype
+        )
+    else:
+        pipe = pipeline_cls.from_pretrained(
+            str(model_path), torch_dtype=dtype, use_safetensors=use_safetensors
+        )
+
+    device = get_torch_device()
+    if device == "cpu" or fits_gpu:
+        return pipe.to(device)
+    return place_offloaded(pipe)
+
+
 def load_quantized_pipe(
     model_path,
     module_cls,

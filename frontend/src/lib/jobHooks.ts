@@ -55,10 +55,13 @@ export const usePublishJobActivity = (
   titleKey: string,
   running: boolean,
   progress: UpscaleProgress | null,
+  enabled: boolean = true,
 ): void => {
   const t = useTranslations();
   const { set: setActivity } = useActivity();
   useEffect(() => {
+    // enabled=false → never touch the store (the caller publishes its own bubble).
+    if (!enabled) return;
     if (!running) {
       setActivity(id, null);
       return;
@@ -72,5 +75,5 @@ export const usePublishJobActivity = (
       detail: view.speed ? `${view.label} · ${view.speed}` : view.label,
       percent: view.percent,
     });
-  }, [running, progress, setActivity, t, id, route, titleKey]);
+  }, [enabled, running, progress, setActivity, t, id, route, titleKey]);
 };

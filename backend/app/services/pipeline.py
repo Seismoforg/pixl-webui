@@ -15,16 +15,18 @@ from .. import config, messages, samplers
 from ..catalog import ModelInfo
 from ..config import load_settings
 from ..device import (
-    get_compute_dtype,
     get_device_info,
     get_dtype,
     get_torch_device,
     load_flux2_pipe,
     load_gguf_pipe,
     load_quantized_pipe,
+    load_zimage_pipe,
     make_generator,
 )
 from . import callbacks
+from . import loras as loras_svc
+from . import model_slots
 from . import preview as preview_svc
 from . import prompt_embeds
 from . import quantize
@@ -269,30 +271,16 @@ def _load_quantized(model: ModelInfo, quant_cfg):
 
 
 def _load_zimage(model: ModelInfo, quant_cfg, level: str):
-    """Build a Z-Image (S3-DiT) pipeline. When ``quant_cfg`` is set (NF4/int8) the
-    transformer is bitsandbytes-quantized on the fly so the pipe fits 16 GB resident;
-    else it loads in bf16. Placed by the fit verdict at ``level`` — resident on the
-    GPU when it fits (no offload shuffle), else CPU offload."""
-    from diffusers import ZImagePipeline, ZImageTransformer2DModel
+    """Build a Z-Image (S3-DiT) pipeline via the shared loader. When ``quant_cfg`` is
+    set (NF4/int8) the transformer is quantized so the pipe fits 16 GB resident; else
+    bf16. Placed by the fit verdict at ``level``."""
+    from diffusers import ZImagePipeline
 
-    dtype = get_compute_dtype()
-    model_dir = str(config.model_dir(model.slug))
-    if quant_cfg is not None:
-        transformer = ZImageTransformer2DModel.from_pretrained(
-            model_dir, subfolder="transformer", quantization_config=quant_cfg, torch_dtype=dtype
-        )
-        pipe = ZImagePipeline.from_pretrained(model_dir, transformer=transformer, torch_dtype=dtype)
-    else:
-        pipe = ZImagePipeline.from_pretrained(
-            model_dir, torch_dtype=dtype, use_safetensors=model.use_safetensors
-        )
-
-    device = get_torch_device()
-    fits_gpu = device == "cuda" and assess(model, level).verdict == "fits_gpu"
-    if device == "cpu" or fits_gpu:
-        return pipe.to(device)
-    pipe.enable_model_cpu_offload()
-    return pipe
+    fits_gpu = get_torch_device() == "cuda" and assess(model, level).verdict == "fits_gpu"
+    return load_zimage_pipe(
+        config.model_dir(model.slug), ZImagePipeline, quant_cfg, fits_gpu,
+        use_safetensors=model.use_safetensors,
+    )
 
 
 def _load_flux2(model: ModelInfo, level: str):
@@ -320,6 +308,9 @@ def unload(slug: str | None = None) -> None:
     _current_slug = None
     _reset_aux_state()
     vram.release()  # actually return the freed VRAM to the allocator
+
+
+model_slots.register("generation", unload)
 
 
 def _img2img(model: ModelInfo, base_pipe):
@@ -383,58 +374,12 @@ def _ensure_no_ip_adapter(pipe) -> None:
             pipe.enable_attention_slicing()
 
 
-def _ensure_no_loras(pipe) -> None:
-    """Unload any LoRA adapters so a plain run is unaffected."""
-    if _loaded_loras:
-        try:
-            pipe.unload_lora_weights()
-        except Exception:  # noqa: BLE001 - best-effort; state is reset regardless
-            pass
-        _loaded_loras.clear()
-
-
 def _apply_loras(pipe, model: ModelInfo, requested: list[tuple[str, float]]) -> None:
-    """Load + activate the requested LoRA adapters on ``pipe``, blended by weight.
-
-    ``requested`` is a list of ``(lora_slug, weight)``. Each LoRA's family must match
-    the base model and it must be downloaded; GGUF-quantized bases are unsupported.
-    A no-op when the requested set (slugs + weights) already matches what's loaded.
-    """
-    from . import loras as loras_svc
-
-    if not requested:
-        _ensure_no_loras(pipe)
-        return
-    if model.is_gguf:
-        raise ValueError(messages.LORA_GGUF_UNSUPPORTED)
-
-    resolved: list[tuple[str, float, "object"]] = []
-    for slug, weight in requested:
-        info = loras_svc.get(slug)
-        if info is None:
-            raise ValueError(messages.LORA_NOT_FOUND.format(slug=slug))
-        if info.family != model.family:
-            raise ValueError(
-                messages.LORA_INCOMPATIBLE.format(
-                    name=info.name, lora_family=info.family, family=model.family
-                )
-            )
-        if not is_downloaded(slug):
-            raise ValueError(messages.LORA_NOT_DOWNLOADED.format(slug=slug))
-        resolved.append((slug, weight, info))
-
-    wanted = {slug: weight for slug, weight, _info in resolved}
-    if wanted == _loaded_loras:
-        return  # already loaded + activated with these exact weights
-
-    # Reload from scratch: unload everything, then load + activate the wanted set.
-    _ensure_no_loras(pipe)
-    for slug, _weight, info in resolved:
-        _load_one_lora(pipe, slug, info.filename)
-    pipe.set_adapters(
-        [slug for slug, _w, _i in resolved], [weight for _s, weight, _i in resolved]
+    """Blend the requested ``(slug, weight)`` LoRAs onto the base pipe via the shared
+    ``loras.apply_lora_set`` core, with the kohya-resilient ``_load_one_lora``."""
+    loras_svc.apply_lora_set(
+        pipe, model.family, model.is_gguf, requested, _loaded_loras, _load_one_lora
     )
-    _loaded_loras.update(wanted)
 
 
 def _load_one_lora(pipe, slug: str, filename: str) -> None:
@@ -548,15 +493,9 @@ def generate(
     if not is_downloaded(model.slug):
         raise ValueError(messages.MODEL_NOT_DOWNLOADED.format(slug=model.slug))
 
-    # Free VRAM held by the upscaler / outpaint / edit models before generating (lazy
-    # imports avoid the pipeline <-> upscale/outpaint/edit cycle; unload() empties cache).
-    from . import edit as _edit
-    from . import outpaint as _outpaint
-    from . import upscale as _upscale
-
-    _upscale.unload()
-    _outpaint.unload()
-    _edit.unload()
+    # Free VRAM held by every other model service before generating (registry: each
+    # registered slot except our own is unloaded + cache emptied).
+    model_slots.acquire("generation")
 
     import torch
 
@@ -629,17 +568,18 @@ def generate(
     # quality). Other families fit the GPU / decode fast, so they keep the inline path.
     if model.family == "FLUX":
         latents = run_pipe(**kwargs, output_type="latent").images
-        image = _decode_flux_latents(run_pipe, latents, width, height)
+        image = decode_flux_latents(run_pipe, latents, width, height)
     else:
         image = run_pipe(**kwargs).images[0]
     return image, effective_sampler
 
 
-def _decode_flux_latents(pipe, latents, width: int, height: int):
+def decode_flux_latents(pipe, latents, width: int, height: int):
     """Decode FLUX latents to a PIL image, mirroring FluxPipeline's own post-denoise
     decode (unpack the packed latents, undo the scale/shift, VAE-decode, postprocess).
     Called after the pipeline has offloaded the transformer, so the VAE decode runs
-    with the GPU freed."""
+    with the GPU freed. Shared by the FLUX Fill (inpaint_engine) + Kontext (edit)
+    offloaded-decode paths."""
     import torch
 
     latents = pipe._unpack_latents(latents, height, width, pipe.vae_scale_factor)

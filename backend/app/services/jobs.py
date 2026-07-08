@@ -1,25 +1,27 @@
 """Shared background-job infrastructure for the image-op routers.
 
-The upscale/reframe/inpaint/edit routers each run one job on a background thread,
-tracked in an in-memory store guarded by a lock, and report progress via the shared
-`UpscaleProgress`/`BatchProgress` shape (defined here). This module holds the parts
-that were identical across them: the progress schemas + response builders, the
-job-state record, the store + id counter, the seed cap, source resolution, the
-progress callback, and the gallery-save tail.
-
-Generation (routers/generate.py) has richer per-job state (live preview, its() timing,
-per-batch resets) and keeps its own `_Job`, but reuses `JobStore` for the store/lock.
+The six job routers (generate/compare/upscale/reframe/inpaint/edit) each run one job
+on a background thread, tracked in an in-memory store guarded by a lock, and report
+progress via the shared `UpscaleProgress`/`BatchProgress` shape (defined here). This
+module holds the parts that were identical across them: the progress schemas +
+response builders, the job-state record, the store + id counter, the seed cap, source
+resolution, the progress callbacks, the job-spawn block (`start_job`), the done/error/
+release tail (`job_run`), the incrementing-seed batch loop (`run_batch`), and the
+gallery-save tail. Generation subclasses `JobState` for its extra response fields
+(seed/prompt/preview); compare keeps its bespoke nested sweep loop.
 """
 from __future__ import annotations
 
+import contextlib
+import random
 import threading
 import time
 from typing import Callable, Generic, Protocol, TypeVar
 
 from pydantic import BaseModel, Field
 
-from .. import live, messages
-from . import gallery
+from .. import live, messages, samplers
+from . import gallery, job_guard, quantize
 
 # Seed cap for random seeds + batch seed-wrapping (32-bit), shared by the job routers.
 SEED_MAX = 2**32 - 1
@@ -156,6 +158,99 @@ class JobStore(Generic[J]):
         return self._jobs.get(job_id)
 
 
+class JobBusy(Exception):
+    """Another heavy job already runs (carries the formatted JOB_BUSY message).
+    Mapped to a 409 response by the app-level handler in main.py."""
+
+
+def start_job(
+    store: JobStore,
+    kind: str,
+    run: Callable,
+    *args,
+    engine_name: str = "",
+    make_job: Callable[[str], JobState] | None = None,
+) -> JobState:
+    """Shared job-spawn block: create the record (`JobState(engine_name)` unless
+    `make_job` builds a richer one), acquire the single-job guard (JobBusy → 409),
+    register it, and start `run(job, *args)` on a daemon thread. Returns the job."""
+    with store.lock:
+        job_id = store.new_id()
+        job = make_job(job_id) if make_job else JobState(job_id, engine_name)
+    busy = job_guard.acquire(job.job_id, kind)
+    if busy is not None:
+        raise JobBusy(messages.JOB_BUSY.format(kind=busy))
+    with store.lock:
+        store.add(job)
+    threading.Thread(target=run, args=(job, *args), daemon=True).start()
+    return job
+
+
+@contextlib.contextmanager
+def job_run(store: JobStore, job: JobState, pub_key: str, fail_msg: str, unload=None):
+    """Shared `_run` tail: mark done on success, map any exception into the job's
+    error state (`fail_msg.format(detail=...)`), then unload the pipe (if given) and
+    release the single-job guard."""
+    try:
+        yield
+        with store.lock:
+            job.status = "done"
+        live.publish(pub_key)
+    except Exception as exc:  # noqa: BLE001 - surfaced to the UI via job state
+        with store.lock:
+            job.status = "error"
+            job.error = fail_msg.format(detail=str(exc))
+        live.publish(pub_key)
+    finally:
+        if unload is not None:
+            unload()
+        job_guard.release(job.job_id)
+
+
+def run_batch(
+    store: JobStore,
+    job: JobState,
+    pub_key: str,
+    *,
+    batch: int,
+    seed: int | None,
+    render: Callable,
+    meta: Callable,
+    on_item_start: Callable[[], None] | None = None,
+) -> None:
+    """Shared incrementing-seed batch loop. Item i uses `(base + i) % (SEED_MAX + 1)`
+    (base = `seed`, or random when None); each round sets batch_index + resets the
+    per-image markers (then `on_item_start` for extra per-round resets), calls
+    `render(index, seed_i)` → final PIL image, publishes the finalizing phase, and
+    saves via `save_result(meta(seed_i, result))`. Error/done tail is the caller's
+    `job_run` context."""
+    base_seed = seed if seed is not None else random.randint(0, SEED_MAX)
+    with store.lock:
+        job.batch_size = batch
+    for i in range(batch):
+        seed_i = (base_seed + i) % (SEED_MAX + 1)
+        with store.lock:
+            job.batch_index = i + 1
+            job.start_image()
+        if on_item_start is not None:
+            on_item_start()
+        result = render(i, seed_i)
+        with store.lock:
+            job.phase = "finalizing"
+            job.mark_decode()
+        live.publish(pub_key)
+        save_result(store, job, result, meta(seed_i, result))
+
+
+def resolve_sampler(engine, requested: str | None) -> str:
+    """Sampler id to RECORD for an engine run: flow-matching engines (FLUX Fill,
+    Z-Image, FLUX.2) keep their native scheduler — the services skip apply_sampler —
+    so report NATIVE, not the requested id (mirrors generate's effective_sampler)."""
+    if quantize.engine_family(engine) is not None:
+        return samplers.NATIVE
+    return requested or samplers.DEFAULT_SAMPLER
+
+
 def resolve_source(req, missing_msg: str):
     """Load the source PIL image from a gallery id or an uploaded data URL. `req` must
     carry `image_data` / `image_id`. Raises ValueError (→ 400) when the source is
@@ -196,15 +291,56 @@ def make_on_progress(job: JobState, lock: threading.Lock, pub_key: str) -> Calla
     return on_progress
 
 
-def save_result(store: JobStore[JobState], job: JobState, result, meta: dict) -> None:
+def make_on_step(
+    job: JobState,
+    lock: threading.Lock,
+    pub_key: str,
+    *,
+    running_phase: str,
+    finalize: bool = True,
+) -> Callable[[int], None]:
+    """Adapter for pipeline.generate's integer step callback (generate/compare): clamp
+    to total_steps (some pipelines fire one extra callback), stamp first_step_at, keep
+    the stored `its` field current ((steps-1)/elapsed since the first step), and — when
+    `finalize` — flag the finalizing tail + decode stamp on the last step (compare
+    passes False: its phase flips per sheet, not per cell)."""
+
+    def on_step(completed: int) -> None:
+        # The callback wiring (callbacks.gpu_sync) already synced the GPU, so this
+        # timestamp reflects real compute — step / it-s / decode boundary are accurate.
+        now = time.perf_counter()
+        with lock:
+            if job.first_step_at is None:
+                job.first_step_at = now
+            completed = min(completed, job.total_steps)
+            job.current_step = completed
+            if completed > 1:
+                since_first = now - job.first_step_at
+                if since_first > 0:
+                    job.its = (completed - 1) / since_first
+            if finalize and completed >= job.total_steps:
+                job.phase = "finalizing"
+                job.mark_decode()
+            else:
+                job.phase = running_phase
+        live.publish(pub_key)
+
+    return on_step
+
+
+def save_result(
+    store: JobStore[JobState], job: JobState, result, meta: dict, *, record_timing: bool = True
+) -> None:
     """Persist one result image + metadata to the gallery and record it on the job (the
-    first image also fills `image_id` for single-image compatibility)."""
+    first image also fills `image_id` for single-image compatibility). `record_timing`
+    False skips the per-image breakdown (compare's sheets report no timings)."""
     saved = gallery.save(result, meta)
     with store.lock:
         if job.image_id is None:
             job.image_id = saved.id
         job.image_ids.append(saved.id)
-        job.record_image_timing()
+        if record_timing:
+            job.record_image_timing()
 
 
 def to_upscale_progress(job: JobState) -> UpscaleProgress:

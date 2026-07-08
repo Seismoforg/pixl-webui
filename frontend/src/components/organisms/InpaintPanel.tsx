@@ -25,6 +25,8 @@ import { SourcePicker } from "@/components/organisms/SourcePicker";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { formLockStyle } from "@/lib/formLock";
+import { formCardSx } from "@/lib/formCard";
+import { stickyActionBarSx } from "@/lib/stickyActionBar";
 import { readFileAsDataUrl } from "@/lib/readFile";
 import { useImageSource } from "@/lib/useImageSource";
 import { useInpaintEngineSelection } from "@/lib/useInpaintEngineSelection";
@@ -192,7 +194,7 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
           alignItems: "start",
         }}
       >
-        <Stack spacing={3}>
+        <Stack spacing={3} sx={formCardSx}>
           <fieldset disabled={running} style={formLockStyle(running)}>
             <Stack spacing={3}>
               <SourcePicker
@@ -393,7 +395,7 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
             </Stack>
           </fieldset>
 
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={1} sx={stickyActionBarSx}>
             <Button
               variant="contained"
               size="large"

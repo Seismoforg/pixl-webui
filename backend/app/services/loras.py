@@ -85,3 +85,73 @@ def all_loras() -> list[LoraInfo]:
 def get(slug: str) -> LoraInfo | None:
     """Return the LoRA for ``slug`` from the active catalog, or ``None``."""
     return next((lora for lora in load_catalog() if lora.slug == slug), None)
+
+
+def clear_loras(pipe, loaded: dict[str, float]) -> None:
+    """Unload any active adapters so a plain run is unaffected (best-effort);
+    ``loaded`` (the caller's adapter-state dict) is reset regardless."""
+    if not loaded:
+        return
+    try:
+        pipe.unload_lora_weights()
+    except Exception:  # noqa: BLE001 - best-effort; state is reset regardless
+        pass
+    loaded.clear()
+
+
+def apply_lora_set(
+    pipe,
+    family: str,
+    is_gguf: bool,
+    requested: list[tuple[str, float]],
+    loaded: dict[str, float],
+    load_one=None,
+) -> None:
+    """Validate + blend the ``(slug, weight)`` LoRA set onto ``pipe`` — the shared
+    core of the generation and edit services. Each LoRA must exist, match ``family``
+    and be downloaded; GGUF bases are unsupported. ``loaded`` is the caller's
+    adapter-state dict (mutated to match); a no-op when the wanted set already equals
+    it. ``load_one(pipe, slug, filename)`` overrides the plain single-LoRA load
+    (generation passes its kohya-resilient loader)."""
+    from .. import messages
+    from ..config import model_dir
+    from .downloader import is_downloaded
+
+    if not requested:
+        clear_loras(pipe, loaded)
+        return
+    if is_gguf:
+        raise ValueError(messages.LORA_GGUF_UNSUPPORTED)
+
+    resolved: list[tuple[str, float, LoraInfo]] = []
+    for slug, weight in requested:
+        info = get(slug)
+        if info is None:
+            raise ValueError(messages.LORA_NOT_FOUND.format(slug=slug))
+        if info.family != family:
+            raise ValueError(
+                messages.LORA_INCOMPATIBLE.format(
+                    name=info.name, lora_family=info.family, family=family
+                )
+            )
+        if not is_downloaded(slug):
+            raise ValueError(messages.LORA_NOT_DOWNLOADED.format(slug=slug))
+        resolved.append((slug, weight, info))
+
+    wanted = {slug: weight for slug, weight, _info in resolved}
+    if wanted == loaded:
+        return  # already loaded + activated with these exact weights
+
+    # Reload from scratch: unload everything, then load + activate the wanted set.
+    clear_loras(pipe, loaded)
+    for slug, _weight, info in resolved:
+        if load_one is not None:
+            load_one(pipe, slug, info.filename)
+        else:
+            pipe.load_lora_weights(
+                str(model_dir(slug)), weight_name=info.filename, adapter_name=slug
+            )
+    pipe.set_adapters(
+        [slug for slug, _w, _i in resolved], [weight for _s, weight, _i in resolved]
+    )
+    loaded.update(wanted)

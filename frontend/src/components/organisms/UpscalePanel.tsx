@@ -14,6 +14,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { InfoTip } from "@/components/molecules/InfoTip";
+import { LabeledSlider } from "@/components/molecules/LabeledSlider";
 import { EnginePicker } from "@/components/organisms/EnginePicker";
 import { GalleryPicker } from "@/components/organisms/GalleryPicker";
 import { SnippetPromptField } from "@/components/organisms/SnippetPromptField";
@@ -22,7 +23,9 @@ import { UpscaleResult } from "@/components/organisms/UpscaleResult";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { formLockStyle } from "@/lib/formLock";
+import { formCardSx } from "@/lib/formCard";
 import { readFileAsDataUrl } from "@/lib/readFile";
+import { stickyActionBarSx } from "@/lib/stickyActionBar";
 import { useEngineCatalog } from "@/lib/useEngineCatalog";
 import { useImageSource } from "@/lib/useImageSource";
 import { useUpscale } from "@/providers/UpscaleProvider";
@@ -49,11 +52,13 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
     prompt,
     tile,
     sdX4Steps,
+    fidelity,
     setEngineSlug,
     setSource,
     setPrompt,
     setTile,
     setSdX4Steps,
+    setFidelity,
   } = upscale;
 
   const downloads = useDownloads();
@@ -113,6 +118,8 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
   // dropdown, which now lives on the Reframe page — so they're filtered out here.
   const selectableEngines = engines.filter((e) => e.kind !== "inpaint");
   const selectedEngine = selectableEngines.find((e) => e.slug === engineSlug) ?? null;
+  // CodeFormer face restoration has its own control (fidelity) and no tiling/prompt.
+  const isFaceRestore = selectedEngine?.kind === "face_restore";
   // Engine downloads share the app-level tracker (survive navigation + feed the
   // off-route bubble). Read this engine's progress for the inline bar.
   const engineDl = selectedEngine ? downloads.progress[selectedEngine.slug] : undefined;
@@ -153,6 +160,7 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
       prompt,
       tile,
       sd_x4_steps: selectedEngine.kind === "sd_x4" ? sdX4Steps : null,
+      fidelity: isFaceRestore ? fidelity : null,
     });
   };
 
@@ -185,7 +193,7 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
           alignItems: "start",
         }}
       >
-        <Stack spacing={3}>
+        <Stack spacing={3} sx={formCardSx}>
           {/* Lock the controls while a job runs (see formLockStyle). */}
           <fieldset disabled={running} style={formLockStyle(running)}>
             <Stack spacing={3}>
@@ -241,28 +249,43 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
                 </Box>
               )}
 
-              {/* Tiling option */}
-              <Box>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-                  <SectionHeading level={3} variant="subtitle2">
-                    {t("upscale.tiling.label")}
-                  </SectionHeading>
-                  <InfoTip text={t("upscale.tiling.help")} />
+              {/* Fidelity — CodeFormer identity↔smoothness weight (face restoration). */}
+              {isFaceRestore && (
+                <LabeledSlider
+                  label={t("upscale.fidelity.label")}
+                  value={fidelity}
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  info={t("upscale.fidelity.help")}
+                  onChange={setFidelity}
+                />
+              )}
+
+              {/* Tiling option — not applicable to face restoration (no tiling). */}
+              {!isFaceRestore && (
+                <Box>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
+                    <SectionHeading level={3} variant="subtitle2">
+                      {t("upscale.tiling.label")}
+                    </SectionHeading>
+                    <InfoTip text={t("upscale.tiling.help")} />
+                  </Box>
+                  <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={tile ? "auto" : "off"}
+                    onChange={(_, v) => v !== null && setTile(v === "auto")}
+                  >
+                    <ToggleButton value="auto">{t("upscale.tiling.auto")}</ToggleButton>
+                    <ToggleButton value="off">{t("upscale.tiling.off")}</ToggleButton>
+                  </ToggleButtonGroup>
                 </Box>
-                <ToggleButtonGroup
-                  size="small"
-                  exclusive
-                  value={tile ? "auto" : "off"}
-                  onChange={(_, v) => v !== null && setTile(v === "auto")}
-                >
-                  <ToggleButton value="auto">{t("upscale.tiling.auto")}</ToggleButton>
-                  <ToggleButton value="off">{t("upscale.tiling.off")}</ToggleButton>
-                </ToggleButtonGroup>
-              </Box>
+              )}
             </Stack>
           </fieldset>
 
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={1} sx={stickyActionBarSx}>
             <Button
               variant="contained"
               size="large"

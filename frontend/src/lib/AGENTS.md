@@ -9,8 +9,10 @@ Backend-communication infrastructure and small pure helpers shared across the UI
 
 # File Structure
 - api.ts    — typed backend client (REST); one `request<T>` core + per-endpoint
-              methods. Exports `API_BASE` (`NEXT_PUBLIC_API_BASE`, default :8000),
-              the single backend origin reused by ws.ts
+              methods; the 6 job endpoints are built from generic `startJob<Req>` /
+              `jobProgress<P>` pair-factories. Exports `API_BASE`
+              (`NEXT_PUBLIC_API_BASE`, default :8000), the single backend origin
+              reused by ws.ts
 - ws.ts     — module-level singleton `live` (reconnecting, multiplexed) + `useLive`:
               subscribes a channel and falls back to REST polling while the socket
               is down. Used for generation/upscale progress, system stats, downloads.
@@ -29,10 +31,18 @@ Backend-communication infrastructure and small pure helpers shared across the UI
               supportsSamplerChoice) keyed by family (SD 1.5 / SDXL / FLUX / SD 3.x)
 - objectPath.ts — generic dotted-path get/set (getPath/setPath + Draft type) for
               the declarative CatalogEditor
-- jobHooks.ts — shared job-lifecycle hooks used by the 5 feature providers:
+- useJob.ts — the generic job-lifecycle kernel used by ALL 6 feature providers:
+              job id/progress/resultId(s)/error state, `start(req)` (POST + persist),
+              live tracking (useJobTracker), reload rehydrate, activity publish
+              (skippable — generation publishes its own), `reset`. Options:
+              kind/startRequest/getProgress/pollMs/onDone/resultIdsLive (false =
+              compare fills results only on done)/activity
+- useSamplers.ts — fetch the sampler list once + hand the backend default to the
+              caller (generation/compare/reframe/inpaint seed empty selections)
+- jobHooks.ts — job-lifecycle hooks consumed by useJob:
               `useJobRehydrate` (re-attach a still-running job after reload) and
               `usePublishJobActivity` (publish the running job to the activity store;
-              Upscale/Reframe/Inpaint/Edit — Generation keeps its own phase-text effect)
+              `enabled=false` skips — Generation keeps its own phase-text effect)
 - useEngineCatalog.ts / useImageSource.ts — shared panel hooks: engine-catalog fetch
               (`{engines, loading, error, reload}`, error distinct from empty) and the
               deep-link source preselect + gallery-metadata fetch (used by the 4 panels)

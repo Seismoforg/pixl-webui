@@ -14,6 +14,8 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
 # File Structure
 - jobs.py           — shared job infra (see Key Components)
 - job_guard.py      — process-wide single-heavy-job guard (see ADR 0014)
+- model_slots.py    — model-slot registry: services register their unload; acquire(name)
+                      frees every other slot + vram.release (see ADR 0023)
 - downloader.py     — download orchestration + progress state machine
 - pipeline.py       — diffusers load/cache + text-to-image generation (+ LoRA blend)
 - loras.py          — LoRA adapter catalog (JSON-backed, family-scoped)
@@ -23,7 +25,8 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
                       GPU in the step callback so it/s + phase timing are accurate)
 - samplers is `../samplers.py` (app-level), not here
 - upscalers.py      — upscale/outpaint/inpaint engine catalog (JSON-backed)
-- upscale.py        — upscaling dispatch (Real-ESRGAN / SD x4) + tiling
+- upscale.py        — upscaling dispatch (Real-ESRGAN / SD x4) + tiling + CodeFormer
+                      `face_restore` (identity-preserving face restoration)
 - reframe.py        — aspect-ratio reframe geometry (pure PIL)
 - grid.py           — compose a labelled XYZ-plot contact-sheet grid (pure PIL)
 - inpaint_engine.py — shared inpaint pipe load/run (outpaint + inpaint)
@@ -42,16 +45,24 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
 - vram.py           — release(): gc + empty_cache
 
 # Key Components
-- jobs.py — shared background-job infra for the image-op routers: `SEED_MAX` (32-bit
-            seed cap), `UpscaleProgress`/`BatchProgress` response schemas +
-            `to_upscale_progress`/`to_batch_progress` builders (snapshot a JobState under
-            the store lock), `JobState` (batch-capable progress record + elapsed()),
-            `JobStore[J]` (per-router in-memory store + id counter + the lock guarding
-            job mutations), `resolve_source(req, missing_msg)` (gallery id OR data URL →
+- jobs.py — shared job kernel for ALL six job routers: `SEED_MAX` (32-bit seed cap),
+            `UpscaleProgress`/`BatchProgress` response schemas + `to_upscale_progress`/
+            `to_batch_progress` builders (snapshot a JobState under the store lock),
+            `JobState` (batch-capable progress record + elapsed(); generate subclasses it
+            for seed/prompt/preview), `JobStore[J]` (per-router in-memory store + id
+            counter + the lock guarding job mutations), `start_job` (create record +
+            job_guard.acquire [raises `JobBusy` → 409 via the main.py handler] + store.add
+            + daemon-thread spawn), `job_run` (context manager: done/error tail + optional
+            unload + guard release), `run_batch` (incrementing-seed batch loop:
+            batch_index/start_image per round, `render(i, seed_i)`, finalizing publish,
+            save_result), `resolve_source(req, missing_msg)` (gallery id OR data URL →
             PIL; raises SOURCE_DECODE_FAILED on bad decode), `make_on_progress`
-            (setattr-loop + live.publish callback), `save_result` (gallery.save + record
-            image_id/image_ids). generate keeps its own richer `_Job` but reuses
-            `JobStore`; compare hand-builds its `BatchProgress`
+            (setattr-loop + live.publish dict callback for the services),
+            `make_on_step` (int step-callback adapter for pipeline.generate — clamp,
+            first_step_at, stored `its`, optional finalizing tail; generate finalize=True,
+            compare finalize=False), `resolve_sampler` (record NATIVE for flow-matching
+            engines), `save_result` (gallery.save + record image_id/image_ids;
+            `record_timing=False` for compare's sheets)
 - job_guard.py — process-wide single-heavy-job guard: acquire(job_id, kind)/
             release(job_id). Every job router acquires on start (409 JOB_BUSY when any
             job runs) + releases in `_run` finally. See ADR 0014
@@ -64,7 +75,10 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             Civitai path: `start_civitai_download` streams one civitai.com version file
             (`/api/download/models/{id}`, auth via the `civitai_token` setting; 401/403 →
             CIVITAI_AUTH_REQUIRED) into models/<slug> — for LoRAs not on HuggingFace
-- loras.py — LoRA catalog (JSON-backed like models/engines): `LoraInfo` (slug, repo_id
+- loras.py — LoRA catalog (JSON-backed like models/engines) + `apply_lora_set(pipe,
+            family, is_gguf, requested, loaded, load_one?)` — the shared validate/
+            blend/clear core used by generation (with its kohya-resilient load_one)
+            and edit (plain load): `LoraInfo` (slug, repo_id
             [empty for Civitai], filename, family [incl. "FLUX.2"], kind
             [style|character|concept|realism|accelerator|other, default "other"; UI
             badge], `civitai_version_id`?, trigger?, size), `all_loras()`/`get()` +
@@ -74,9 +88,9 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             service. NOTE: FLUX.2 LoRAs are 4B/9B-size-specific but share family "FLUX.2"
             (a wrong-size pick errors at load — see technical-debt)
 - pipeline.py — diffusers load/cache + generation (step callback); cached img2img pipe
-            (from_pipe) + IP-Adapter load/unload for style. LoRA: `_apply_loras` loads +
-            `set_adapters` blends the requested `(slug, weight)` list on the base pipe
-            (family-matched, downloaded, non-GGUF; idempotent when unchanged) via
+            (from_pipe) + IP-Adapter load/unload for style. LoRA: `_apply_loras` =
+            the shared `loras.apply_lora_set`
+            (family-matched, downloaded, non-GGUF; idempotent when unchanged) with
             `_load_one_lora` (falls back to a UNet-only load when a kohya LoRA's
             text-encoder weights trip this diffusers version's rank parser),
             `_ensure_no_loras` clears them; reset on model switch. GGUF entries → `_load_gguf`:
@@ -98,8 +112,9 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             runs apply_compile. Also applies the sampler via samplers.apply_sampler,
             guarded by pipe.scheduler.compatibles (FLUX/SD3 kept intact); step callback
             optionally decodes a throttled live preview. FLUX decodes via
-            `output_type="latent"` + `_decode_flux_latents` (manual unpack/scale +
-            vae.decode) so the pipeline offloads the transformer through its own hook
+            `output_type="latent"` + `decode_flux_latents` (manual unpack/scale +
+            vae.decode; shared with inpaint_engine + edit) so the pipeline offloads
+            the transformer through its own hook
             FIRST — the inline VAE decode is pathologically slow under CPU offload on
             some GPUs (resident quantized transformer starves it of VRAM → ~8-45s);
             decoding after the offload frees the GPU → ~2s at full quality
@@ -111,15 +126,22 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             URL; best-effort, never blocks generation (other families → no preview)
 - callbacks.py — shared diffusers step-callback wiring (`step_kwargs`, modern/legacy
             API) + `StepTimer` (its/s from first step); used by pipeline/upscale/outpaint
-- upscalers.py — registry of upscale/outpaint engines (`realesrgan`, `sd_x4`, `inpaint`
-            kinds): slug, repo id/filename, scale, size, min_vram, prompt-capable,
-            variant/use_safetensors, `defaults` (steps/guidance_scale/refine_steps);
-            inpaint engines may carry `gguf_repo_id`/`gguf_filename` (+ `is_gguf`) for a
-            GGUF FLUX.1-Fill-dev model. JSON-backed: `engines_catalog.json` default, a
-            git-ignored `data/engines_catalog.json` override; all_engines()/get()
+- upscalers.py — registry of upscale/outpaint engines (`realesrgan`, `sd_x4`,
+            `face_restore`, `inpaint` kinds): slug, repo id/filename, scale, size,
+            min_vram, prompt-capable, variant/use_safetensors, `defaults`
+            (steps/guidance_scale/refine_steps); inpaint engines may carry
+            `gguf_repo_id`/`gguf_filename` (+ `is_gguf`) for a GGUF FLUX.1-Fill-dev
+            model. JSON-backed: `engines_catalog.json` default, a git-ignored
+            `data/engines_catalog.json` override; all_engines()/get()
 - upscale.py — upscaling by engine kind: spandrel Real-ESRGAN or cached
             StableDiffusionUpscalePipeline; optional tiling stitches large inputs
-            (bounds VRAM); caches loaded engines like pipeline.py
+            (bounds VRAM); caches loaded engines like pipeline.py. `face_restore` →
+            `_restore_faces`: CodeFormer (spandrel + spandrel_extra_arches, single .pth
+            like Real-ESRGAN) restores each face facexlib detects/aligns, pasted back at
+            a `fidelity` weight (identity↔smoothness); no-face image passes through.
+            Face DETECTION runs on CPU (ROCm/gfx1201 MIOpen batch-norm crash on GPU),
+            CodeFormer restore on GPU. facexlib det/parse weights auto-download to
+            `models/facexlib` on first use (see ADR 0022 + technical-debt)
 - reframe.py — aspect-ratio reframe (pure PIL): cover/contain/edge + to_exact_size
             (custom W×H final resize) + canvas/mask geometry for outpaint (build_mask
             gradient band, feathered_keep_mask seam, reflect_fill seed) with
@@ -135,12 +157,13 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             FluxFillPipeline + CPU offload; Flux drops negative, passes explicit
             height/width); non-GGUF FLUX Fill → `_load_flux_fill` (fp16 transformer
             NF4/int8-quantized per effective level, else fp16; CPU offload); Z-Image
-            (engine_family "Z-Image") → `_load_zimage_inpaint` (ZImageInpaintPipeline,
-            NF4-resident, reuses the shared z-image-turbo weights); other non-GGUF →
-            AutoPipelineForInpainting. `is_zimage` — flow-matching like FLUX, so the
+            (engine_family "Z-Image") → `_load_zimage_inpaint` (ZImageInpaintPipeline
+            via device.load_zimage_pipe, NF4-resident, reuses the shared z-image-turbo
+            weights); other non-GGUF → AutoPipelineForInpainting. FLUX Fill fp16 →
+            device.load_flux_engine_pipe. `is_zimage` — flow-matching like FLUX, so the
             inpaint/outpaint services fold it into `is_flux` (crisp mask, no negative,
-            explicit size). Only one inpaint pipe loaded at a time;
-            `pipeline.unload()`/`upscale.unload()` before load (VRAM-coordinated)
+            explicit size). Only one inpaint pipe loaded at a time; slot "inpaint" in
+            model_slots (acquire frees the others before load, ADR 0023)
 - inpaint.py — user-mask inpainting: repaint the white-masked region with an `inpaint`
             engine. `_padded_box` crops a padded box (`mask_expand` knob grows the region
             first to swallow a subject's soft fringe → no halo). Scale crop into model
@@ -169,19 +192,18 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             reframe=outpaint
 - edit.py — prompt-based whole-image editing. Loads an `edit` engine into its own cached
             pipe (+ `unload`): FLUX.1 Kontext (`FluxKontextPipeline`, CPU-offloaded) — GGUF
-            → `_load_flux_kontext_gguf`; non-GGUF fp16 → `_load_flux_kontext` (NF4/int8 per
-            effective level, else fp16). FLUX.2 (`engine_family` "FLUX.2") →
+            → `_load_flux_kontext_gguf`; non-GGUF fp16 → `_load_flux_kontext` via
+            device.load_flux_engine_pipe (NF4/int8 per effective level, else fp16).
+            FLUX.2 (`engine_family` "FLUX.2") →
             `_load_flux2_edit` (`Flux2KleinPipeline` native img2img, dual-module NF4 via
             `device.load_flux2_pipe`; reuses the FLUX.2 generation weights — same slug).
             `edit_image` = one pass (source + instruction, NO mask, NO negative — auto-resizes
             to ~1 MP internally bounding VRAM, result scaled back to source size),
             step-reported (phase "editing"); FLUX.2 decodes inline (resident, own latent
             packing), FLUX.1 Kontext via output_type="latent" (offloaded).
-            `_apply_edit_loras` blends `(slug, weight)` LoRAs onto the edit pipe
-            (family-matched via `engine_family`, downloaded, non-GGUF; mirrors
-            `pipeline._apply_loras`), reset on pipe rebuild. VRAM-coordinated:
-            loading frees generation/upscale/inpaint, each frees it before load (mutual
-            lazy-import unload). Driven by the edit job
+            `_apply_edit_loras` = the shared `loras.apply_lora_set` (family via
+            `engine_family`), reset on pipe rebuild. VRAM handoff: slot "edit" in
+            model_slots (ADR 0023). Driven by the edit job
 - quantize.py — on-the-fly bitsandbytes quantization (ADR 0019): `quant_config(level,
             family)` → diffusers `BitsAndBytesConfig` (nf4 4-bit / int8) or None (fp16 /
             bnb absent); `flux2_quant_config(level)` → a `PipelineQuantizationConfig` that
@@ -207,14 +229,14 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             streams the busiest `\GPU Engine(*)` util perf counter (Task Manager source),
             cached by a reader thread so the endpoint never blocks. Works on AMD/ROCm
             (no NVML/amdsmi); None off-Windows or when counters absent. Used by resources
-- vram.py — release(): gc + torch.cuda.empty_cache (best-effort). Generation + upscale
-            free each other's models (+ the non-active upscaler engine) + release before
-            load, so only the current task's model sits in VRAM; cross-service calls use
-            lazy imports to avoid a cycle
+- vram.py — release(): gc + torch.cuda.empty_cache (best-effort). The VRAM handoff
+            between the model services goes through model_slots.acquire (ADR 0023), so
+            only the current task's model sits in VRAM
 
 # Dependencies
 diffusers (>=0.31 for GGUF), transformers, accelerate, huggingface_hub, pillow,
-pydantic, psutil, compel, gguf, peft (LoRA), spandrel (Real-ESRGAN); torch (CUDA/ROCm/CPU).
+pydantic, psutil, compel, gguf, peft (LoRA), spandrel + spandrel_extra_arches
+(Real-ESRGAN + CodeFormer), facexlib (face detect/align for CodeFormer); torch (CUDA/ROCm/CPU).
 
 # Related Modules
 - Parent: ../../ (backend)

@@ -23,6 +23,8 @@ import { CompareResult } from "@/components/organisms/CompareResult";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { formLockStyle } from "@/lib/formLock";
+import { formCardSx } from "@/lib/formCard";
+import { stickyActionBarSx } from "@/lib/stickyActionBar";
 import { supportsSamplerChoice } from "@/lib/modelFamily";
 import { useAppData } from "@/providers/AppDataProvider";
 import { useCompare } from "@/providers/CompareProvider";
@@ -188,7 +190,7 @@ export const ComparePanel = () => {
             alignItems: "start",
           }}
         >
-          <Stack spacing={3}>
+          <Stack spacing={3} sx={formCardSx}>
             <fieldset disabled={running} style={formLockStyle(running)}>
               <Stack spacing={3}>
                 {/* Model + prompt */}
@@ -372,7 +374,7 @@ export const ComparePanel = () => {
                 </Typography>
               ))}
 
-            <Stack direction="row" spacing={1}>
+            <Stack direction="row" spacing={1} sx={stickyActionBarSx}>
               <Button
                 variant="contained"
                 size="large"

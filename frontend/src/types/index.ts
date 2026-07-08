@@ -220,7 +220,7 @@ export interface GenerationProgress {
   error: string | null;
 }
 
-export type UpscalerKind = "realesrgan" | "sd_x4" | "inpaint" | "edit";
+export type UpscalerKind = "realesrgan" | "sd_x4" | "face_restore" | "inpaint" | "edit";
 
 export type ReframeStrategy = "cover" | "contain" | "edge" | "outpaint";
 
@@ -274,6 +274,7 @@ export interface UpscaleRequest {
   prompt: string; // guides the diffusion upscaler (SD x4) toward detail
   tile: boolean; // auto-split large images into tiles and stitch
   sd_x4_steps?: number | null; // per-run SD x4 steps; null → the persisted setting
+  fidelity?: number | null; // CodeFormer face-restore identity↔smoothness (0..1); null → default
 }
 
 export interface UpscaleStarted {

@@ -10,15 +10,13 @@ from __future__ import annotations
 
 import itertools
 import random
-import threading
-import time
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .. import live, messages, samplers
 from ..catalog import get_model
-from ..services import gallery, grid, job_guard, jobs, pipeline
+from ..services import gallery, grid, jobs, pipeline
 from ..services.jobs import BatchProgress
 
 router = APIRouter(prefix="/api/compare", tags=["compare"])
@@ -63,35 +61,9 @@ class CompareStarted(BaseModel):
     job_id: str
 
 
-class _Job:
-    """Mutable in-process state for one compare sweep."""
-
-    def __init__(self, job_id: str, total_cells: int, engine_name: str) -> None:
-        self.job_id = job_id
-        self.status = "running"
-        self.phase = "loading"  # loading | comparing | finalizing
-        self.current_step = 0
-        self.total_steps = 0
-        self.cell_index = 0  # 1-based index of the cell currently generating
-        self.total_cells = total_cells
-        self.engine_name = engine_name
-        self.started_at = time.perf_counter()
-        self.image_id: str | None = None
-        self.image_ids: list[str] = []  # one per Z-slice sheet
-        self.error: str | None = None
-        self.first_step_at: float | None = None
-
-    def elapsed(self) -> float:
-        return time.perf_counter() - self.started_at
-
-    def its(self) -> float | None:
-        if self.first_step_at is None or self.current_step <= 1:
-            return None
-        elapsed = time.perf_counter() - self.first_step_at
-        return (self.current_step - 1) / elapsed if elapsed > 0 else None
-
-
-_store: jobs.JobStore[_Job] = jobs.JobStore("cmp")
+# Shared JobState covers the sweep (batch_index = cell index, batch_size = total
+# cells, image_ids = one per Z-slice sheet); phases: loading | comparing | finalizing.
+_store: jobs.JobStore[jobs.JobState] = jobs.JobStore("cmp")
 
 
 def _coerce(param: str, values: list) -> list:
@@ -148,16 +120,11 @@ def _fmt_value(param: str, value) -> str:
     return f"{label}: {value}"
 
 
-def _run(job: _Job, req: CompareRequest, model, axes: list[tuple[str, list]]) -> None:
+def _run(job: jobs.JobState, req: CompareRequest, model, axes: list[tuple[str, list]]) -> None:
     key = f"compare:{job.job_id}"
-
-    def on_step(completed: int) -> None:
-        with _store.lock:
-            if job.first_step_at is None:
-                job.first_step_at = time.perf_counter()
-            job.current_step = min(completed, job.total_steps)
-            job.phase = "comparing"
-        live.publish(key)
+    # finalize=False: compare's phase flips to "finalizing" per SHEET (after the row
+    # loop), not on a cell's last step.
+    on_step = jobs.make_on_step(job, _store.lock, key, running_phase="comparing", finalize=False)
 
     # X = axes[0], Y = axes[1] (optional), Z = axes[2] (optional). Missing axes
     # collapse to a single unlabelled row / sheet.
@@ -167,7 +134,7 @@ def _run(job: _Job, req: CompareRequest, model, axes: list[tuple[str, list]]) ->
 
     base_seed = req.seed if req.seed is not None else random.randint(0, jobs.SEED_MAX)
 
-    try:
+    with jobs.job_run(_store, job, key, messages.COMPARE_FAILED):
         cell_no = 0
         for zi, z in enumerate(z_values):
             rows: list[list] = []
@@ -192,9 +159,10 @@ def _run(job: _Job, req: CompareRequest, model, axes: list[tuple[str, list]]) ->
                     eff_seed = int(overrides.get("seed", base_seed))
                     eff_sampler = str(overrides.get("sampler", req.sampler))
                     with _store.lock:
-                        job.cell_index = cell_no
+                        job.batch_index = cell_no
                         job.current_step = 0
                         job.first_step_at = None
+                        job.its = None
                         job.phase = "loading"
                         job.total_steps = eff_steps
                     live.publish(key)
@@ -238,7 +206,10 @@ def _run(job: _Job, req: CompareRequest, model, axes: list[tuple[str, list]]) ->
             y_labels = [_fmt_value(y_param, y) for y in y_values] if y_param else [""]
             title = _fmt_value(z_param, z) if z_param else ""
             sheet = grid.compose_grid(rows, x_labels, y_labels, title)
-            meta = gallery.save(
+            # record_timing=False: sheets report no per-image breakdown (kept empty).
+            jobs.save_result(
+                _store,
+                job,
                 sheet,
                 {
                     "model_slug": model.slug,
@@ -252,23 +223,9 @@ def _run(job: _Job, req: CompareRequest, model, axes: list[tuple[str, list]]) ->
                     "seed": base_seed,
                     "sampler": "compare",
                 },
+                record_timing=False,
             )
-            with _store.lock:
-                if job.image_id is None:
-                    job.image_id = meta.id
-                job.image_ids.append(meta.id)
             live.publish(key)
-
-        with _store.lock:
-            job.status = "done"
-        live.publish(key)
-    except Exception as exc:  # noqa: BLE001 - surfaced to the UI via job state
-        with _store.lock:
-            job.status = "error"
-            job.error = messages.COMPARE_FAILED.format(detail=str(exc))
-        live.publish(key)
-    finally:
-        job_guard.release(job.job_id)
 
 
 @router.post("", response_model=CompareStarted)
@@ -295,16 +252,12 @@ def start_compare(req: CompareRequest) -> CompareStarted:
             400, messages.COMPARE_TOO_MANY_CELLS.format(count=total_cells, max=MAX_CELLS)
         )
 
-    with _store.lock:
-        job = _Job(_store.new_id(), total_cells=total_cells, engine_name=model.name)
-    busy = job_guard.acquire(job.job_id, "compare")
-    if busy is not None:
-        raise HTTPException(409, messages.JOB_BUSY.format(kind=busy))
-    with _store.lock:
-        _store.add(job)
+    def make_job(job_id: str) -> jobs.JobState:
+        job = jobs.JobState(job_id, model.name)
+        job.batch_size = total_cells
+        return job
 
-    thread = threading.Thread(target=_run, args=(job, req, model, axes), daemon=True)
-    thread.start()
+    job = jobs.start_job(_store, "compare", _run, req, model, axes, make_job=make_job)
     return CompareStarted(job_id=job.job_id)
 
 
@@ -314,20 +267,4 @@ def compare_progress(job_id: str) -> BatchProgress:
         job = _store.get(job_id)
         if job is None:
             raise HTTPException(404, messages.JOB_NOT_FOUND.format(job_id=job_id))
-        return BatchProgress(
-            job_id=job.job_id,
-            status=job.status,
-            phase=job.phase,
-            current_tile=0,
-            total_tiles=0,
-            current_step=job.current_step,
-            total_steps=job.total_steps,
-            its=job.its(),
-            elapsed=round(job.elapsed(), 1),
-            engine_name=job.engine_name,
-            image_id=job.image_id,
-            error=job.error,
-            batch_index=job.cell_index,
-            batch_size=job.total_cells,
-            image_ids=list(job.image_ids),
-        )
+        return jobs.to_batch_progress(job)

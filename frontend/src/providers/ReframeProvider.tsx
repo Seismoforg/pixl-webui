@@ -1,22 +1,17 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
-import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
-import { clearJob, saveJob } from "@/lib/jobPersistence";
-import { useJobRehydrate, usePublishJobActivity } from "@/lib/jobHooks";
-import { useJobTracker } from "@/lib/ws";
-import type { ReframeProgress, ReframeRequest, ReframeStrategy, Sampler } from "@/types";
-import type { UpscaleSource } from "@/providers/UpscaleProvider";
+import { useJob } from "@/lib/useJob";
+import { useSamplers } from "@/lib/useSamplers";
+import type {
+  ReframeProgress,
+  ReframeRequest,
+  ReframeStrategy,
+  Sampler,
+  UpscaleSource,
+} from "@/types";
 
 /**
  * Holds the reframe job lifecycle (running job + live tracking) AND the form
@@ -88,8 +83,6 @@ interface ReframeContextValue {
 
 const ReframeContext = createContext<ReframeContextValue | null>(null);
 
-const POLL_MS = 700;
-
 export const useReframe = () => {
   const ctx = useContext(ReframeContext);
   if (!ctx) throw new Error("useReframe must be used within ReframeProvider");
@@ -102,8 +95,6 @@ interface ReframeProviderProps {
 }
 
 export const ReframeProvider = ({ onReframed, children }: ReframeProviderProps) => {
-  const t = useTranslations();
-
   const [source, setSource] = useState<UpscaleSource | null>(null);
   // Reframing always changes the ratio, so default to a concrete one (not "original").
   const [targetRatio, setTargetRatio] = useState("16:9");
@@ -132,82 +123,24 @@ export const ReframeProvider = ({ onReframed, children }: ReframeProviderProps) 
   const [outpaintSampler, setOutpaintSampler] = useState("");
   const [outpaintSeed, setOutpaintSeed] = useState("");
   const [outpaintBatch, setOutpaintBatch] = useState(1);
-  const [samplers, setSamplers] = useState<Sampler[]>([]);
 
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [progress, setProgress] = useState<ReframeProgress | null>(null);
-  const [resultId, setResultId] = useState<string | null>(null);
-  const [resultIds, setResultIds] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  // Sampler list + default seed into the (empty) selection so the outpaint sampler
+  // dropdown starts on the same default as generation.
+  const samplers: Sampler[] = useSamplers((d) => setOutpaintSampler((cur) => cur || d));
 
-  // Load the sampler list once; seed the default into the (empty) selection so the
-  // outpaint sampler dropdown starts on the same default as generation.
-  useEffect(() => {
-    api
-      .getSamplers()
-      .then((list) => {
-        setSamplers(list.samplers);
-        setOutpaintSampler((cur) => cur || list.default);
-      })
-      .catch(() => setSamplers([]));
-  }, []);
-
-  const running = jobId !== null;
-
-  useJobTracker<ReframeProgress>(
-    jobId,
-    "reframe",
-    (id) => api.getReframeProgress(id),
-    (p) => {
-      setProgress(p);
-      // Fill the result grid live as each batch variant finishes.
-      setResultIds(p.image_ids);
-      if (p.status === "done") {
-        setResultId(p.image_id ?? p.image_ids[0] ?? null);
-        setJobId(null);
-        clearJob("reframe");
-        onReframed();
-      } else if (p.status === "error") {
-        setError(p.error ?? t("common.error"));
-        setJobId(null);
-        clearJob("reframe");
-      }
-    },
-    (message) => {
-      setError(message);
-      setJobId(null);
-      clearJob("reframe");
-    },
-    POLL_MS,
-  );
-
-  // Re-attach to a job that was still running when the page reloaded (see the
-  // generation provider for the rationale).
-  useJobRehydrate("reframe", (id) => api.getReframeProgress(id), setJobId);
-
-  // Publish the running job to the shared activity store for the off-route bubble.
-  usePublishJobActivity("reframe", "/reframe", "activity.reframe", running, progress);
-
-  const start = useCallback(async (req: ReframeRequest) => {
-    setError(null);
-    setResultId(null);
-    setResultIds([]);
-    setProgress(null);
-    try {
-      const { job_id } = await api.reframe(req);
-      setJobId(job_id);
-      saveJob("reframe", job_id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, []);
-
-  const reset = useCallback(() => {
-    setResultId(null);
-    setResultIds([]);
-    setError(null);
-    setProgress(null);
-  }, []);
+  // The whole job lifecycle (start/track/rehydrate/bubble/reset) is the shared hook;
+  // resultIds fill live as each batch variant finishes.
+  const { progress, resultId, resultIds, error, running, start, reset } = useJob<
+    ReframeProgress,
+    ReframeRequest
+  >({
+    kind: "reframe",
+    startRequest: api.reframe,
+    getProgress: api.getReframeProgress,
+    pollMs: 700,
+    onDone: onReframed,
+    activity: { route: "/reframe", titleKey: "activity.reframe" },
+  });
 
   const value = useMemo<ReframeContextValue>(
     () => ({

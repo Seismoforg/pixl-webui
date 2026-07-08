@@ -8,15 +8,13 @@ The diffusers step callback updates a per-job record (current step, its/s), poll
 from __future__ import annotations
 
 import random
-import threading
-import time
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .. import live, messages, samplers
 from ..catalog import get_model
-from ..services import downloader, gallery, job_guard, jobs, loras as loras_svc, pipeline
+from ..services import downloader, gallery, jobs, loras as loras_svc, pipeline
 from ..services.jobs import LoraRef, PhaseTimings
 
 router = APIRouter(prefix="/api", tags=["generate"])
@@ -71,47 +69,21 @@ class GenerationProgress(BaseModel):
     error: str | None = None
 
 
-class _Job:
-    """Mutable in-process state for one generation."""
+class _Job(jobs.JobState):
+    """Generation job = the shared JobState (phases loading | generating | finalizing,
+    batch + per-image timing markers) plus the generation-only response fields."""
 
     def __init__(
-        self, job_id: str, seed: int, total_steps: int, prompt: str, batch_size: int
+        self, job_id: str, *, model_name: str, seed: int, total_steps: int,
+        prompt: str, batch_size: int,
     ) -> None:
-        self.job_id = job_id
-        self.status = "running"
-        # loading: model load + prompt encoding (before step 1)
-        # generating: denoising steps running
-        # finalizing: VAE decode of the latents into a PNG (after the last step)
-        self.phase = "loading"
-        self.current_step = 0
-        self.total_steps = total_steps
+        super().__init__(job_id, model_name)
         self.seed = seed
+        self.total_steps = total_steps
         self.prompt = prompt
         self.batch_size = batch_size
-        self.batch_index = 0
-        # Gallery ids of finished batch images, in order (grows during the batch).
-        self.image_ids: list[str] = []
-        # Per-image phase breakdown, aligned with image_ids (see PhaseTimings).
-        self.image_timings: list[dict] = []
         # Latest live preview frame (data URL); only the most recent is kept.
         self.preview: str | None = None
-        self.error: str | None = None
-        # Timing starts at the first step so model-load time is excluded from the
-        # reported speed. ``first_step_at`` covers the elapsed time for the steps
-        # taken *after* the first one.
-        self.first_step_at: float | None = None
-        # Per-image phase markers (perf_counter), reset each batch round: the image
-        # started, the last step finished (decode start), and the image was saved.
-        self.load_started_at: float | None = None
-        self.decode_started_at: float | None = None
-
-    def its(self) -> float | None:
-        if self.first_step_at is None or self.current_step <= 1:
-            return None
-        elapsed = time.perf_counter() - self.first_step_at
-        if elapsed <= 0:
-            return None
-        return (self.current_step - 1) / elapsed
 
 
 _store: jobs.JobStore[_Job] = jobs.JobStore("gen")
@@ -121,116 +93,71 @@ def _run(job: _Job, req: GenerateRequest, model, init_image) -> None:
     # Wakes the WebSocket pusher after each state change so progress is pushed with
     # no tick latency (a no-op when nobody is subscribed).
     key = f"generation:{job.job_id}"
-
-    def on_step(completed: int) -> None:
-        # The callback wiring (callbacks.gpu_sync in _step_callback_kwargs) already
-        # synced the GPU, so this timestamp reflects real compute — current_step /
-        # it-s / the decode-phase boundary are accurate.
-        now = time.perf_counter()
-        # Some pipelines invoke the callback one extra time; clamp so the UI never
-        # shows "step n+1 / n".
-        with _store.lock:
-            if job.first_step_at is None:
-                job.first_step_at = now
-            completed = min(completed, job.total_steps)
-            job.current_step = completed
-            # After the last denoising step the pipeline runs the VAE decode; flag
-            # that tail so the UI can show a distinct "finalizing" phase, and stamp
-            # its start (post-sync = true end of denoising) so the decode duration is real.
-            if completed >= job.total_steps:
-                job.phase = "finalizing"
-                if job.decode_started_at is None:
-                    job.decode_started_at = time.perf_counter()
-            else:
-                job.phase = "generating"
-        live.publish(key)
+    on_step = jobs.make_on_step(job, _store.lock, key, running_phase="generating")
 
     def on_preview(data_url: str) -> None:
         with _store.lock:
             job.preview = data_url
         live.publish(key)
 
-    try:
-        # Generate the batch sequentially, reusing the cached pipeline. Each image
-        # uses an incrementing seed (base + index) so results vary yet stay
-        # reproducible; per-image step/timing/preview state is reset each round.
-        for i in range(job.batch_size):
-            with _store.lock:
-                job.batch_index = i + 1
-                job.current_step = 0
-                job.first_step_at = None
-                job.decode_started_at = None
-                job.load_started_at = time.perf_counter()
-                job.phase = "loading"
-                job.preview = None
-            live.publish(key)
-
-            seed_i = (job.seed + i) % (jobs.SEED_MAX + 1)
-            image, effective_sampler = pipeline.generate(
-                model=model,
-                prompt=req.prompt,
-                negative_prompt=req.negative_prompt,
-                steps=req.steps,
-                guidance_scale=req.guidance_scale,
-                width=req.width,
-                height=req.height,
-                seed=seed_i,
-                sampler=req.sampler,
-                preview=req.preview,
-                init_image=init_image,
-                reference_mode=req.reference_mode,
-                strength=req.strength,
-                ip_adapter_scale=req.ip_adapter_scale,
-                loras=[(lora.slug, lora.weight) for lora in req.loras],
-                on_step=on_step,
-                on_preview=on_preview,
-            )
-            meta = gallery.save(
-                image,
-                {
-                    "model_slug": model.slug,
-                    "model_name": model.name,
-                    "prompt": req.prompt,
-                    "negative_prompt": req.negative_prompt,
-                    "steps": req.steps,
-                    "guidance_scale": req.guidance_scale,
-                    "width": req.width,
-                    "height": req.height,
-                    "seed": seed_i,
-                    "sampler": effective_sampler,
-                    "loras": [f"{lora.slug}@{lora.weight}" for lora in req.loras],
-                },
-            )
-            done_at = time.perf_counter()
-            with _store.lock:
-                job.current_step = job.total_steps
-                job.image_ids.append(meta.id)
-                # Build this image's phase breakdown from the perf_counter markers.
-                # Every marker is set by this point (loop start / first step / last
-                # step); fall back to done_at so a duration is never negative.
-                load_at = job.load_started_at or done_at
-                gen_at = job.first_step_at or done_at
-                dec_at = job.decode_started_at or done_at
-                job.image_timings.append(
-                    {
-                        "load": max(0.0, gen_at - load_at),
-                        "generate": max(0.0, dec_at - gen_at),
-                        "decode": max(0.0, done_at - dec_at),
-                        "total": max(0.0, done_at - load_at),
-                    }
-                )
-            live.publish(key)
-
+    def on_item_start() -> None:
+        # run_batch already reset the timing markers (start_image); also reset the
+        # visible per-round state and push it so the UI flips back to "loading".
         with _store.lock:
-            job.status = "done"
+            job.current_step = 0
+            job.its = None
+            job.phase = "loading"
+            job.preview = None
         live.publish(key)
-    except Exception as exc:  # noqa: BLE001 - surfaced to the UI via job state
-        with _store.lock:
-            job.status = "error"
-            job.error = messages.GENERATION_FAILED.format(detail=str(exc))
-        live.publish(key)
-    finally:
-        job_guard.release(job.job_id)
+
+    # pipeline.generate returns (image, effective_sampler); the meta builder needs the
+    # sampler that actually ran, so render stashes it beside the returned image.
+    effective = {"sampler": req.sampler}
+
+    def render(_i: int, seed_i: int):
+        image, effective["sampler"] = pipeline.generate(
+            model=model,
+            prompt=req.prompt,
+            negative_prompt=req.negative_prompt,
+            steps=req.steps,
+            guidance_scale=req.guidance_scale,
+            width=req.width,
+            height=req.height,
+            seed=seed_i,
+            sampler=req.sampler,
+            preview=req.preview,
+            init_image=init_image,
+            reference_mode=req.reference_mode,
+            strength=req.strength,
+            ip_adapter_scale=req.ip_adapter_scale,
+            loras=[(lora.slug, lora.weight) for lora in req.loras],
+            on_step=on_step,
+            on_preview=on_preview,
+        )
+        return image
+
+    def meta(seed_i: int, _result) -> dict:
+        return {
+            "model_slug": model.slug,
+            "model_name": model.name,
+            "prompt": req.prompt,
+            "negative_prompt": req.negative_prompt,
+            "steps": req.steps,
+            "guidance_scale": req.guidance_scale,
+            "width": req.width,
+            "height": req.height,
+            "seed": seed_i,
+            "sampler": effective["sampler"],
+            "loras": [f"{lora.slug}@{lora.weight}" for lora in req.loras],
+        }
+
+    # No unload: the generation pipe stays cached across runs (model-switch unloads).
+    with jobs.job_run(_store, job, key, messages.GENERATION_FAILED):
+        jobs.run_batch(
+            _store, job, key,
+            batch=job.batch_size, seed=job.seed,
+            render=render, meta=meta, on_item_start=on_item_start,
+        )
 
 
 @router.get("/samplers", response_model=SamplerList)
@@ -279,24 +206,14 @@ def start_generation(req: GenerateRequest) -> GenerateStarted:
     is_img2img = init_image is not None and req.reference_mode == "img2img"
     total_steps = max(1, int(req.steps * req.strength)) if is_img2img else req.steps
 
-    with _store.lock:
-        seed = req.seed if req.seed is not None else random.randint(0, jobs.SEED_MAX)
-        job = _Job(
-            _store.new_id(),
-            seed=seed,
-            total_steps=total_steps,
-            prompt=req.prompt,
-            batch_size=req.batch,
-        )
-    # One heavy GPU job across the whole process (generation/upscale/reframe/inpaint/edit).
-    busy = job_guard.acquire(job.job_id, "generation")
-    if busy is not None:
-        raise HTTPException(409, messages.JOB_BUSY.format(kind=busy))
-    with _store.lock:
-        _store.add(job)
-
-    thread = threading.Thread(target=_run, args=(job, req, model, init_image), daemon=True)
-    thread.start()
+    seed = req.seed if req.seed is not None else random.randint(0, jobs.SEED_MAX)
+    job = jobs.start_job(
+        _store, "generation", _run, req, model, init_image,
+        make_job=lambda job_id: _Job(
+            job_id, model_name=model.name, seed=seed, total_steps=total_steps,
+            prompt=req.prompt, batch_size=req.batch,
+        ),
+    )
     return GenerateStarted(job_id=job.job_id)
 
 
@@ -312,7 +229,7 @@ def generation_progress(job_id: str) -> GenerationProgress:
             phase=job.phase,
             current_step=job.current_step,
             total_steps=job.total_steps,
-            its=job.its(),
+            its=job.its,
             seed=job.seed,
             prompt=job.prompt,
             batch_size=job.batch_size,

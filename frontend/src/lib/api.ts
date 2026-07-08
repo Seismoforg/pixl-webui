@@ -8,7 +8,6 @@ import type {
   CompareRequest,
   GalleryImage,
   GenerateRequest,
-  GenerateResponse,
   GenerationProgress,
   LoraCatalogEntry,
   LoraEntry,
@@ -48,6 +47,18 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   }
   return res.json() as Promise<T>;
 };
+
+// Every job endpoint is the same POST-start / GET-progress pair; these build the
+// typed per-feature methods below from just the path + types.
+const startJob =
+  <Req>(path: string) =>
+  (req: Req) =>
+    request<UpscaleStarted>(path, { method: "POST", body: JSON.stringify(req) });
+
+const jobProgress =
+  <P>(path: string) =>
+  (jobId: string) =>
+    request<P>(`${path}/${jobId}`);
 
 export const api = {
   getSystem: () => request<SystemInfo>("/api/system"),
@@ -90,21 +101,13 @@ export const api = {
 
   getSamplers: () => request<SamplerList>("/api/samplers"),
 
-  generate: (req: GenerateRequest) =>
-    request<GenerateResponse>("/api/generate", {
-      method: "POST",
-      body: JSON.stringify(req),
-    }),
+  generate: startJob<GenerateRequest>("/api/generate"),
 
-  getGenerationProgress: (jobId: string) => request<GenerationProgress>(`/api/generate/${jobId}`),
+  getGenerationProgress: jobProgress<GenerationProgress>("/api/generate"),
 
-  compare: (req: CompareRequest) =>
-    request<UpscaleStarted>("/api/compare", {
-      method: "POST",
-      body: JSON.stringify(req),
-    }),
+  compare: startJob<CompareRequest>("/api/compare"),
 
-  getCompareProgress: (jobId: string) => request<CompareProgress>(`/api/compare/${jobId}`),
+  getCompareProgress: jobProgress<CompareProgress>("/api/compare"),
 
   getPromptSnippets: () => request<PromptSnippet[]>("/api/prompt-templates"),
 
@@ -152,37 +155,21 @@ export const api = {
   getUpscalerProgress: (slug: string) =>
     request<DownloadProgress>(`/api/upscale/engines/${slug}/progress`),
 
-  upscale: (req: UpscaleRequest) =>
-    request<UpscaleStarted>("/api/upscale", {
-      method: "POST",
-      body: JSON.stringify(req),
-    }),
+  upscale: startJob<UpscaleRequest>("/api/upscale"),
 
-  getUpscaleProgress: (jobId: string) => request<UpscaleProgress>(`/api/upscale/${jobId}`),
+  getUpscaleProgress: jobProgress<UpscaleProgress>("/api/upscale"),
 
-  reframe: (req: ReframeRequest) =>
-    request<UpscaleStarted>("/api/reframe", {
-      method: "POST",
-      body: JSON.stringify(req),
-    }),
+  reframe: startJob<ReframeRequest>("/api/reframe"),
 
-  getReframeProgress: (jobId: string) => request<ReframeProgress>(`/api/reframe/${jobId}`),
+  getReframeProgress: jobProgress<ReframeProgress>("/api/reframe"),
 
-  inpaint: (req: InpaintRequest) =>
-    request<UpscaleStarted>("/api/inpaint", {
-      method: "POST",
-      body: JSON.stringify(req),
-    }),
+  inpaint: startJob<InpaintRequest>("/api/inpaint"),
 
-  getInpaintProgress: (jobId: string) => request<InpaintProgress>(`/api/inpaint/${jobId}`),
+  getInpaintProgress: jobProgress<InpaintProgress>("/api/inpaint"),
 
-  edit: (req: EditRequest) =>
-    request<UpscaleStarted>("/api/edit", {
-      method: "POST",
-      body: JSON.stringify(req),
-    }),
+  edit: startJob<EditRequest>("/api/edit"),
 
-  getEditProgress: (jobId: string) => request<EditProgress>(`/api/edit/${jobId}`),
+  getEditProgress: jobProgress<EditProgress>("/api/edit"),
 
   getLoras: () => request<LoraEntry[]>("/api/loras"),
 

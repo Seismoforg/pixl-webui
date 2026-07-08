@@ -79,10 +79,11 @@ navigation-surviving state or wraps the tree in a context lives here.
   tree for shared data. Consumers read it via `useAppData`.
 
 # Dependencies
-react, @mui/material, @/lib (api, ws, jobHooks), @/theme, @/i18n. The 6 feature
-providers share job-lifecycle logic via `@/lib/jobHooks` (useJobRehydrate /
-usePublishJobActivity) and memoize their context value. The `UpscaleSource` type now
-lives in `@/types` (UpscaleProvider re-exports it for back-compat).
+react, @mui/material, @/lib (api, useJob, useSamplers), @/theme, @/i18n. The 6
+feature providers run their whole job lifecycle through `@/lib/useJob` (state +
+start + tracking + rehydrate + activity + reset; generation opts out of the shared
+bubble and publishes its own) and memoize their context value. The `UpscaleSource`
+type lives in `@/types`.
 
 # Related Modules
 - Parent: ../../ (frontend)

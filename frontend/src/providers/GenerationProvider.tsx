@@ -15,11 +15,11 @@ import { useActivity } from "@/providers/ActivityProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { formatDuration } from "@/lib/duration";
-import { clearJob, saveJob } from "@/lib/jobPersistence";
-import { useJobRehydrate } from "@/lib/jobHooks";
-import { useJobTracker } from "@/lib/ws";
+import { useJob } from "@/lib/useJob";
+import { useSamplers } from "@/lib/useSamplers";
 import type {
   GalleryImage,
+  GenerateRequest,
   GenerationProgress,
   LoraRef,
   ModelEntry,
@@ -83,8 +83,6 @@ interface GenerationContextValue {
 
 const GenerationContext = createContext<GenerationContextValue | null>(null);
 
-const POLL_MS = 500;
-
 export const useGeneration = () => {
   const ctx = useContext(GenerationContext);
   if (!ctx) throw new Error("useGeneration must be used within GenerationProvider");
@@ -110,7 +108,6 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
   const [height, setHeight] = useState(1024);
   const [seed, setSeed] = useState("");
   const [sampler, setSampler] = useState("");
-  const [samplers, setSamplers] = useState<Sampler[]>([]);
   const [preview, setPreview] = useState(false);
   const [batch, setBatch] = useState(1);
   const [referenceImage, setReferenceImage] = useState<string | null>(null);
@@ -120,27 +117,26 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
   const [ipAdapterScale, setIpAdapterScale] = useState(0.6);
   const [loras, setLoras] = useState<LoraRef[]>([]);
 
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [progress, setProgress] = useState<GenerationProgress | null>(null);
-  const [images, setImages] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
   // Preferred default model from Settings (applied only when downloaded); gated so
   // the initial model pick waits for it rather than racing to the first model.
   const [defaultModel, setDefaultModel] = useState<string | null>(null);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
-  const running = jobId !== null;
+  // The job lifecycle (start/track/rehydrate/reset) is the shared hook; generation
+  // publishes its OWN activity bubble (phase text + elapsed) below, so no `activity`.
+  const job = useJob<GenerationProgress, GenerateRequest>({
+    kind: "generation",
+    startRequest: api.generate,
+    getProgress: api.getGenerationProgress,
+    pollMs: 500,
+    onDone: onGenerated,
+  });
+  const { progress, error, running, start: startJob } = job;
+  // Gallery ids → file URLs, filled live as batch images complete.
+  const images = useMemo(() => job.resultIds.map((id) => api.imageFileUrl(id)), [job.resultIds]);
 
   // Load the sampler list once and preselect the recommended default.
-  useEffect(() => {
-    api
-      .getSamplers()
-      .then((list) => {
-        setSamplers(list.samplers);
-        setSampler((current) => current || list.default);
-      })
-      .catch(() => setSamplers([]));
-  }, []);
+  const samplers = useSamplers((d) => setSampler((current) => current || d));
 
   // Load the preferred default model from Settings (best-effort).
   useEffect(() => {
@@ -163,39 +159,6 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
     setWidth(target.defaults.width);
     setHeight(target.defaults.height);
   }, [downloaded, slug, defaultModel, settingsLoaded]);
-
-  // Track the running job over the WebSocket, with a REST poll fallback while the
-  // socket is down (see useJobTracker). The handler fills the grid live as batch
-  // images complete and clears the job on done/error.
-  useJobTracker<GenerationProgress>(
-    jobId,
-    "generation",
-    (id) => api.getGenerationProgress(id),
-    (p) => {
-      setProgress(p);
-      setImages(p.image_ids.map((id) => api.imageFileUrl(id)));
-      if (p.status === "done") {
-        setJobId(null);
-        clearJob("generation");
-        onGenerated();
-      } else if (p.status === "error") {
-        setError(p.error ?? t("common.error"));
-        setJobId(null);
-        clearJob("generation");
-      }
-    },
-    (message) => {
-      setError(message);
-      setJobId(null);
-      clearJob("generation");
-    },
-    POLL_MS,
-  );
-
-  // Rehydrate a job that was still running when the page reloaded: the backend job
-  // keeps going, so re-attach the tracker (which republishes progress + the bubble)
-  // if it is still running; otherwise drop the stale id.
-  useJobRehydrate("generation", (id) => api.getGenerationProgress(id), setJobId);
 
   // Live total-elapsed for the running image, ticked client-side (re-anchored per
   // batch image) so the off-route bubble keeps counting during the decode tail
@@ -262,12 +225,9 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
     [downloaded],
   );
 
-  const generate = useCallback(async () => {
-    setError(null);
-    setImages([]);
-    setProgress(null);
-    try {
-      const { job_id } = await api.generate({
+  const generate = useCallback(
+    () =>
+      startJob({
         slug,
         prompt,
         negative_prompt: negative || null,
@@ -284,30 +244,27 @@ export const GenerationProvider = ({ models, onGenerated, children }: Generation
         strength,
         ip_adapter_scale: ipAdapterScale,
         loras,
-      });
-      setJobId(job_id);
-      saveJob("generation", job_id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, [
-    slug,
-    prompt,
-    negative,
-    steps,
-    guidance,
-    width,
-    height,
-    seed,
-    sampler,
-    preview,
-    batch,
-    referenceImage,
-    referenceMode,
-    strength,
-    ipAdapterScale,
-    loras,
-  ]);
+      }),
+    [
+      startJob,
+      slug,
+      prompt,
+      negative,
+      steps,
+      guidance,
+      width,
+      height,
+      seed,
+      sampler,
+      preview,
+      batch,
+      referenceImage,
+      referenceMode,
+      strength,
+      ipAdapterScale,
+      loras,
+    ],
+  );
 
   const applyPrefill = useCallback(
     (img: GalleryImage) => {

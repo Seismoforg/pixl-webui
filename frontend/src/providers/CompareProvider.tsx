@@ -1,20 +1,10 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
-import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
-import { clearJob, saveJob } from "@/lib/jobPersistence";
-import { useJobRehydrate, usePublishJobActivity } from "@/lib/jobHooks";
-import { useJobTracker } from "@/lib/ws";
+import { useJob } from "@/lib/useJob";
+import { useSamplers } from "@/lib/useSamplers";
 import type { CompareAxis, CompareProgress, CompareRequest } from "@/types";
 
 /**
@@ -59,8 +49,6 @@ interface CompareContextValue {
 
 const CompareContext = createContext<CompareContextValue | null>(null);
 
-const POLL_MS = 800;
-
 export const useCompare = () => {
   const ctx = useContext(CompareContext);
   if (!ctx) throw new Error("useCompare must be used within CompareProvider");
@@ -73,8 +61,6 @@ interface CompareProviderProps {
 }
 
 export const CompareProvider = ({ onCompared, children }: CompareProviderProps) => {
-  const t = useTranslations();
-
   const [slug, setSlug] = useState("");
   const [prompt, setPrompt] = useState("");
   const [negative, setNegative] = useState("");
@@ -89,66 +75,22 @@ export const CompareProvider = ({ onCompared, children }: CompareProviderProps) 
 
   // Seed the base sampler from the backend default once (the provider never
   // unmounts, so this runs a single time and later edits persist).
-  useEffect(() => {
-    api
-      .getSamplers()
-      .then((s) => setSampler((cur) => cur || s.default))
-      .catch(() => undefined);
-  }, []);
+  useSamplers((d) => setSampler((cur) => cur || d));
 
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [progress, setProgress] = useState<CompareProgress | null>(null);
-  const [resultIds, setResultIds] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  const running = jobId !== null;
-
-  useJobTracker<CompareProgress>(
-    jobId,
-    "compare",
-    (id) => api.getCompareProgress(id),
-    (p) => {
-      setProgress(p);
-      if (p.status === "done") {
-        setResultIds(p.image_ids);
-        setJobId(null);
-        clearJob("compare");
-        onCompared();
-      } else if (p.status === "error") {
-        setError(p.error ?? t("common.error"));
-        setJobId(null);
-        clearJob("compare");
-      }
-    },
-    (message) => {
-      setError(message);
-      setJobId(null);
-      clearJob("compare");
-    },
-    POLL_MS,
-  );
-
-  useJobRehydrate("compare", (id) => api.getCompareProgress(id), setJobId);
-  usePublishJobActivity("compare", "/compare", "activity.compare", running, progress);
-
-  const start = useCallback(async (req: CompareRequest) => {
-    setError(null);
-    setResultIds([]);
-    setProgress(null);
-    try {
-      const { job_id } = await api.compare(req);
-      setJobId(job_id);
-      saveJob("compare", job_id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, []);
-
-  const reset = useCallback(() => {
-    setResultIds([]);
-    setError(null);
-    setProgress(null);
-  }, []);
+  // The whole job lifecycle (start/track/rehydrate/bubble/reset) is the shared hook.
+  // resultIdsLive=false: sheets only exist once the sweep is done.
+  const { progress, resultIds, error, running, start, reset } = useJob<
+    CompareProgress,
+    CompareRequest
+  >({
+    kind: "compare",
+    startRequest: api.compare,
+    getProgress: api.getCompareProgress,
+    pollMs: 800,
+    onDone: onCompared,
+    resultIdsLive: false,
+    activity: { route: "/compare", titleKey: "activity.compare" },
+  });
 
   const value = useMemo<CompareContextValue>(
     () => ({
