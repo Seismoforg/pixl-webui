@@ -7,6 +7,7 @@ import BrushIcon from "@mui/icons-material/Brush";
 import CollectionsIcon from "@mui/icons-material/Collections";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import GridViewIcon from "@mui/icons-material/GridView";
+import HealingIcon from "@mui/icons-material/Healing";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import MenuIcon from "@mui/icons-material/Menu";
 import PhotoSizeSelectLargeIcon from "@mui/icons-material/PhotoSizeSelectLarge";
@@ -38,6 +39,7 @@ const NAV = [
   { href: "/reframe", key: "nav.reframe", icon: AspectRatioIcon },
   { href: "/inpaint", key: "nav.inpaint", icon: BrushIcon },
   { href: "/edit", key: "nav.edit", icon: AutoFixHighIcon },
+  { href: "/restore", key: "nav.restore", icon: HealingIcon },
   { href: "/models", key: "nav.models", icon: ViewInArIcon },
   { href: "/gallery", key: "nav.gallery", icon: CollectionsIcon },
 ] as const;

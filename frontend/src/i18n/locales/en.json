@@ -11,6 +11,7 @@
     "reframe": "Reframing",
     "inpaint": "Inpainting",
     "edit": "Post processing",
+    "restore": "Restoring",
     "download": "Downloading {name}",
     "downloadPercent": "{value}%",
     "downloadFailed": "Download failed",
@@ -41,6 +42,7 @@
     "reframe": "Reframe",
     "inpaint": "Inpaint",
     "edit": "Post Processing",
+    "restore": "Restore",
     "gallery": "Gallery",
     "settings": "Settings",
     "toggleTheme": "Toggle light/dark mode",
@@ -661,6 +663,105 @@
       "title": "Result",
       "open": "Open full size",
       "empty": "Your edited image will appear here.",
+      "imageOfBatch": "Image {current} of {total}",
+      "thumbAlt": "Variant {index}"
+    }
+  },
+  "restore": {
+    "title": "Photo Restoration",
+    "error": "Restoration failed.",
+    "run": "Restore photo",
+    "running": "Restoring…",
+    "clear": "Clear",
+    "strength": "Strength",
+    "stats": {
+      "analyzing": "Analyzing photo…",
+      "restoring": "Restoring…"
+    },
+    "preset": {
+      "label": "Preset",
+      "help": "The starting point. The photo is analyzed and only the stations that help are run; you can override any of them below. Switching presets resets manual overrides."
+    },
+    "stations": {
+      "title": "Restoration stations",
+      "help": "Each step is optional — toggle it on/off and set its strength. Analysis + the preset pick sensible defaults; your choices here override them."
+    },
+    "station": {
+      "preprocess": "Preprocess (white balance + levels)",
+      "scratch": "Scratch & dust removal",
+      "denoise": "Denoise",
+      "face": "Face restoration",
+      "prior_fusion": "AI beautify (prior fusion)",
+      "colorize": "Colorize (B&W → colour)",
+      "tone": "Tone & contrast",
+      "upscale": "Super-resolution"
+    },
+    "stationHelp": {
+      "preprocess": "How strongly to apply gray-world white balance and auto-levels. Higher = stronger colour and contrast normalisation.",
+      "scratch": "How aggressively to detect and fill scratches and dust (classical inpaint). Higher catches fainter marks but may touch more of the image.",
+      "denoise": "How strongly to remove grain and noise. Higher is cleaner but can smooth fine texture.",
+      "face": "CodeFormer identity ↔ smoothness for faces. Higher keeps the original identity; lower makes smoother, more idealised faces.",
+      "prior_fusion": "How much of the AI beautify (FLUX Kontext, structure-preserving) to blend in. Higher = stronger restore but more change; lower stays closer to the original. Off by default — the riskiest station. Face restoration runs before it.",
+      "colorize": "Adds colour to black & white or faded photos (DDColor). Strength blends the colour over the original — lower = more muted, natural. Opt-in; needs the DDColor model downloaded.",
+      "tone": "How strongly to apply local contrast (CLAHE) and black/white-point correction. Higher = punchier tone, without clipping."
+    },
+    "status": {
+      "pending": "Pending",
+      "running": "Running",
+      "done": "Done",
+      "skipped": "Skipped"
+    },
+    "models": {
+      "title": "Models",
+      "help": "Pick which model each station uses. Auto uses the first downloaded model for that role — the recommended default.",
+      "auto": "Auto (recommended)",
+      "notInstalled": "not installed",
+      "face": "Face restoration model",
+      "upscale": "Upscaler model",
+      "edit": "Beautify (edit) model",
+      "colorize": "Colorization model"
+    },
+    "beautify": {
+      "label": "Beautify instruction (optional)",
+      "help": "Guides the structure-preserving AI beautify. Leave empty for a faithful default restoration prompt."
+    },
+    "overall": {
+      "title": "Original → Restored",
+      "original": "Original",
+      "restored": "Restored"
+    },
+    "pipeline": {
+      "title": "Pipeline",
+      "inspect": "Inspect a station",
+      "before": "Before",
+      "after": "After"
+    },
+    "report": {
+      "title": "Damage report",
+      "colorMode": {
+        "grayscale": "Black & White",
+        "sepia": "Sepia",
+        "color": "Colour",
+        "faded": "Faded colour"
+      },
+      "faces": "Faces",
+      "scene": {
+        "portrait": "Portrait",
+        "group": "Group",
+        "other": "Scene"
+      },
+      "sharpness": "Sharpness",
+      "contrast": "Contrast",
+      "blur": "Blur",
+      "noise": "Noise",
+      "scratches": "Scratches",
+      "dust": "Dust",
+      "fading": "Fading"
+    },
+    "result": {
+      "title": "Restored",
+      "open": "Open full size",
+      "empty": "Your restored photo will appear here.",
       "imageOfBatch": "Image {current} of {total}",
       "thumbAlt": "Variant {index}"
     }

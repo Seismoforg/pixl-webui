@@ -33,6 +33,8 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
 - inpaint.py        — user-mask inpainting
 - outpaint.py       — border-mask outpainting (reframe=outpaint)
 - edit.py           — FLUX.1 Kontext whole-image prompt edit
+- analysis.py       — classical-CV photo analysis (quality/damage/faces) → AnalysisReport
+- restore_engine.py — analysis-driven restoration: decision engine + orchestrator
 - fit.py            — GPU-fit assessment
 - gallery.py        — image + metadata persistence; data-URL decode
 - prompt_templates.py — reusable prompt-snippet JSON store
@@ -134,8 +136,10 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             `gguf_repo_id`/`gguf_filename` (+ `is_gguf`) for a GGUF FLUX.1-Fill-dev
             model. JSON-backed: `engines_catalog.json` default, a git-ignored
             `data/engines_catalog.json` override; all_engines()/get()
-- upscale.py — upscaling by engine kind: spandrel Real-ESRGAN or cached
-            StableDiffusionUpscalePipeline; optional tiling stitches large inputs
+- upscale.py — upscaling + face-restore + colorize by engine kind: spandrel Real-ESRGAN
+            or cached StableDiffusionUpscalePipeline; `colorize` kind → `_colorize`
+            (DDColor via spandrel extra-arch, single full-image pass, takes lightness
+            (1,1,H,W) → RGB); optional tiling stitches large inputs
             (bounds VRAM); caches loaded engines like pipeline.py. `face_restore` →
             `_restore_faces`: CodeFormer (spandrel + spandrel_extra_arches, single .pth
             like Real-ESRGAN) restores each face facexlib detects/aligns, pasted back at
@@ -205,6 +209,33 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             `_apply_edit_loras` = the shared `loras.apply_lora_set` (family via
             `engine_family`), reset on pipe rebuild. VRAM handoff: slot "edit" in
             model_slots (ADR 0023). Driven by the edit job
+- analysis.py — classical-CV photo analysis (numpy/OpenCV/PIL, torch-free import):
+            `analyze(image) -> AnalysisReport` (quality: Laplacian blur, Immerkær noise,
+            contrast/dynamic-range/exposure; damage: morphology scratch/dust,
+            saturation+contrast fading, over/under-exposed area; faces: facexlib
+            RetinaFace count/boxes on CPU per ADR 0022, best-effort). Scores 0..100,
+            rule-based, swappable for an ML classifier (ADR 0024). `classify_color(arr)
+            -> ColorAnalysis` = grayscale/sepia/color/faded from saturation + LAB a/b
+            variance & offset (softmax confidence per class); a/b VARIANCE separates true
+            B&W (≈0) from faded colour (chroma at low saturation) — drives the beautify
+            prompt + the grayscale guard
+- restore_engine.py — analysis-driven restoration (ADR 0024): `load_presets` (bundled
+            `restore_presets.json` + `data/` override), `build_plan(report, preset,
+            overrides)` = rule-based station decisions (per-station threshold gate +
+            user override), `resolve_engines(overrides)`/`engine_options()` (per-role
+            model pick, Auto = first downloaded), `run_pipeline` orchestrator chaining
+            preprocess (gray-world WB + autocontrast) / scratch (cv2 morphology mask →
+            cv2.inpaint, no diffusion) / denoise (cv2 NL-means) / face (CodeFormer via
+            upscale svc) / prior_fusion (FLUX.1 Kontext structure-preserving beautify,
+            colour-aware default prompt `beautify_prompt_for(color_mode)` when the caller
+            gives none [a B&W photo is told to STAY B&W], alpha-blended by strength — no
+            Z-Image pull-back; runs AFTER face) / colorize (DDColor via upscale svc,
+            opt-in, alpha-blended) / tone (CLAHE + autocontrast) / upscale (Real-ESRGAN).
+            `enforce_color_mode(img, mode)` = deterministic grayscale coercion for the
+            router's colour-mode guard (grayscale-only; sepia/colour untouched). Each
+            station keeps a downscaled before/after preview data URL; reuse-op services
+            acquire their own model_slots so the chain loads/unloads sequentially (one
+            heavy model resident)
 - quantize.py — on-the-fly bitsandbytes quantization (ADR 0019): `quant_config(level,
             family)` → diffusers `BitsAndBytesConfig` (nf4 4-bit / int8) or None (fp16 /
             bnb absent); `flux2_quant_config(level)` → a `PipelineQuantizationConfig` that

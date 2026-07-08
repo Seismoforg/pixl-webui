@@ -31,7 +31,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from .. import live
 from ..services import downloader, resources
-from . import compare, edit, generate, inpaint, reframe, upscale
+from . import compare, edit, generate, inpaint, reframe, restore, upscale
 
 router = APIRouter()
 
@@ -40,7 +40,7 @@ _SYSTEM_EVERY = 2    # push system stats every N periodic passes (~1s)
 
 # Channels that get producer-published wakes via the pub/sub hub (system is purely
 # tick-driven and never published).
-_PUBLISHED = ("generation", "compare", "upscale", "reframe", "inpaint", "edit", "download")
+_PUBLISHED = ("generation", "compare", "upscale", "reframe", "inpaint", "edit", "restore", "download")
 # Channels whose payload changes without a producer event, so the periodic tick
 # must keep re-reading them (download = growing on-disk bytes; system = psutil).
 _SAMPLED = ("system", "download")
@@ -62,6 +62,8 @@ def _channel_data(desc: dict) -> dict | None:
             return inpaint.inpaint_progress(desc["job_id"]).model_dump()
         if channel == "edit":
             return edit.edit_progress(desc["job_id"]).model_dump()
+        if channel == "restore":
+            return restore.restore_progress(desc["job_id"]).model_dump()
         if channel == "download":
             return downloader.get_progress(desc["slug"]).model_dump()
     except HTTPException:
@@ -74,7 +76,7 @@ def _key(msg: dict) -> tuple[str, dict] | None:
     channel = msg.get("channel")
     if channel == "system":
         return "system", {"channel": "system"}
-    if channel in ("generation", "compare", "upscale", "reframe", "inpaint", "edit"):
+    if channel in ("generation", "compare", "upscale", "reframe", "inpaint", "edit", "restore"):
         job_id = msg.get("job_id")
         if not job_id:
             return None

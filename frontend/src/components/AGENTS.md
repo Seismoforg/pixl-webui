@@ -63,6 +63,10 @@ Atomic-design React component library for the Pixl WebUI frontend: presentationa
   generation run; reflects pos_x/pos_y; outpaint draws alpha-gradient bands tracking
   mask/seam feather; fills parent width). `overlay` variant = frame decorations only
   (tint/seam/crop lines, source region punched transparent) for ReframeResult
+- BeforeAfterSlider — wipe comparison of two images (a slider clips the "after" over
+  the "before"); used per-station in RestoreResult
+- DamageReport — the restoration `AnalysisReport` as a compact readout: dimensions/
+  faces/scene + quality & damage meters (severity-coloured); used in RestoreResult
 
 ## organisms/
 - GenerationPanel (thin two-column host) + GenerationForm + GenerationResult
@@ -125,6 +129,12 @@ Atomic-design React component library for the Pixl WebUI frontend: presentationa
   at source res white-on-transparent, exports flattened onto black = repaint)
 - EditPanel (host) + EditResult — /edit "Post Processing" screen (FLUX.1 Kontext
   prompt-based whole-image edit; source + engine + instruction + gen params, no mask/sampler)
+- RestorePanel (host) + RestoreResult — /restore analysis-driven photo restoration
+  (source + preset + station conveyor [on/off + one strength slider each] + per-role
+  model pickers [face/upscale/edit/zimage, Auto default] + beautify prompt). Reads
+  `useRestore`; RestoreResult composes DamageReport + a live pipeline (per-station
+  status) + a per-station Before/After inspector (BeforeAfterSlider) over
+  BatchImageResult. ADR 0024
 
 # Key Components
 - InpaintCanvas — the only stateful/interactive canvas: coalesces blur-heavy overlay

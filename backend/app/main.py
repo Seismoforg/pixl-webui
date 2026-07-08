@@ -19,6 +19,7 @@ from .routers import (
     loras,
     models,
     reframe,
+    restore,
     settings,
     system,
     templates,
@@ -55,6 +56,7 @@ app.include_router(images.router)
 app.include_router(templates.router)
 app.include_router(upscale.router)
 app.include_router(reframe.router)
+app.include_router(restore.router)
 app.include_router(inpaint.router)
 app.include_router(edit.router)
 app.include_router(ws.router)

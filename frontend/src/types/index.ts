@@ -220,7 +220,8 @@ export interface GenerationProgress {
   error: string | null;
 }
 
-export type UpscalerKind = "realesrgan" | "sd_x4" | "face_restore" | "inpaint" | "edit";
+export type UpscalerKind =
+  "realesrgan" | "sd_x4" | "face_restore" | "inpaint" | "edit" | "colorize";
 
 export type ReframeStrategy = "cover" | "contain" | "edge" | "outpaint";
 
@@ -284,6 +285,124 @@ export interface UpscaleStarted {
 /** Chosen source image: an existing gallery image, or an uploaded data URL. */
 export type UpscaleSource =
   { kind: "gallery"; imageId: string; preview: string } | { kind: "upload"; dataUrl: string };
+
+// --- Photo restoration (analysis-driven pipeline) --------------------------------
+
+/** Ordered restoration station ids (mirrors backend `restore_engine.STATION_ORDER`). */
+export type RestoreStation =
+  "preprocess" | "scratch" | "denoise" | "face" | "prior_fusion" | "colorize" | "tone" | "upscale";
+
+/** Per-station conveyor override; absent fields fall back to the preset + analysis. */
+export interface StationOverride {
+  enabled?: boolean;
+  strength?: number; // 0..1
+}
+
+export interface RestoreRequest {
+  image_id?: string | null;
+  image_data?: string | null; // uploaded image as a data URL
+  preset: string; // authentic | balanced | maximum | archive
+  stations: Partial<Record<RestoreStation, StationOverride>>;
+  beautify_prompt: string; // prior-fusion instruction; empty → a faithful default
+  // Per-role model overrides (slugs); null → the first downloaded of that role (Auto).
+  face_engine?: string | null;
+  upscale_engine?: string | null;
+  edit_engine?: string | null;
+  colorize_engine?: string | null;
+}
+
+/** Candidate model for a model-backed role (from `GET /api/restore/engines`). */
+export interface RestoreEngineOption {
+  slug: string;
+  name: string;
+  downloaded: boolean;
+}
+export interface RestoreEngines {
+  face: RestoreEngineOption[];
+  upscale: RestoreEngineOption[];
+  edit: RestoreEngineOption[];
+  colorize: RestoreEngineOption[];
+}
+
+/** One curated preset's station defaults (from `GET /api/restore/presets`). */
+export interface RestorePresetStation {
+  enabled: boolean;
+  strength?: number;
+  threshold?: number; // damage/quality score above which the station auto-enables
+  target_long_edge?: number; // upscale only
+}
+export interface RestorePresetInfo {
+  label: string;
+  description: string;
+  stations: Record<string, RestorePresetStation>;
+}
+export type RestorePresets = Record<string, RestorePresetInfo>;
+
+/** Measured analysis report (mirrors backend `analysis.AnalysisReport`). Scores 0..100. */
+export interface FaceBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+export interface QualityMetrics {
+  blur: number;
+  noise: number;
+  sharpness: number;
+  contrast: number;
+  dynamic_range: number;
+  exposure: number;
+}
+export interface DamageMetrics {
+  scratches: number;
+  dust: number;
+  fading: number;
+  overexposed: number;
+  underexposed: number;
+}
+/** The photo's colour nature; `mode` = argmax of `scores` (per-class confidence 0..1). */
+export interface ColorAnalysis {
+  mode: string; // "grayscale" | "sepia" | "color" | "faded"
+  scores: Record<string, number>;
+  mean_saturation: number;
+  lab_a_var: number;
+  lab_b_var: number;
+}
+export interface AnalysisReport {
+  width: number;
+  height: number;
+  megapixels: number;
+  is_color: boolean;
+  bit_depth: number;
+  quality: QualityMetrics;
+  damage: DamageMetrics;
+  color: ColorAnalysis;
+  faces: FaceBox[];
+  face_count: number;
+  scene: string; // "portrait" | "group" | "other"
+}
+
+/** One station's outcome; `before`/`after` are downscaled JPEG data URLs. */
+export interface StationResult {
+  name: RestoreStation;
+  status: "pending" | "running" | "done" | "skipped";
+  detail: string;
+  elapsed: number;
+  strength: number | null;
+  before: string | null;
+  after: string | null;
+}
+
+/** Restore job progress = the upscale shape + restoration extras. */
+export interface RestoreProgress extends UpscaleProgress {
+  preset: string;
+  current_station: string;
+  analysis: AnalysisReport | null;
+  stations: StationResult[];
+  // Overall Original→Restored before/after preview data URLs (set on completion).
+  original: string | null;
+  result: string | null;
+}
 
 /** Reframe (aspect-ratio change, no upscaling) request. */
 export interface ReframeRequest {
@@ -417,7 +536,15 @@ export interface EditRequest {
 export interface EditProgress extends BatchProgress {}
 
 export type UpscalePhase =
-  "loading" | "upscaling" | "outpainting" | "inpainting" | "editing" | "comparing" | "finalizing";
+  | "loading"
+  | "upscaling"
+  | "outpainting"
+  | "inpainting"
+  | "editing"
+  | "comparing"
+  | "analyzing"
+  | "restoring"
+  | "finalizing";
 
 export interface UpscaleProgress {
   job_id: string;

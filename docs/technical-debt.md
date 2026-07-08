@@ -1,5 +1,22 @@
 # Technical Debt
 
+## Photo-restoration beautify still drifts + Kontext extreme-aspect decode fails  (added 2026-07-08)
+- Problem: (1) The restore prior-fusion beautify (ADR 0024) is FLUX.1 Kontext (structure-
+  preserving) — no real fidelity net, so on heavy damage it can still alter faces/detail;
+  it's off by default on Balanced and CodeFormer runs after it to re-anchor faces. (An
+  earlier Z-Image img2img pull-back was removed — it hallucinated new faces.) (2)
+  `edit.edit_image` (Kontext) offloaded decode (`decode_flux_latents` → `_unpack_latents`)
+  raises a shape error on extreme aspect ratios (>~2.5:1) — the internally-adjusted
+  height/width don't match the packed latent grid. Pre-existing in edit.py, surfaced by
+  restore feeding wide panoramas.
+- Impact: (1) Generative restore quality is bounded vs a hosted model (gpt-image-1); the
+  reliable default is the deterministic chain (scratch/denoise/face/tone/upscale). (2)
+  prior-fusion is silently SKIPPED for very wide/tall photos (degrades gracefully). Also
+  hits the /edit page directly with extreme aspects.
+- Proposed Resolution: (1) add a ControlNet / real fidelity-net beautify (bigger scope);
+  (2) fix `decode_flux_latents` to use the pipeline's ADJUSTED height/width (or snap edit
+  inputs to a supported aspect) so Kontext decodes at any aspect.
+
 ## Community bitsandbytes wheel on ROCm/Windows is fragile  (added 2026-07-07)
 - Problem: On-the-fly NF4/int8 quantization (ADR 0019) needs bitsandbytes, but AMD/
   ROCm-on-Windows has no official wheel. The installer relies on a community wheel

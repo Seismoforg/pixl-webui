@@ -54,6 +54,8 @@ export const upscaleStatsView = (
     inpainting: "upscale.stats.inpainting",
     editing: "upscale.stats.editing",
     comparing: "upscale.stats.comparing",
+    analyzing: "restore.stats.analyzing",
+    restoring: "restore.stats.restoring",
   };
   const filling = progress.phase in taskWord;
   const word = filling ? t(taskWord[progress.phase]) : t("upscale.stats.upscaling");

@@ -51,6 +51,23 @@
     "defaults": { "steps": 0, "guidance_scale": 0.0, "refine_steps": 0 }
   },
   {
+    "slug": "colorize--ddcolor",
+    "kind": "colorize",
+    "name": "DDColor (colorization)",
+    "description": "Photo-realistic colorization for black & white or faded photos (DDColor, ICCV 2023). Adds natural colour from image content; the strength slider blends it over the original. Runs in ~4 GB.",
+    "repo_id": "piddnad/DDColor-models",
+    "filename": "ddcolor_modelscope.pth",
+    "scale": 1,
+    "approx_size_gb": 0.9,
+    "min_vram_gb": 4.0,
+    "prompt_capable": false,
+    "variant": null,
+    "use_safetensors": true,
+    "gguf_repo_id": null,
+    "gguf_filename": null,
+    "defaults": { "steps": 0, "guidance_scale": 0.0, "refine_steps": 0 }
+  },
+  {
     "slug": "outpaint--sd-inpaint",
     "kind": "inpaint",
     "name": "Stable Diffusion Inpainting (outpaint)",

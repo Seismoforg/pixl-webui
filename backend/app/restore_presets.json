@@ -1,0 +1,58 @@
+{
+  "authentic": {
+    "label": "Authentic",
+    "description": "Minimal restoration, maximum historical preservation. No generative beautify.",
+    "stations": {
+      "preprocess": { "enabled": true, "strength": 0.25 },
+      "scratch": { "enabled": false, "strength": 0.5, "threshold": 70 },
+      "denoise": { "enabled": false, "strength": 0.3, "threshold": 60 },
+      "face": { "enabled": true, "strength": 0.85 },
+      "prior_fusion": { "enabled": false, "strength": 0.25 },
+      "colorize": { "enabled": false, "strength": 0.9 },
+      "tone": { "enabled": true, "strength": 0.25 },
+      "upscale": { "enabled": true, "target_long_edge": 1600 }
+    }
+  },
+  "balanced": {
+    "label": "Balanced",
+    "description": "Default. Analysis-driven cleanup + face restoration. Generative beautify is off (turn it on for a stronger, riskier restore).",
+    "stations": {
+      "preprocess": { "enabled": true, "strength": 0.4 },
+      "scratch": { "enabled": true, "strength": 0.5, "threshold": 55 },
+      "denoise": { "enabled": true, "strength": 0.4, "threshold": 45 },
+      "prior_fusion": { "enabled": false, "strength": 0.7 },
+      "colorize": { "enabled": false, "strength": 0.9 },
+      "face": { "enabled": true, "strength": 0.7 },
+      "tone": { "enabled": true, "strength": 0.5 },
+      "upscale": { "enabled": true, "target_long_edge": 2560 }
+    }
+  },
+  "maximum": {
+    "label": "Maximum Restoration",
+    "description": "Aggressive AI restoration, highest quality. More hallucination risk.",
+    "stations": {
+      "preprocess": { "enabled": true, "strength": 0.5 },
+      "scratch": { "enabled": true, "strength": 0.7, "threshold": 30 },
+      "denoise": { "enabled": true, "strength": 0.6, "threshold": 25 },
+      "prior_fusion": { "enabled": true, "strength": 0.85 },
+      "colorize": { "enabled": false, "strength": 0.9 },
+      "face": { "enabled": true, "strength": 0.5 },
+      "tone": { "enabled": true, "strength": 0.7 },
+      "upscale": { "enabled": true, "target_long_edge": 4096 }
+    }
+  },
+  "archive": {
+    "label": "Archive",
+    "description": "Faithful archival restoration. No generative beautify, no upscale (16-bit export planned).",
+    "stations": {
+      "preprocess": { "enabled": true, "strength": 0.3 },
+      "scratch": { "enabled": true, "strength": 0.4, "threshold": 60 },
+      "denoise": { "enabled": false, "strength": 0.3, "threshold": 60 },
+      "face": { "enabled": true, "strength": 0.9 },
+      "prior_fusion": { "enabled": false, "strength": 0.2 },
+      "colorize": { "enabled": false, "strength": 0.9 },
+      "tone": { "enabled": true, "strength": 0.2 },
+      "upscale": { "enabled": false, "target_long_edge": 0 }
+    }
+  }
+}

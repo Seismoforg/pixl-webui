@@ -68,6 +68,12 @@ navigation-surviving state or wraps the tree in a context lives here.
                            written instruction; tracks the job via `EditProgress` (the
                            `InpaintProgress` shape) and exposes `resultIds` for the
                            batch grid; reuses the `UpscaleSource` type
+- RestoreProvider.tsx    — photo-restoration form (source/preset/per-station
+                           `{enabled?, strength?}` conveyor overrides/beautify prompt +
+                           per-role model picks face/upscale/edit/zimage, "" = Auto) +
+                           job + live tracking; `useRestore`. Tracks the job via
+                           `RestoreProgress` (UpscaleProgress + preset/current_station/
+                           analysis/per-station results); reuses `UpscaleSource`
 - ActivityProvider.tsx   — generic off-route status store; `useActivity`
 - DownloadProvider.tsx   — app-level download tracking; `useDownloads` +
                            `trackUpscalerDownload` / `trackLoraDownload` helpers (start +

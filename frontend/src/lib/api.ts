@@ -24,6 +24,10 @@ import type {
   SystemInfo,
   ReframeProgress,
   ReframeRequest,
+  RestoreEngines,
+  RestoreProgress,
+  RestoreRequest,
+  RestorePresets,
   UpscalerEngine,
   UpscaleProgress,
   UpscaleRequest,
@@ -170,6 +174,14 @@ export const api = {
   edit: startJob<EditRequest>("/api/edit"),
 
   getEditProgress: jobProgress<EditProgress>("/api/edit"),
+
+  restore: startJob<RestoreRequest>("/api/restore"),
+
+  getRestoreProgress: jobProgress<RestoreProgress>("/api/restore"),
+
+  getRestorePresets: () => request<RestorePresets>("/api/restore/presets"),
+
+  getRestoreEngines: () => request<RestoreEngines>("/api/restore/engines"),
 
   getLoras: () => request<LoraEntry[]>("/api/loras"),
 

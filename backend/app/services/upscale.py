@@ -41,6 +41,8 @@ _sd_x4_pipe = None
 _sd_x4_slug: str | None = None
 # slug -> spandrel CodeFormer descriptor (face restoration)
 _facerestore_cache: dict[str, object] = {}
+# slug -> spandrel DDColor descriptor (colorization)
+_colorize_cache: dict[str, object] = {}
 
 
 def to_model_info(engine: UpscalerInfo) -> ModelInfo:
@@ -69,7 +71,7 @@ def to_model_info(engine: UpscalerInfo) -> ModelInfo:
 
 def start_engine_download(engine: UpscalerInfo, token: str | None) -> None:
     """Download an engine's weights into ``models/<slug>`` (background)."""
-    if engine.kind in ("realesrgan", "face_restore") and engine.filename is not None:
+    if engine.kind in ("realesrgan", "face_restore", "colorize") and engine.filename is not None:
         downloader.start_file_download(engine.slug, engine.repo_id, engine.filename, token)
     else:
         downloader.start_download(to_model_info(engine), token)
@@ -89,6 +91,9 @@ def unload(keep_slug: str | None = None) -> None:
         for slug in list(_facerestore_cache):
             if slug != keep_slug:
                 _facerestore_cache.pop(slug, None)
+        for slug in list(_colorize_cache):
+            if slug != keep_slug:
+                _colorize_cache.pop(slug, None)
         if _sd_x4_slug != keep_slug:
             _sd_x4_pipe = None
             _sd_x4_slug = None
@@ -135,6 +140,8 @@ def upscale(engine: UpscalerInfo, image, prompt: str = "", tile: bool = True, on
         return _upscale_sd_x4(engine, img, prompt, tile, report, sd_x4_steps)
     if engine.kind == "face_restore":
         return _restore_faces(engine, img, fidelity, report)
+    if engine.kind == "colorize":
+        return _colorize(engine, img, report)
     raise ValueError(messages.UPSCALER_NOT_FOUND.format(slug=engine.slug))
 
 
@@ -274,6 +281,86 @@ def _load_codeformer(engine: UpscalerInfo):
     with _lock:
         _facerestore_cache[engine.slug] = model
     return model
+
+
+# --- DDColor colorization (spandrel) ------------------------------------------
+
+def _colorize_device() -> str:
+    """DDColor has BatchNorm layers that crash MIOpen on ROCm/gfx1201 (same class of
+    failure as CodeFormer detection, ADR 0022) — run it on CPU there; GPU on CUDA."""
+    from ..device import get_device_info
+
+    return "cpu" if get_device_info().backend == "rocm" else get_torch_device()
+
+
+def _load_ddcolor(engine: UpscalerInfo):
+    """Load (and cache) a DDColor colorization net via spandrel (extra arch), like the
+    CodeFormer path — a single ``.pth``, auto-detected. Placed on the colorize device."""
+    global _extra_arches_registered
+    with _lock:
+        cached = _colorize_cache.get(engine.slug)
+    if cached is not None:
+        return cached
+
+    from spandrel import MAIN_REGISTRY, ModelLoader
+
+    if not _extra_arches_registered:
+        from spandrel_extra_arches import EXTRA_REGISTRY
+
+        MAIN_REGISTRY.add(*EXTRA_REGISTRY)
+        _extra_arches_registered = True
+
+    weight = config.model_dir(engine.slug) / (engine.filename or "")
+    model = ModelLoader().load_from_file(str(weight))
+    model.to(_colorize_device()).eval()
+    with _lock:
+        _colorize_cache[engine.slug] = model
+    return model
+
+
+# DDColor input is capped to this long edge for the forward pass; colour is low-
+# frequency, so the predicted chroma is upsampled and recombined with the full-res
+# luminance (keeps detail; bounds cost, important on the CPU/ROCm path).
+_COLORIZE_MAX = 640
+
+
+def _colorize(engine: UpscalerInfo, img, report):
+    """Colorize a photo with DDColor. DDColor (via spandrel) takes the LIGHTNESS as a
+    1-channel tensor ``(1, 1, H, W)`` and predicts colour. The net runs on a size-capped
+    lightness map; its chroma is then recombined (in LAB) with the FULL-RES source
+    luminance, so fine detail is preserved and the forward pass stays cheap."""
+    import cv2
+    import numpy as np
+    import torch
+    from PIL import Image
+
+    report({"phase": "loading"})
+    model = _load_ddcolor(engine)
+    device = _colorize_device()
+    report({"phase": "upscaling", "current_tile": 0, "total_tiles": 1,
+            "current_step": 0, "total_steps": 0})
+
+    rgb = img.convert("RGB")
+    scale = min(1.0, _COLORIZE_MAX / max(rgb.size))
+    small = (rgb.resize((max(1, round(rgb.width * scale)), max(1, round(rgb.height * scale))),
+                        Image.LANCZOS) if scale < 1.0 else rgb)
+
+    lum = np.asarray(small.convert("L")).astype("float32") / 255.0
+    tensor = torch.from_numpy(lum).unsqueeze(0).unsqueeze(0).to(device)  # 1, 1, H, W
+    with torch.no_grad():
+        out = model(tensor)  # 1, 3, H, W (RGB)
+    report({"current_tile": 1, "total_tiles": 1})
+    out = out.float().clamp(0.0, 1.0).squeeze(0).permute(1, 2, 0).cpu().numpy()
+    coloured = Image.fromarray((out * 255.0).round().astype("uint8"))
+    if coloured.size != rgb.size:
+        coloured = coloured.resize(rgb.size, Image.LANCZOS)
+
+    # Keep the full-res source luminance; take chroma (a,b) from DDColor.
+    lab_src = cv2.cvtColor(np.asarray(rgb), cv2.COLOR_RGB2LAB)
+    lab_col = cv2.cvtColor(np.asarray(coloured), cv2.COLOR_RGB2LAB)
+    lab_src[..., 1] = lab_col[..., 1]
+    lab_src[..., 2] = lab_col[..., 2]
+    return Image.fromarray(cv2.cvtColor(lab_src, cv2.COLOR_LAB2RGB))
 
 
 def _face_to_tensor(bgr, device):

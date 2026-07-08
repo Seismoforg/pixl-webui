@@ -44,7 +44,7 @@ class EngineDefaults(BaseModel):
 
 class UpscalerInfo(BaseModel):
     slug: str
-    kind: str  # "realesrgan" | "sd_x4" | "face_restore" | "inpaint" | "edit"
+    kind: str  # "realesrgan" | "sd_x4" | "face_restore" | "colorize" | "inpaint" | "edit"
     name: str
     description: str
     repo_id: str

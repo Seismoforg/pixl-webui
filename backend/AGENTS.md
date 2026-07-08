@@ -74,6 +74,16 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
   in Settings) and download engines like generation models
 - Persist reusable positive/negative/upscale/outpaint/outpaint-negative prompt
   snippets (prompt templates)
+- Restore an old photo with an ANALYSIS-DRIVEN pipeline (ADR 0024): analyze the
+  image (classical CV: blur/noise/scratch/dust/fading/faces), build the optimal
+  station chain from measured metrics + a preset (Authentic/Balanced/Maximum/
+  Archive) with per-station user overrides, and run only the needed stations —
+  preprocess (white balance/levels) / scratch (cv2 inpaint) / denoise (NL-means) /
+  face (CodeFormer) / prior-fusion (FLUX.1 Kontext structure-preserving beautify, alpha-
+  blended; off by default) / colorize (DDColor, opt-in — B&W/faded photos) / tone (CLAHE) /
+  super-resolution (Real-ESRGAN). Per-role model selectable (Auto = first downloaded).
+  Writes analysis.json /
+  pipeline.json / processing.log sidecars; a standalone job/endpoint
 - Delete downloaded models from disk and report live system-resource stats
 
 # File Structure
@@ -106,7 +116,9 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 - app/live.py           — in-process pub/sub hub: producer threads publish(key) to
                           wake the WebSocket pusher event-driven (thread→async bridge)
 - app/routers/          — HTTP controllers: system, settings, models, loras, generate,
-                          compare, images, templates, upscale, reframe, inpaint, edit, ws
+                          compare, images, templates, upscale, reframe, inpaint, edit,
+                          restore, ws
+- app/restore_presets.json — bundled default restoration presets (data/ override)
 - app/services/         — business-logic layer (inference, VRAM, downloads, gallery,
                           shared job infra). One module per concern; see
                           app/services/AGENTS.md for the full list + per-service detail
@@ -192,6 +204,19 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            (UpscaleProgress + batch fields; phase incl. "editing").
                            Requires a non-empty prompt and an `edit`-kind engine. Uses
                            the shared services.jobs store; publishes the `edit` WS channel
+- routers/restore.py     — POST /api/restore (gallery-id or data URL + preset +
+                           per-station `{enabled?, strength?}` overrides + beautify
+                           prompt + per-role model overrides face/upscale/edit/zimage)
+                           as a background job that analyzes the image, builds the
+                           station plan and runs the analysis-driven restoration
+                           pipeline (services.restore_engine), saving the final image +
+                           analysis.json/pipeline.json/processing.log sidecars under
+                           outputs/restore/<job>; GET /api/restore/{job_id} returns
+                           `RestoreProgress` (UpscaleProgress + preset/current_station/
+                           analysis report/per-station results with before/after preview
+                           data URLs). GET /presets (curated presets), GET /engines
+                           (candidate models per role). Publishes the `restore` WS
+                           channel (ADR 0024)
 - routers/templates.py   — CRUD for prompt snippets under /api/prompt-templates
 - routers/models.py      — catalog list (curated, each with a fit verdict) +
                            catalog editing (GET/PUT /api/models/catalog,
@@ -199,9 +224,9 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                            DELETE /api/models/{slug} (remove from disk)
 - routers/system.py      — GET /api/system (device) + GET /api/system/stats (live resources)
 - routers/ws.py          — multiplexed WebSocket at /ws: subscribe channels
-                           (system/generation/compare/upscale/reframe/inpaint/edit/download), server pushes the
+                           (system/generation/compare/upscale/reframe/inpaint/edit/restore/download), server pushes the
                            same models the REST endpoints return, send-on-change;
-                           generation/compare/upscale/reframe/inpaint/edit (and download status) are event-driven
+                           generation/compare/upscale/reframe/inpaint/edit/restore (and download status) are event-driven
                            via app/live.py publish; system stats + download bytes stay
                            on a ~1s tick (sampled). REST endpoints remain the fallback
 

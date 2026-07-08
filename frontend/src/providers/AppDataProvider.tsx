@@ -12,6 +12,7 @@ import { EditProvider } from "@/providers/EditProvider";
 import { GenerationProvider } from "@/providers/GenerationProvider";
 import { InpaintProvider } from "@/providers/InpaintProvider";
 import { ReframeProvider } from "@/providers/ReframeProvider";
+import { RestoreProvider } from "@/providers/RestoreProvider";
 import { UpscaleProvider } from "@/providers/UpscaleProvider";
 
 /** App-wide data (models + system info) shared across every route. */
@@ -92,7 +93,9 @@ export const AppDataProvider = ({ children }: { children: ReactNode }) => {
               <UpscaleProvider onUpscaled={refreshGallery}>
                 <ReframeProvider onReframed={refreshGallery}>
                   <InpaintProvider onInpainted={refreshGallery}>
-                    <EditProvider onEdited={refreshGallery}>{children}</EditProvider>
+                    <EditProvider onEdited={refreshGallery}>
+                      <RestoreProvider onRestored={refreshGallery}>{children}</RestoreProvider>
+                    </EditProvider>
                   </InpaintProvider>
                 </ReframeProvider>
               </UpscaleProvider>

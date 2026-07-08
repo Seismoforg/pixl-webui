@@ -11,10 +11,11 @@ and download models, configure settings, and generate images.
 # File Structure
 - app/layout.tsx            — providers (MUI cache, ColorMode, i18n) + AppChrome
 - app/page.tsx              — redirects `/` → `/generate`
-- app/generate|compare|models|upscale|reframe|inpaint|edit|gallery|settings/page.tsx — one
+- app/generate|compare|models|upscale|reframe|inpaint|edit|restore|gallery|settings/page.tsx — one
                              route per screen (thin clients reading AppData/Generation
                              context); `/edit` is the Post Processing (FLUX Kontext) page;
-                             `/compare` is the XYZ-plot parameter-sweep grid page
+                             `/compare` is the XYZ-plot parameter-sweep grid page;
+                             `/restore` is the analysis-driven photo-restoration page (ADR 0024)
 - src/app-shell/AppChrome.tsx — shared VISUAL chrome above all routes: AppBar,
                              link-based tabs (active from usePathname), status bar,
                              activity overlay. Shared data + feature providers now
@@ -24,7 +25,7 @@ and download models, configure settings, and generate images.
                              hosts the feature providers), ColorModeProvider,
                              GenerationProvider, CompareProvider, UpscaleProvider,
                              ReframeProvider, InpaintProvider, EditProvider,
-                             ActivityProvider, DownloadProvider.
+                             RestoreProvider, ActivityProvider, DownloadProvider.
                              Grouped here so navigation-surviving state has one home
 - src/theme/theme.ts        — theme tokens only. Fonts: Inter (body) + JetBrains Mono
                              (numbers), loaded by next/font in app/layout.tsx via

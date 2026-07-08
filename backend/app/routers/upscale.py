@@ -59,6 +59,8 @@ def _engine_family(kind: str) -> str:
         return "Outpaint"
     if kind == "edit":
         return "Post Processing"
+    if kind == "colorize":
+        return "Colorize"
     return "Upscaler"
 
 

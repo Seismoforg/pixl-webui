@@ -23,6 +23,8 @@ One module per concern (routes under the noted prefix):
 - reframe.py   — /api/reframe (aspect reframe / outpaint job)
 - inpaint.py   — /api/inpaint (user-mask inpaint job)
 - edit.py      — /api/edit (prompt edit job)
+- restore.py   — /api/restore (analysis-driven photo-restoration job; + /presets +
+                 /engines; ADR 0024)
 - ws.py        — /ws (multiplexed WebSocket push)
 
 Per-endpoint request/response detail: see `../../AGENTS.md` Key Components (kept there
