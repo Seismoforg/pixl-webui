@@ -24,6 +24,16 @@ def _enable_vae(pipe, vae_method: str, pipe_method: str) -> None:
         pass
 
 
+def force_vae_tiling(pipe) -> None:
+    """Enable VAE tiling on ``pipe`` regardless of the ``vae_tiling`` setting.
+
+    For pipelines whose final decode is unconditionally heavy (e.g. the SD x4
+    upscaler's 4× VAE decode) tiling is a correctness/robustness lever, not a
+    user preference — force it so the decode never hits the slow full-frame path.
+    Best-effort, same API fallback as :func:`apply_perf`."""
+    _enable_vae(pipe, "enable_tiling", "enable_vae_tiling")
+
+
 def apply_perf(pipe, settings: Settings) -> None:
     """Enable the optimisations selected in ``settings`` on ``pipe`` (best-effort)."""
     if settings.vae_tiling:

@@ -22,7 +22,7 @@ from . import callbacks
 from . import downloader
 from . import vram
 from .downloader import is_downloaded
-from .optimizations import apply_perf
+from .optimizations import apply_perf, force_vae_tiling
 from .upscalers import UpscalerInfo
 
 # Real-ESRGAN input tile size (in source pixels); larger inputs are processed in
@@ -294,11 +294,13 @@ def _load_sd_x4(engine: UpscalerInfo):
             )
             pipe = place_offloaded(pipe)
             # The x4 upscaler's final VAE decode of the full 4× image is the slow,
-            # memory-heavy tail. VAE tiling (via the shared perf settings) decodes
-            # it in internal tiles, slashing peak VRAM and avoiding the slow
-            # fallback — the main speedup. attention slicing follows the setting too.
-            # Best-effort per the user's settings.
+            # memory-heavy tail. VAE tiling decodes it in internal tiles, slashing
+            # peak VRAM and avoiding the slow full-frame fallback — the main speedup.
+            # attention slicing / xformers still follow the user's settings.
             apply_perf(pipe, load_settings())
+            # Tiling is not optional for this pipe: force it regardless of the
+            # vae_tiling setting so the 4× decode never hits the slow/OOM path.
+            force_vae_tiling(pipe)
             _sd_x4_pipe = pipe
             _sd_x4_slug = engine.slug
         return _sd_x4_pipe
