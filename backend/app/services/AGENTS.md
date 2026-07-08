@@ -101,7 +101,8 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             fp16 weights via `device.load_quantized_pipe`, CPU-offloaded — LoRA-capable
             (unlike GGUF). Family "Z-Image" → `ZImagePipeline` in bf16 (not bnb-quantized;
             `quantize.quantizable` excludes it), placed by the fit verdict (resident when
-            it fits, else CPU offload); text2img only for now (reference-image ignored).
+            it fits, else CPU offload); img2img supported (reference image → `_img2img`
+            from_pipe derives `ZImageImg2ImgPipeline`, real strength).
             Family "FLUX.2" → `_load_flux2` → `device.load_flux2_pipe` (`Flux2KleinPipeline`,
             DUAL-module NF4: transformer + 8B Qwen3 text encoder via
             `quantize.flux2_quant_config`), placed by the fit verdict; text2img only in v1

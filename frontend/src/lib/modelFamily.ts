@@ -7,6 +7,11 @@
 export const supportsStyleTransfer = (family: string | undefined): boolean =>
   family === "SD 1.5" || family === "SDXL";
 
+/** Real strength-controlled img2img (reference image) works on every family EXCEPT
+ *  FLUX.2 — it has no `strength` param, so its reference conditioning lives in /edit. */
+export const supportsImg2img = (family: string | undefined): boolean =>
+  family !== "FLUX.2";
+
 /** Flow-matching families (FLUX / SD 3.x / Z-Image / FLUX.2) keep their native
  *  scheduler, so the sampler selection has no effect on them. */
 export const supportsSamplerChoice = (family: string | undefined): boolean =>

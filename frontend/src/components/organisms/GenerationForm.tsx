@@ -25,7 +25,7 @@ import { api } from "@/lib/api";
 import { formCardSx } from "@/lib/formCard";
 import { formLockStyle } from "@/lib/formLock";
 import { stickyActionBarSx } from "@/lib/stickyActionBar";
-import { supportsSamplerChoice, supportsStyleTransfer } from "@/lib/modelFamily";
+import { supportsImg2img, supportsSamplerChoice, supportsStyleTransfer } from "@/lib/modelFamily";
 import { useAsyncData } from "@/lib/useAsyncData";
 import type { ModelEntry } from "@/types";
 
@@ -67,6 +67,14 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
   // The IP-Adapter "style" mode only works on SD 1.5 / SDXL.
   const styleSupported = useMemo(
     () => supportsStyleTransfer(downloaded.find((m) => m.slug === gen.slug)?.family),
+    [downloaded, gen.slug],
+  );
+
+  // Reference-image img2img is supported on every family except FLUX.2 (its
+  // reference conditioning lives in /edit). Hide the whole section when neither
+  // img2img nor IP-Adapter style applies, instead of silently ignoring an upload.
+  const img2imgSupported = useMemo(
+    () => supportsImg2img(downloaded.find((m) => m.slug === gen.slug)?.family),
     [downloaded, gen.slug],
   );
 
@@ -166,11 +174,15 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
 
             <Divider />
 
-            <Box component="section">
-              <ReferenceImage styleSupported={styleSupported} />
-            </Box>
+            {(img2imgSupported || styleSupported) && (
+              <>
+                <Box component="section">
+                  <ReferenceImage styleSupported={styleSupported} />
+                </Box>
 
-            <Divider />
+                <Divider />
+              </>
+            )}
 
             <FormSection title={t("generate.sections.loras")}>
               <LoraPicker

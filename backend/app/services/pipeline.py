@@ -273,7 +273,8 @@ def _load_quantized(model: ModelInfo, quant_cfg):
 def _load_zimage(model: ModelInfo, quant_cfg, level: str):
     """Build a Z-Image (S3-DiT) pipeline via the shared loader. When ``quant_cfg`` is
     set (NF4/int8) the transformer is quantized so the pipe fits 16 GB resident; else
-    bf16. Placed by the fit verdict at ``level``."""
+    bf16. Placed by the fit verdict at ``level``. img2img is derived from this base via
+    ``_img2img`` (AutoPipelineForImage2Image.from_pipe → ZImageImg2ImgPipeline)."""
     from diffusers import ZImagePipeline
 
     fits_gpu = get_torch_device() == "cuda" and assess(model, level).verdict == "fits_gpu"
@@ -505,9 +506,10 @@ def generate(
     # img2img pipe / running, so both the plain and img2img paths pick them up.
     _apply_loras(pipe, model, loras or [])
 
-    # Reference-image (img2img / IP-Adapter) is not wired for Z-Image / FLUX.2 yet
-    # (their v1 is plain text2img); ignore any reference so the plain path always runs.
-    use_ref = init_image is not None and model.family not in ("Z-Image", "FLUX.2")
+    # Reference-image img2img: Z-Image derives ZImageImg2ImgPipeline via _img2img's
+    # from_pipe (real strength-controlled img2img). FLUX.2 has no `strength` param —
+    # its reference conditioning lives in /edit — so it stays excluded (plain text2img).
+    use_ref = init_image is not None and model.family != "FLUX.2"
     extra: dict = {}
     if use_ref and reference_mode == "img2img":
         _ensure_no_ip_adapter(pipe)
