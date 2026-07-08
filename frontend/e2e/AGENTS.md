@@ -16,14 +16,27 @@ repo-root `test-frontend.bat`.
 - lib/shared-browser.mjs — launch persistent headed chromium (CDP `--remote-debugging-
                            port`), open the app, stay alive. Env: APP_URL, CDP_PORT,
                            HEADLESS=1 (default headed)
-- inspect.mjs            — `connectOverCDP` → active page → screenshot to screens/ +
-                           print metrics JSON for a selector. Flags: `--goto <route|url>`
-                           (navigate the tab first — bare route joins `APP_BASE`, full
-                           URL used as-is; for walking the nav / self-navigating),
-                           `--a11y` (axe violations), `--console` (console + failed
-                           requests via a reload), `--device <mobile|tablet|desktop|WxH>`
-                           (emulate a viewport via CDP for that run — see below),
-                           `--name <label>`
+- inspect.mjs            — `connectOverCDP` → active page → (optional) DRIVE actions →
+                           screenshot to screens/ + print metrics JSON for a selector.
+                           Flags: `--goto <route|url>` (navigate the tab first — bare
+                           route joins `APP_BASE`, full URL used as-is; for walking the
+                           nav / self-navigating), `--a11y` (axe violations),
+                           `--console` (console + failed requests; live-captured when
+                           actions run, else via a reload), `--device
+                           <mobile|tablet|desktop|WxH>` (emulate a viewport via CDP for
+                           that run — see below), `--name <label>`.
+                           ACTION flags (repeatable, run left→right AFTER goto/device,
+                           BEFORE the screenshot; each targets `locator(sel).first()`,
+                           auto-waits, throws → non-zero exit on failure):
+                           `--click`/`--dblclick`/`--hover`/`--scroll`/`--check`/
+                           `--uncheck <sel>`, `--fill`/`--type <sel::text>`,
+                           `--select <sel::valueOrLabel>` (NATIVE `<select>` only),
+                           `--press <sel::Key>` or `<Key>` (bare = page keyboard),
+                           `--upload <sel::path>`, `--wait <ms|sel>`. `::` splits on its
+                           FIRST match. MUI (non-native) select recipe: `--click
+                           <combobox>` then `--click "li[role=option] >> text=<Label>"`.
+                           cmd.exe quoting: values with spaces/special chars → call
+                           `node e2e/inspect.mjs …` directly (bypasses the .bat)
 - screens/              — screenshot output (gitignored)
 - .profile/             — persistent shared-browser profile (gitignored)
 

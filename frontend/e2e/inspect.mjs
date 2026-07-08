@@ -1,13 +1,21 @@
 // Attach to the shared browser (shared-browser.mjs) over CDP, read its ACTIVE page,
-// and report: a screenshot (PNG for Claude to Read) + exact element metrics (box model
-// + computed styles + spacing + overflow). Flags: --a11y (axe-core violations),
-// --console (console + failed requests, captured over a short reload window),
-// --goto <route|url> (navigate the active tab first — a bare route like `models` is
-// resolved against APP_BASE; a full http(s) URL is used as-is),
+// optionally DRIVE interactions (click/fill/select/…), then report: a screenshot (PNG
+// for Claude to Read) + exact element metrics (box model + computed styles + spacing +
+// overflow). Flags: --a11y (axe-core violations),
+// --console (console + failed requests; live-captured when actions run, else over a short
+// reload window), --goto <route|url> (navigate the active tab first — a bare route like
+// `models` is resolved against APP_BASE; a full http(s) URL is used as-is),
 // --device <mobile|tablet|desktop|WxH> (emulate a device viewport via CDP for THIS run,
 // then auto-clear — a cross-process reset is unreliable, so scope is per-run).
 //
-// Usage: node e2e/inspect.mjs [selector] [--a11y] [--console] [--goto <route>] [--device <d>] [--name <label>]
+// Action flags (repeatable, run left→right AFTER --goto/--device, BEFORE the screenshot):
+// --click/--dblclick/--hover/--scroll/--check/--uncheck <sel>, --fill/--type <sel::text>,
+// --select <sel::valueOrLabel> (native <select> only), --press <sel::Key> or <Key>,
+// --upload <sel::path>, --wait <ms|sel>. Value separator `::` splits on its FIRST match.
+// A failing action throws → non-zero exit (failure is visible). MUI (non-native) selects:
+// --click <combobox> then --click "li[role=option] >> text=<Label>".
+//
+// Usage: node e2e/inspect.mjs [selector] [--goto <route>] [--click <sel>] [--fill <sel::text>] … [--a11y] [--console] [--device <d>] [--name <label>]
 // Env:   CDP_PORT (default 9222), APP_BASE (default http://localhost:3000).
 
 import { chromium } from "@playwright/test";
@@ -21,17 +29,84 @@ const screensDir = resolve(here, "screens");
 const cdpPort = process.env.CDP_PORT ?? "9222";
 const appBase = (process.env.APP_BASE ?? "http://localhost:3000").replace(/\/$/, "");
 
-const args = process.argv.slice(2);
-const flag = (name) => args.includes(`--${name}`);
-const opt = (name, def) => {
-  const i = args.indexOf(`--${name}`);
-  return i >= 0 && args[i + 1] ? args[i + 1] : def;
+const ACTION_FLAGS = new Set([
+  "click", "dblclick", "fill", "type", "press", "select",
+  "check", "uncheck", "hover", "scroll", "upload", "wait",
+]);
+const VALUE_FLAGS = new Set(["goto", "device", "name"]);
+const BOOL_FLAGS = new Set(["a11y", "console"]);
+
+// Ordered argv walk: action flags each consume the next arg (kept in order in
+// `actions[]`), value flags (goto/device/name) collect their value, boolean flags
+// (a11y/console) toggle, and the first leftover bareword is the positional selector.
+// Called from main() so a bad flag surfaces via the same `[inspect] …` handler.
+const parseArgs = () => {
+  const args = process.argv.slice(2);
+  const actions = [];
+  const opts = {};
+  const bools = {};
+  let positional = null;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (!a.startsWith("--")) {
+      if (positional === null) positional = a;
+      continue;
+    }
+    const name = a.slice(2);
+    if (ACTION_FLAGS.has(name)) {
+      const payload = args[++i];
+      if (payload === undefined) throw new Error(`--${name} needs a value`);
+      actions.push({ type: name, payload });
+    } else if (VALUE_FLAGS.has(name)) {
+      opts[name] = args[++i] ?? null;
+    } else if (BOOL_FLAGS.has(name)) {
+      bools[name] = true;
+    } else {
+      throw new Error(`unknown flag --${name}`);
+    }
+  }
+  const goto = opts.goto ?? null;
+  // Resolve --goto: a full http(s) URL is used verbatim, a bare route joins onto APP_BASE.
+  const gotoUrl = goto && (/^https?:\/\//.test(goto) ? goto : `${appBase}/${goto.replace(/^\//, "")}`);
+  return { selector: positional ?? "body", label: opts.name ?? "inspect", deviceArg: opts.device ?? null, gotoUrl, actions, bools };
 };
-const selector = args.find((a) => !a.startsWith("--")) ?? "body";
-const label = opt("name", "inspect");
-const goto = opt("goto", null);
-// Resolve --goto: a full http(s) URL is used verbatim, a bare route joins onto APP_BASE.
-const gotoUrl = goto && (/^https?:\/\//.test(goto) ? goto : `${appBase}/${goto.replace(/^\//, "")}`);
+
+// Split an action payload into [selector, value] on the FIRST `::` (values may contain
+// `::`; a payload with none has a null value).
+const splitTarget = (payload) => {
+  const i = payload.indexOf("::");
+  return i === -1 ? [payload, null] : [payload.slice(0, i), payload.slice(i + 2)];
+};
+
+// Run the collected actions in order on `page`. Each targets `locator(sel).first()`, so
+// Playwright auto-waits for actionability; a bad/covered/disabled target throws.
+const runActions = async (page, list) => {
+  for (const { type, payload } of list) {
+    const [sel, value] = splitTarget(payload);
+    const loc = () => page.locator(sel).first();
+    switch (type) {
+      case "click": await loc().click(); break;
+      case "dblclick": await loc().dblclick(); break;
+      case "fill": await loc().fill(value ?? ""); break;
+      case "type": await loc().pressSequentially(value ?? ""); break;
+      // sel::Key → press on the element; a bare Key → the page keyboard (focused element).
+      case "press": value === null ? await page.keyboard.press(sel) : await loc().press(value); break;
+      case "select": await loc().selectOption(value); break; // native <select> only
+      case "check": await loc().check(); break;
+      case "uncheck": await loc().uncheck(); break;
+      case "hover": await loc().hover(); break;
+      case "scroll": await loc().scrollIntoViewIfNeeded(); break;
+      case "upload": await loc().setInputFiles(value); break;
+      // --wait <ms> (all-digit) → timeout; --wait <sel> → wait for visible.
+      case "wait":
+        /^\d+$/.test(sel)
+          ? await page.waitForTimeout(Number(sel))
+          : await page.waitForSelector(sel, { state: "visible" });
+        break;
+      default: throw new Error(`unknown action --${type}`);
+    }
+  }
+};
 
 // Device presets for --device (applied as a CDP metrics override, since the shared
 // browser runs with viewport:null so page.setViewportSize() is unavailable).
@@ -76,7 +151,8 @@ const measure = (sel) =>
     });
 
 const main = async () => {
-  const device = resolveDevice(opt("device", null));
+  const { selector, label, deviceArg, gotoUrl, actions, bools } = parseArgs();
+  const device = resolveDevice(deviceArg);
   const browser = await chromium.connectOverCDP(`http://localhost:${cdpPort}`);
   const context = browser.contexts()[0];
   if (!context) throw new Error("No browser context — is shared-browser.mjs running?");
@@ -85,6 +161,16 @@ const main = async () => {
   const page =
     pages.find((p) => p.url().includes("localhost:3000")) ?? pages[pages.length - 1];
   if (!page) throw new Error("No open page to inspect.");
+
+  // Attach console/network capture BEFORE any action so live interaction logs are caught
+  // (a later reload would discard them). Reused for the live path and the no-action
+  // reload path below.
+  const consoleLogs = [];
+  if (bools.console) {
+    page.on("console", (m) => consoleLogs.push(`${m.type()}: ${m.text()}`.slice(0, 200)));
+    page.on("requestfailed", (r) =>
+      consoleLogs.push(`REQFAIL ${r.url()} ${r.failure()?.errorText ?? ""}`));
+  }
 
   // Drive the active tab to a new route/URL before inspecting (e.g. walk the nav).
   if (gotoUrl) {
@@ -112,6 +198,13 @@ const main = async () => {
     await page.waitForTimeout(200); // let the layout reflow at the new size
   }
 
+  // Drive interactions (left→right) after navigation + device setup, before we measure,
+  // then let the UI settle so the screenshot/metrics reflect the post-action state.
+  if (actions.length) {
+    await runActions(page, actions);
+    await page.waitForTimeout(300);
+  }
+
   mkdirSync(screensDir, { recursive: true });
   const shot = resolve(screensDir, `${label}.png`);
   await page.screenshot({ path: shot });
@@ -126,7 +219,7 @@ const main = async () => {
   }));
   report.elements = await page.evaluate(measure, selector);
 
-  if (flag("a11y")) {
+  if (bools.a11y) {
     const res = await new AxeBuilder({ page }).analyze();
     report.a11y = res.violations.map((v) => ({
       id: v.id,
@@ -136,12 +229,11 @@ const main = async () => {
     }));
   }
 
-  if (flag("console")) {
-    const logs = [];
-    page.on("console", (m) => logs.push(`${m.type()}: ${m.text()}`.slice(0, 200)));
-    page.on("requestfailed", (r) => logs.push(`REQFAIL ${r.url()} ${r.failure()?.errorText ?? ""}`));
-    await page.reload({ waitUntil: "networkidle" }).catch(() => {});
-    report.console = logs.slice(0, 40);
+  if (bools.console) {
+    // Actions already ran with listeners live → keep those logs. No actions → reload to
+    // capture a fresh window (today's behavior); the listeners above record it.
+    if (!actions.length) await page.reload({ waitUntil: "networkidle" }).catch(() => {});
+    report.console = consoleLogs.slice(0, 40);
   }
 
   console.log(`[inspect] screenshot → ${shot}`);
