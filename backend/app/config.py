@@ -50,7 +50,7 @@ class Settings(BaseModel):
 
     hf_token: str | None = None
     # Civitai API key — needed to download LoRAs/checkpoints from civitai.com (many
-    # FLUX.2 klein LoRAs live there, not on HuggingFace; NSFW downloads require auth).
+    # FLUX.2 klein LoRAs live there, not on HuggingFace;).
     civitai_token: str | None = None
     # Pipeline performance optimisations (applied to generation + upscale on load).
     # Default on; all are best-effort so absent hardware/libs are no-ops.
