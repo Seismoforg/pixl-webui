@@ -210,3 +210,24 @@
 - Proposed Resolution: Revisit when diffusers ships a Flux2 inpaint pipeline, or wire the
   green-screen + fal outpaint-LoRA path (4B base) through `inpaint_engine`. See feature
   20260707-0015.
+
+## FLUX.2 LoRA family doesn't distinguish 4B vs 9B  (added 2026-07-08)
+- Problem: FLUX.2 klein 4B (hidden dim 3072) and 9B (4096) share the catalog family
+  "FLUX.2", but their LoRAs are size-specific. The LoRA picker + `_apply_loras` only
+  match on the family string, so a 9B LoRA can be selected for a 4B model (and vice
+  versa) → `load_lora_weights` raises a raw size-mismatch error mid-run.
+- Impact: Confusing failure (ugly torch error) when a LoRA's size doesn't match the
+  selected model; no pre-flight guard. Ultra Real 9B is marked "9B ONLY" only in prose.
+- Proposed Resolution: Split the family (e.g. "FLUX.2-4B" / "FLUX.2-9B") or add a size
+  tag to LoraInfo + validate it against the model before load, surfacing a clear message.
+
+## Civitai downloads are unvalidated + no delete/size pre-check  (added 2026-07-08)
+- Problem: `downloader.start_civitai_download` streams a Civitai version file with the
+  `civitai_token`, but it's untested against the live API (needs a real key).
+  No pre-flight size (progress total comes only from Content-Length), and
+  `delete_model` works by slug so it's fine, but there's no Civitai-specific error
+  mapping beyond 401/403.
+- Impact: First real Civitai download may surface edge cases (redirects, rate limits,
+  missing Content-Length → no progress bar).
+- Proposed Resolution: Test against the live Civitai API with a key; add the model-info
+  size pre-fetch (civitai API v1) for an accurate progress total.

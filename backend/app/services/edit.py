@@ -15,7 +15,7 @@ from __future__ import annotations
 import threading
 
 from . import callbacks, fit, quantize, vram
-from .. import config
+from .. import config, messages
 from ..config import load_settings
 from ..device import (
     get_compute_dtype,
@@ -37,6 +37,9 @@ DEFAULT_GUIDANCE = 2.5
 _lock = threading.Lock()
 _pipe = None
 _slug: str | None = None
+# LoRA adapters loaded on the current edit pipe: adapter_name (== lora slug) -> weight.
+# Compared against a run's request to skip a redundant reload. Reset on pipe rebuild.
+_loaded_loras: dict[str, float] = {}
 
 
 def unload() -> None:
@@ -45,6 +48,7 @@ def unload() -> None:
     with _lock:
         _pipe = None
         _slug = None
+    _loaded_loras.clear()
     vram.release()
 
 
@@ -77,7 +81,61 @@ def load(engine: UpscalerInfo):
     with _lock:
         _pipe = pipe
         _slug = engine.slug
+    _loaded_loras.clear()  # fresh pipe carries no adapters
     return pipe
+
+
+def _apply_edit_loras(pipe, engine: UpscalerInfo, requested: list[tuple[str, float]]) -> None:
+    """Load + activate the requested LoRA adapters on the edit ``pipe``, blended by
+    weight. Each LoRA's family must match the engine's family (FLUX / FLUX.2) and be
+    downloaded; GGUF engines can't take LoRAs. A no-op when the wanted set already
+    matches what's loaded. Mirrors ``pipeline._apply_loras`` for the edit pipe."""
+    from . import loras as loras_svc
+    from .downloader import is_downloaded
+
+    if not requested:
+        if _loaded_loras:
+            try:
+                pipe.unload_lora_weights()
+            except Exception:  # noqa: BLE001 - best-effort; state reset regardless
+                pass
+            _loaded_loras.clear()
+        return
+    if engine.is_gguf:
+        raise ValueError(messages.LORA_GGUF_UNSUPPORTED)
+
+    family = quantize.engine_family(engine)
+    resolved: list[tuple[str, float, "object"]] = []
+    for slug, weight in requested:
+        info = loras_svc.get(slug)
+        if info is None:
+            raise ValueError(messages.LORA_NOT_FOUND.format(slug=slug))
+        if info.family != family:
+            raise ValueError(
+                messages.LORA_INCOMPATIBLE.format(
+                    name=info.name, lora_family=info.family, family=family
+                )
+            )
+        if not is_downloaded(slug):
+            raise ValueError(messages.LORA_NOT_DOWNLOADED.format(slug=slug))
+        resolved.append((slug, weight, info))
+
+    wanted = {slug: weight for slug, weight, _info in resolved}
+    if wanted == _loaded_loras:
+        return
+    try:
+        pipe.unload_lora_weights()
+    except Exception:  # noqa: BLE001 - best-effort before the reload
+        pass
+    _loaded_loras.clear()
+    for slug, _weight, info in resolved:
+        pipe.load_lora_weights(
+            str(config.model_dir(slug)), weight_name=info.filename, adapter_name=slug
+        )
+    pipe.set_adapters(
+        [slug for slug, _w, _i in resolved], [weight for _s, weight, _i in resolved]
+    )
+    _loaded_loras.update(wanted)
 
 
 def _load_flux_kontext_gguf(engine: UpscalerInfo):
@@ -129,20 +187,22 @@ def _load_flux2_edit(engine: UpscalerInfo):
 def edit_image(
     image, prompt: str, report, engine: UpscalerInfo,
     *, steps: int = DEFAULT_STEPS, guidance: float = DEFAULT_GUIDANCE,
-    seed: int | None = None,
+    seed: int | None = None, loras: list[tuple[str, float]] | None = None,
 ):
-    """Edit ``image`` per the instruction ``prompt`` with ``engine`` (FLUX Kontext).
+    """Edit ``image`` per the instruction ``prompt`` with ``engine`` (FLUX / FLUX.2).
 
     ``report`` gets the shared upscale/reframe progress dict (phase ``"editing"``).
-    Kontext auto-resizes the input to its preferred ~1 MP resolution internally
+    The pipe auto-resizes the input to its preferred ~1 MP resolution internally
     (bounding VRAM), so the full-res source is passed directly and the result is
-    scaled back to the source dimensions. Returns a new PIL image."""
+    scaled back to the source dimensions. ``loras`` blends the given ``(slug, weight)``
+    adapters onto the edit pipe (family-matched, downloaded). Returns a new PIL image."""
     from PIL import Image
 
     report({"phase": "loading"})
     img = image.convert("RGB")
 
     pipe = load(engine)
+    _apply_edit_loras(pipe, engine, loras or [])
     generator = make_generator(seed)
     timer = callbacks.StepTimer()
 

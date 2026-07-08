@@ -22,10 +22,14 @@ from ..config import DATA_DIR, ensure_dirs
 
 class LoraInfo(BaseModel):
     slug: str
-    repo_id: str
+    # HuggingFace repo id. Empty for a Civitai-sourced LoRA (see ``civitai_version_id``).
+    repo_id: str = ""
     filename: str  # the single .safetensors weight to fetch + load
     name: str
-    family: str  # "SD 1.5" | "SDXL" | "FLUX" — must match the base model to apply
+    family: str  # "SD 1.5" | "SDXL" | "FLUX" | "FLUX.2" — must match the base model to apply
+    # Civitai model-version id. When set, the weight is downloaded from civitai.com
+    # (single-file, needs the ``civitai_token`` setting) instead of HuggingFace.
+    civitai_version_id: int | None = None
     description: str = ""
     # Broad category shown as a badge in the UI. One of: style | character | concept
     # | realism | accelerator | other. Defaults to "other" so pre-existing overrides

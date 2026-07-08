@@ -177,6 +177,8 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
             <FormSection title={t("generate.sections.loras")}>
               <LoraPicker
                 family={modelFamily}
+                selected={gen.loras}
+                onChange={gen.setLoras}
                 onAppendPrompt={(text) => gen.setPrompt(appendPrompt(gen.prompt, text))}
               />
             </FormSection>

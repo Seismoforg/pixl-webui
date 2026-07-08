@@ -84,9 +84,16 @@ def download_lora(slug: str) -> DownloadStarted:
     lora = loras.get(slug)
     if lora is None:
         raise HTTPException(404, messages.LORA_NOT_FOUND.format(slug=slug))
-    token = load_settings().hf_token
+    settings = load_settings()
     try:
-        downloader.start_file_download(lora.slug, lora.repo_id, lora.filename, token)
+        if lora.civitai_version_id is not None:
+            downloader.start_civitai_download(
+                lora.slug, lora.civitai_version_id, lora.filename, settings.civitai_token
+            )
+        else:
+            downloader.start_file_download(
+                lora.slug, lora.repo_id, lora.filename, settings.hf_token
+            )
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
     return DownloadStarted(slug=slug, message=messages.DOWNLOAD_STARTED.format(slug=slug))

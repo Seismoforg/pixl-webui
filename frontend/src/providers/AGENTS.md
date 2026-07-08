@@ -60,9 +60,10 @@ navigation-surviving state or wraps the tree in a context lives here.
                            WITHOUT resizing; tracks the job via `InpaintProgress` (the
                            `ReframeProgress` shape) and exposes `resultIds` for the
                            batch grid; reuses the `UpscaleSource` type
-- EditProvider.tsx       — Post-Processing (FLUX Kontext) edit form (source/edit
-                           engine/instruction prompt + generation params
-                           steps/guidance/seed/batch — no mask, no sampler) + job +
+- EditProvider.tsx       — Post-Processing (FLUX Kontext / FLUX.2 klein) edit form
+                           (source/edit engine/instruction prompt + generation params
+                           steps/guidance/seed/batch + `loras: LoraRef[]` for FLUX/FLUX.2
+                           edit engines — no mask, no sampler) + job +
                            live tracking; `useEdit`. Edits a whole image from a
                            written instruction; tracks the job via `EditProgress` (the
                            `InpaintProgress` shape) and exposes `resultIds` for the

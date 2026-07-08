@@ -16,10 +16,12 @@ import { GenerationParams } from "@/components/molecules/GenerationParams";
 import { EditResult } from "@/components/organisms/EditResult";
 import { EnginePicker } from "@/components/organisms/EnginePicker";
 import { GalleryPicker } from "@/components/organisms/GalleryPicker";
+import { LoraPicker } from "@/components/organisms/LoraPicker";
 import { SourcePicker } from "@/components/organisms/SourcePicker";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { formLockStyle } from "@/lib/formLock";
+import { engineLoraFamily } from "@/lib/modelFamily";
 import { useEngineCatalog } from "@/lib/useEngineCatalog";
 import { useImageSource } from "@/lib/useImageSource";
 import { useEdit } from "@/providers/EditProvider";
@@ -49,6 +51,7 @@ export const EditPanel = ({ reloadToken, initialImageId }: EditPanelProps) => {
     guidance,
     seed,
     batch,
+    loras,
     setSource,
     setEngine,
     setPrompt,
@@ -56,6 +59,7 @@ export const EditPanel = ({ reloadToken, initialImageId }: EditPanelProps) => {
     setGuidance,
     setSeed,
     setBatch,
+    setLoras,
   } = edit;
 
   const downloads = useDownloads();
@@ -135,6 +139,7 @@ export const EditPanel = ({ reloadToken, initialImageId }: EditPanelProps) => {
       guidance,
       seed: seed.trim() === "" ? null : Number(seed),
       batch,
+      loras,
     });
   };
 
@@ -265,6 +270,21 @@ export const EditPanel = ({ reloadToken, initialImageId }: EditPanelProps) => {
                 seed={seed}
                 onSeed={setSeed}
               />
+
+              {/* LoRA adapters for the edit pipe (FLUX.2 klein / FLUX Kontext). */}
+              {engineLoraFamily(selectedEngine) && (
+                <Box>
+                  <SectionHeading level={3} sx={{ mb: 1 }}>
+                    {t("generate.sections.loras")}
+                  </SectionHeading>
+                  <LoraPicker
+                    family={engineLoraFamily(selectedEngine)}
+                    selected={loras}
+                    onChange={setLoras}
+                    onAppendPrompt={(text) => setPrompt(prompt ? `${prompt}, ${text}` : text)}
+                  />
+                </Box>
+              )}
             </Stack>
           </fieldset>
 

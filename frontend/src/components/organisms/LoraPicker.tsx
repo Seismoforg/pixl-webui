@@ -18,25 +18,28 @@ import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { useAsyncData } from "@/lib/useAsyncData";
 import { trackLoraDownload, useDownloads } from "@/providers/DownloadProvider";
-import { useGeneration } from "@/providers/GenerationProvider";
-import type { LoraEntry } from "@/types";
+import type { LoraEntry, LoraRef } from "@/types";
 
 interface LoraPickerProps {
-  /** Family of the currently-selected base model; only matching LoRAs are shown. */
+  /** Family of the currently-selected base model / engine; only matching LoRAs shown. */
   family: string | undefined;
+  /** Currently-selected LoRAs (owned by the caller's context — generation or edit). */
+  selected: LoraRef[];
+  /** Replace the selected-LoRA list. */
+  onChange: (loras: LoraRef[]) => void;
   /** Append trigger words to the prompt (one-tap from a LoRA row). */
   onAppendPrompt: (text: string) => void;
 }
 
 /**
- * Lists the LoRAs compatible with the selected model family: enable + blend-weight
- * each, download the ones not on disk, and one-tap their trigger words into the
- * prompt. Selection lives in the generation context (`loras`). Incompatible picks
- * are pruned when the model family changes.
+ * Lists the LoRAs compatible with the selected model/engine family: enable +
+ * blend-weight each, download the ones not on disk, and one-tap their trigger words
+ * into the prompt. Selection is owned by the caller (`selected`/`onChange`) so the
+ * picker serves both the generation and the edit forms. Incompatible picks are pruned
+ * when the family changes.
  */
-export const LoraPicker = ({ family, onAppendPrompt }: LoraPickerProps) => {
+export const LoraPicker = ({ family, selected, onChange, onAppendPrompt }: LoraPickerProps) => {
   const t = useTranslations();
-  const gen = useGeneration();
   const downloads = useDownloads();
 
   const { data, loading, error, reload } = useAsyncData(() => api.getLoras(), []);
@@ -50,9 +53,9 @@ export const LoraPicker = ({ family, onAppendPrompt }: LoraPickerProps) => {
   useEffect(() => {
     if (data === null || family === undefined) return;
     const ok = new Set(compatible.map((l) => l.slug));
-    const pruned = gen.loras.filter((l) => ok.has(l.slug));
-    if (pruned.length !== gen.loras.length) gen.setLoras(pruned);
-  }, [data, family, compatible, gen]);
+    const pruned = selected.filter((l) => ok.has(l.slug));
+    if (pruned.length !== selected.length) onChange(pruned);
+  }, [data, family, compatible, selected, onChange]);
 
   // Reload the list once a LoRA download finishes so `downloaded` flips.
   const doneSignal = compatible.map((l) => downloads.progress[l.slug]?.status).join(",");
@@ -61,15 +64,15 @@ export const LoraPicker = ({ family, onAppendPrompt }: LoraPickerProps) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doneSignal]);
 
-  const weightOf = (slug: string) => gen.loras.find((l) => l.slug === slug)?.weight;
-  const isOn = (slug: string) => gen.loras.some((l) => l.slug === slug);
+  const weightOf = (slug: string) => selected.find((l) => l.slug === slug)?.weight;
+  const isOn = (slug: string) => selected.some((l) => l.slug === slug);
 
   const toggle = (slug: string) =>
-    gen.setLoras(
-      isOn(slug) ? gen.loras.filter((l) => l.slug !== slug) : [...gen.loras, { slug, weight: 1.0 }],
+    onChange(
+      isOn(slug) ? selected.filter((l) => l.slug !== slug) : [...selected, { slug, weight: 1.0 }],
     );
   const setWeight = (slug: string, weight: number) =>
-    gen.setLoras(gen.loras.map((l) => (l.slug === slug ? { ...l, weight } : l)));
+    onChange(selected.map((l) => (l.slug === slug ? { ...l, weight } : l)));
 
   const startDownload = async (lora: LoraEntry) => {
     setDlError(null);
@@ -204,12 +207,12 @@ export const LoraPicker = ({ family, onAppendPrompt }: LoraPickerProps) => {
         );
       })}
 
-      {gen.loras.length > 0 && (
+      {selected.length > 0 && (
         <Typography variant="caption" color="text.secondary">
           {t("lora.activeCount")
             .split(/(\{count\})/)
             .map((part, i) =>
-              part === "{count}" ? <MonoText key={i}>{gen.loras.length}</MonoText> : part,
+              part === "{count}" ? <MonoText key={i}>{selected.length}</MonoText> : part,
             )}
         </Typography>
       )}

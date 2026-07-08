@@ -11,3 +11,16 @@ export const supportsStyleTransfer = (family: string | undefined): boolean =>
  *  scheduler, so the sampler selection has no effect on them. */
 export const supportsSamplerChoice = (family: string | undefined): boolean =>
   family !== "FLUX" && family !== "SD 3.x" && family !== "Z-Image" && family !== "FLUX.2";
+
+/** LoRA family of an edit engine, derived from its repo id (mirrors the backend
+ *  `quantize.engine_family`): FLUX.2 klein → "FLUX.2", a FLUX.1 Kontext edit engine →
+ *  "FLUX". `undefined` when no LoRA-capable family applies (so the picker hides). */
+export const engineLoraFamily = (
+  engine: { repo_id: string; kind: string } | null | undefined,
+): string | undefined => {
+  if (!engine) return undefined;
+  const repo = engine.repo_id.toLowerCase();
+  if (repo.includes("flux.2") || repo.includes("flux2")) return "FLUX.2";
+  if (engine.kind === "edit" || repo.includes("flux")) return "FLUX";
+  return undefined;
+};

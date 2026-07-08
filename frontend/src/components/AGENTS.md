@@ -65,11 +65,12 @@ Atomic-design React component library for the Pixl WebUI frontend: presentationa
 
 ## organisms/
 - GenerationPanel (thin two-column host) + GenerationForm + GenerationResult
-- LoraPicker — generate-page LoRA section: lists LoRAs matching the selected model
-  family (from `/api/loras`), enable + blend-weight each (selection in
-  GenerationProvider `loras`), inline download (DownloadProvider `trackLoraDownload`)
-  for ones not on disk, one-tap trigger words into the prompt. Prunes incompatible
-  picks on model-family change
+- LoraPicker — shared LoRA section (generate + edit): lists LoRAs matching a `family`
+  (from `/api/loras`), enable + blend-weight each, inline download (DownloadProvider
+  `trackLoraDownload`) for ones not on disk, one-tap trigger words into the prompt.
+  Selection is caller-owned via `selected`/`onChange` props (GenerationProvider `loras`
+  on /generate; EditProvider `loras` on /edit, family from `engineLoraFamily(engine)`).
+  Prunes incompatible picks on family change
 - ComparePanel (host) + CompareResult — /compare XYZ-plot screen (model + prompt +
   slider-style base params + 1–3 `AxisEditor` sweep axes; live cell-count + cap
   warning). Sweep whitelist steps/guidance/sampler/seed/prompt; `sampler` (base + axis)

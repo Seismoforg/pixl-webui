@@ -196,5 +196,17 @@
     "description": "Clean black-outline coloring-book line art for SD 1.5. Add the trigger to the prompt.",
     "trigger": "ColoringBookAF",
     "approx_size_gb": 0.08
+  },
+  {
+    "slug": "lora--ultra-real-klein-9b",
+    "repo_id": "",
+    "filename": "ultra_real_v4.safetensors",
+    "name": "Ultra Real - Klein 9B",
+    "family": "FLUX.2",
+    "civitai_version_id": 2846977,
+    "kind": "realism",
+    "description": "Photoreal detailing for FLUX.2 klein 9B. 9B ONLY — won't apply to the 4B model. Civitai source: set a Civitai API key in Settings Add the trigger to the prompt.",
+    "trigger": "This is a high-quality photograph of a",
+    "approx_size_gb": 0.16
   }
 ]

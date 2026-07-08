@@ -7,7 +7,8 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
 - Serve the curated model catalog (JSON-backed, editable in Settings) and download
   models into `models/<slug>`
 - Assess whether a model fits the current GPU (full / CPU-offload / too large)
-- Persist user settings (HuggingFace token + performance toggles: VAE tiling/
+- Persist user settings (HuggingFace token + Civitai API key [for civitai.com LoRA/
+  checkpoint downloads, e.g. FLUX.2 LoRAs] + performance toggles: VAE tiling/
   slicing, attention slicing [pure setting, no VRAM auto-switch; default off],
   vae_on_gpu [keep the VAE resident on the GPU for offloaded models], xformers,
   torch.compile — applied to every pipe on load; plus the SD x4 upscaler step count and

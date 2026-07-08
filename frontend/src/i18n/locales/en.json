@@ -500,6 +500,8 @@
     "title": "Settings",
     "hfToken": "HuggingFace token",
     "hfTokenHelp": "Optional. Speeds up downloads and enables gated models.",
+    "civitaiToken": "Civitai API key",
+    "civitaiTokenHelp": "Optional. Needed to download LoRAs/checkpoints from civitai.com.",
     "save": "Save",
     "saved": "Saved",
     "system": "System",

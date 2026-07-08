@@ -50,6 +50,10 @@ LORA_NOT_FOUND = "Unknown LoRA: {slug}."
 LORA_NOT_DOWNLOADED = "LoRA '{slug}' is not downloaded yet — download it first."
 LORA_INCOMPATIBLE = "LoRA '{name}' is for {lora_family} models and can't be used with a {family} model."
 LORA_GGUF_UNSUPPORTED = "LoRAs aren't supported on GGUF-quantized models."
+CIVITAI_AUTH_REQUIRED = (
+    "Civitai rejected the download (missing or invalid API key). Add a valid Civitai "
+    "API key in Settings; NSFW files also need NSFW enabled on your Civitai account."
+)
 
 # Status / info
 DOWNLOAD_STARTED = "Download of '{slug}' started."

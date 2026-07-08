@@ -28,6 +28,11 @@ from ..services.jobs import BatchProgress
 router = APIRouter(prefix="/api/edit", tags=["edit"])
 
 
+class LoraRef(BaseModel):
+    slug: str
+    weight: float = Field(default=1.0, ge=0.0, le=2.0)
+
+
 class EditRequest(BaseModel):
     image_id: str | None = None   # source: an existing gallery image
     image_data: str | None = None  # source: an uploaded image as a data URL
@@ -40,6 +45,8 @@ class EditRequest(BaseModel):
     guidance: float = Field(default=edit_svc.DEFAULT_GUIDANCE, ge=0.0, le=30.0)
     seed: int | None = None
     batch: int = Field(default=1, ge=1, le=8)
+    # LoRA adapters to blend onto the edit pipe (each family-matched + downloaded).
+    loras: list[LoraRef] = []
 
 
 class EditStarted(BaseModel):
@@ -67,6 +74,7 @@ def _run(job: jobs.JobState, req: EditRequest, image, engine: UpscalerInfo) -> N
                 steps=req.steps,
                 guidance=req.guidance,
                 seed=seed_i,
+                loras=[(lora.slug, lora.weight) for lora in req.loras],
             )
             with _store.lock:
                 job.phase = "finalizing"

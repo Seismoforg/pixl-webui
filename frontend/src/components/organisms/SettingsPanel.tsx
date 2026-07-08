@@ -84,6 +84,7 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
     torch_compile: false,
     tunable_ops: true,
   });
+  const [civitaiToken, setCivitaiToken] = useState("");
   const [sdX4Steps, setSdX4Steps] = useState(50);
   const [outpaintNegative, setOutpaintNegative] = useState("");
   // Preferred default dropdown selections ("" = Auto / first downloaded).
@@ -107,6 +108,7 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
       .getSettings()
       .then((s) => {
         setToken(s.hf_token ?? "");
+        setCivitaiToken(s.civitai_token ?? "");
         setPerf({
           vae_tiling: s.vae_tiling,
           vae_slicing: s.vae_slicing,
@@ -152,6 +154,7 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
     try {
       const payload: AppSettings = {
         hf_token: token.trim() === "" ? null : token.trim(),
+        civitai_token: civitaiToken.trim() === "" ? null : civitaiToken.trim(),
         ...perf,
         sd_x4_steps: Math.max(1, Math.round(sdX4Steps) || 1),
         outpaint_negative: outpaintNegative,
@@ -220,6 +223,17 @@ export const SettingsPanel = ({ system }: SettingsPanelProps) => {
               setSaved(false);
             }}
             helperText={t("settings.hfTokenHelp")}
+            autoComplete="off"
+          />
+          <TextField
+            label={t("settings.civitaiToken")}
+            type="password"
+            value={civitaiToken}
+            onChange={(e) => {
+              setCivitaiToken(e.target.value);
+              setSaved(false);
+            }}
+            helperText={t("settings.civitaiTokenHelp")}
             autoComplete="off"
           />
 

@@ -60,12 +60,19 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             `start_file_download` fetches a single weight (upscaler .pth) reusing the
             progress state; delete/is_downloaded. GGUF path: `resolve_gguf_base_files`
             = base repo minus transformer (keeps config), `_run_gguf_download` fetches
-            base snapshot + the single `.gguf` into models/<slug> (combined size)
-- loras.py — LoRA catalog (JSON-backed like models/engines): `LoraInfo` (slug, repo_id,
-            filename, family, kind [style|character|concept|realism|accelerator|other,
-            default "other"; UI badge], trigger?, size), `all_loras()`/`get()` + catalog load/save/
-            reset. Each downloads its single `.safetensors` into models/<slug> via the
-            downloader single-file path; applied at generation time by pipeline
+            base snapshot + the single `.gguf` into models/<slug> (combined size).
+            Civitai path: `start_civitai_download` streams one civitai.com version file
+            (`/api/download/models/{id}`, auth via the `civitai_token` setting; 401/403 →
+            CIVITAI_AUTH_REQUIRED) into models/<slug> — for LoRAs not on HuggingFace
+- loras.py — LoRA catalog (JSON-backed like models/engines): `LoraInfo` (slug, repo_id
+            [empty for Civitai], filename, family [incl. "FLUX.2"], kind
+            [style|character|concept|realism|accelerator|other, default "other"; UI
+            badge], `civitai_version_id`?, trigger?, size), `all_loras()`/`get()` +
+            catalog load/save/reset. Each downloads its single `.safetensors` into
+            models/<slug> via the downloader (HF single-file, or Civitai when
+            `civitai_version_id` is set); applied at generation by pipeline + in the edit
+            service. NOTE: FLUX.2 LoRAs are 4B/9B-size-specific but share family "FLUX.2"
+            (a wrong-size pick errors at load — see technical-debt)
 - pipeline.py — diffusers load/cache + generation (step callback); cached img2img pipe
             (from_pipe) + IP-Adapter load/unload for style. LoRA: `_apply_loras` loads +
             `set_adapters` blends the requested `(slug, weight)` list on the base pipe
@@ -169,7 +176,10 @@ gallery persistence, and shared job infra. Controllers in `../routers` dispatch 
             `edit_image` = one pass (source + instruction, NO mask, NO negative — auto-resizes
             to ~1 MP internally bounding VRAM, result scaled back to source size),
             step-reported (phase "editing"); FLUX.2 decodes inline (resident, own latent
-            packing), FLUX.1 Kontext via output_type="latent" (offloaded). VRAM-coordinated:
+            packing), FLUX.1 Kontext via output_type="latent" (offloaded).
+            `_apply_edit_loras` blends `(slug, weight)` LoRAs onto the edit pipe
+            (family-matched via `engine_family`, downloaded, non-GGUF; mirrors
+            `pipeline._apply_loras`), reset on pipe rebuild. VRAM-coordinated:
             loading frees generation/upscale/inpaint, each frees it before load (mutual
             lazy-import unload). Driven by the edit job
 - quantize.py — on-the-fly bitsandbytes quantization (ADR 0019): `quant_config(level,

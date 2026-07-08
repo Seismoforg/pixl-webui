@@ -87,6 +87,7 @@ export interface DownloadProgress {
 
 export interface AppSettings {
   hf_token: string | null;
+  civitai_token: string | null; // Civitai API key for civitai.com LoRA/checkpoint downloads
   vae_tiling: boolean;
   vae_slicing: boolean;
   attention_slicing: boolean;
@@ -139,10 +140,12 @@ export interface SamplerList {
 /** The editable catalog shape for a LoRA (mirrors backend LoraInfo). */
 export interface LoraCatalogEntry {
   slug: string;
-  repo_id: string;
+  repo_id: string; // HF repo; empty for a Civitai-sourced LoRA
   filename: string;
   name: string;
-  family: string; // "SD 1.5" | "SDXL" | "FLUX" — must match the base model
+  family: string; // "SD 1.5" | "SDXL" | "FLUX" | "FLUX.2" — must match the base model
+  // Civitai model-version id; when set the weight is fetched from civitai.com.
+  civitai_version_id?: number | null;
   // Broad category badge: style | character | concept | realism | accelerator | other.
   kind: string;
   description: string;
@@ -406,6 +409,7 @@ export interface EditRequest {
   guidance?: number;
   seed?: number | null;
   batch?: number;
+  loras?: LoraRef[]; // LoRA adapters to blend onto the edit pipe
 }
 
 /** Edit job progress = the batch progress shape. */

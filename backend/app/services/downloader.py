@@ -295,6 +295,64 @@ def start_file_download(slug: str, repo_id: str, filename: str, token: str | Non
     thread.start()
 
 
+def _run_civitai_download(slug: str, version_id: int, filename: str, token: str | None) -> None:
+    """Stream a single Civitai model-version file into ``models/<slug>/<filename>``.
+
+    Civitai isn't a HuggingFace repo, so this bypasses ``huggingface_hub``: it GETs
+    ``/api/download/models/{version_id}`` (auth via the Civitai API key) and streams the
+    body to disk. Reuses the shared progress state so the UI polls it like any download.
+    """
+    import requests
+
+    target = config.model_dir(slug)
+    target.mkdir(parents=True, exist_ok=True)
+    dest = target / filename
+    url = f"https://civitai.com/api/download/models/{version_id}"
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+
+    def do_download() -> None:
+        with requests.get(url, headers=headers, stream=True, allow_redirects=True, timeout=60) as resp:
+            if resp.status_code in (401, 403):
+                raise ValueError(messages.CIVITAI_AUTH_REQUIRED)
+            resp.raise_for_status()
+            total = int(resp.headers.get("Content-Length") or 0)
+            if total:
+                with _lock:
+                    _states[slug].total_bytes = total
+                live.publish(f"download:{slug}")
+            part = dest.with_name(dest.name + ".part")
+            with open(part, "wb") as handle:
+                for chunk in resp.iter_content(chunk_size=1 << 20):
+                    if chunk:
+                        handle.write(chunk)
+            part.replace(dest)
+
+    try:
+        _download_with_retries(do_download)
+        (target / _COMPLETE_MARKER).touch()
+        with _lock:
+            _states[slug].status = "done"
+        live.publish(f"download:{slug}")
+    except Exception as exc:  # noqa: BLE001 - surfaced to the user via state
+        with _lock:
+            _states[slug].status = "error"
+            _states[slug].error = str(exc)
+        live.publish(f"download:{slug}")
+
+
+def start_civitai_download(slug: str, version_id: int, filename: str, token: str | None) -> None:
+    """Download a single Civitai file into ``models/<slug>`` on a background thread.
+
+    Same progress/state machinery as :func:`start_file_download`; used for LoRAs (and
+    later checkpoints) hosted on civitai.com rather than HuggingFace. Raises ValueError
+    if a download for the same slug is already running."""
+    _mark_downloading(slug)
+    thread = threading.Thread(
+        target=_run_civitai_download, args=(slug, version_id, filename, token), daemon=True
+    )
+    thread.start()
+
+
 def _prepare_and_download(model: ModelInfo, token: str | None) -> None:
     """Resolve the file list + size (network), then download. Runs on the thread so
     the state is already ``downloading`` before this (slow) work begins."""

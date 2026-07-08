@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { clearJob, saveJob } from "@/lib/jobPersistence";
 import { useJobRehydrate, usePublishJobActivity } from "@/lib/jobHooks";
 import { useJobTracker } from "@/lib/ws";
-import type { EditProgress, EditRequest } from "@/types";
+import type { EditProgress, EditRequest, LoraRef } from "@/types";
 import type { UpscaleSource } from "@/providers/UpscaleProvider";
 
 /**
@@ -27,6 +27,7 @@ interface EditContextValue {
   guidance: number;
   seed: string; // free text: empty = random, else a number
   batch: number;
+  loras: LoraRef[];
   setSource: (v: UpscaleSource | null) => void;
   setEngine: (v: string) => void;
   setPrompt: (v: string) => void;
@@ -34,6 +35,7 @@ interface EditContextValue {
   setGuidance: (v: number) => void;
   setSeed: (v: string) => void;
   setBatch: (v: number) => void;
+  setLoras: (v: LoraRef[]) => void;
   // job
   progress: EditProgress | null;
   resultId: string | null;
@@ -69,6 +71,7 @@ export const EditProvider = ({ onEdited, children }: EditProviderProps) => {
   const [guidance, setGuidance] = useState(2.5);
   const [seed, setSeed] = useState("");
   const [batch, setBatch] = useState(1);
+  const [loras, setLoras] = useState<LoraRef[]>([]);
 
   const [jobId, setJobId] = useState<string | null>(null);
   const [progress, setProgress] = useState<EditProgress | null>(null);
@@ -140,6 +143,7 @@ export const EditProvider = ({ onEdited, children }: EditProviderProps) => {
       guidance,
       seed,
       batch,
+      loras,
       setSource,
       setEngine,
       setPrompt,
@@ -147,6 +151,7 @@ export const EditProvider = ({ onEdited, children }: EditProviderProps) => {
       setGuidance,
       setSeed,
       setBatch,
+      setLoras,
       progress,
       resultId,
       resultIds,
@@ -163,6 +168,7 @@ export const EditProvider = ({ onEdited, children }: EditProviderProps) => {
       guidance,
       seed,
       batch,
+      loras,
       progress,
       resultId,
       resultIds,
