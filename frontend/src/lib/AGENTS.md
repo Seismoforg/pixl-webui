@@ -44,13 +44,17 @@ Backend-communication infrastructure and small pure helpers shared across the UI
               `usePublishJobActivity` (publish the running job to the activity store;
               `enabled=false` skips — Generation keeps its own phase-text effect)
 - useEngineCatalog.ts / useImageSource.ts — shared panel hooks: engine-catalog fetch
-              (`{engines, loading, error, reload}`, error distinct from empty) and the
-              deep-link source preselect + gallery-metadata fetch (used by the 4 panels)
-- useInpaintEngineSelection.ts — inpaint-kind engine selection + download lifecycle
-              shared by the reframe (outpaint) + inpaint panels: filter to inpaint
-              engines, resolve the selected one, load+pick the Settings default, apply
-              the engine's tuned defaults (panel-specific via `onEngineDefaults`), track
-              its download; returns `{inpaintEngines, selectedEngine, flowMatch, ...,
+              (`{engines, loading, error, reload}`, error distinct from empty); source
+              handling for the 4 image panels — `useImageSource` (deep-link preselect +
+              gallery-metadata fetch), `useSourcePanel` (adds picker open state, upload
+              + pick handlers, spreadable `sourcePickerProps`) and `toImageRequest`
+              (source → `{image_id, image_data}` request pair)
+- useEngineSelection.ts — engine selection + download lifecycle shared by ALL 4
+              engine panels (upscale/reframe/inpaint/edit): `filter` picks the
+              selectable kinds, `settingsKey` reads the panel's Settings default
+              (omit = none, edit), `fallbackToFirst:false` keeps upscale's
+              explicit-choice dropdown, `onEngineDefaults` applies tuned defaults;
+              tracks the download; returns `{engines, selectedEngine, flowMatch, ...,
               error, setError}`
 - useSnippets.ts — load the prompt-snippet list + `reloadSnippets` (reframe/inpaint)
 - readFile.ts — `readFileAsDataUrl(file)`: File/Blob → base64 data URL (every upload

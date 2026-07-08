@@ -2,14 +2,12 @@
 
 import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
 import BrushIcon from "@mui/icons-material/Brush";
-import ClearIcon from "@mui/icons-material/Clear";
-import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { BrushControls } from "@/components/molecules/BrushControls";
@@ -20,16 +18,12 @@ import { EnginePicker } from "@/components/organisms/EnginePicker";
 import { GalleryPicker } from "@/components/organisms/GalleryPicker";
 import { InpaintCanvas } from "@/components/organisms/InpaintCanvas";
 import { InpaintResult } from "@/components/organisms/InpaintResult";
+import { JobPanelShell } from "@/components/organisms/JobPanelShell";
 import { SnippetPromptField } from "@/components/organisms/SnippetPromptField";
 import { SourcePicker } from "@/components/organisms/SourcePicker";
 import { useTranslations } from "@/i18n";
-import { api } from "@/lib/api";
-import { formLockStyle } from "@/lib/formLock";
-import { formCardSx } from "@/lib/formCard";
-import { stickyActionBarSx } from "@/lib/stickyActionBar";
-import { readFileAsDataUrl } from "@/lib/readFile";
-import { useImageSource } from "@/lib/useImageSource";
-import { useInpaintEngineSelection } from "@/lib/useInpaintEngineSelection";
+import { useEngineSelection } from "@/lib/useEngineSelection";
+import { toImageRequest, useSourcePanel } from "@/lib/useImageSource";
 import { useSnippets } from "@/lib/useSnippets";
 import { useInpaint } from "@/providers/InpaintProvider";
 import type { UpscalerEngine } from "@/types";
@@ -94,13 +88,8 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
   } = inpaint;
 
   const { snippets, reloadSnippets } = useSnippets();
-  const [pickerOpen, setPickerOpen] = useState(false);
-
-  const { sourceMeta, setUploadDims, sourcePreview, sourceDims } = useImageSource(
-    source,
-    setSource,
-    initialImageId,
-  );
+  const src = useSourcePanel(source, setSource, initialImageId);
+  const { sourceMeta, sourcePreview } = src;
 
   // Apply the selected engine's tuned defaults (steps / guidance) when it changes —
   // otherwise the form keeps generic values for every engine (Z-Image wants 9 steps /
@@ -114,7 +103,7 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
   );
 
   const {
-    inpaintEngines,
+    engines: inpaintEngines,
     selectedEngine,
     flowMatch: fluxEngine,
     enginesLoading,
@@ -124,27 +113,23 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
     startEngineDownload,
     error,
     setError,
-  } = useInpaintEngineSelection({
+  } = useEngineSelection({
     engine,
     setEngine,
+    filter: (e) => e.kind === "inpaint",
     route: "/inpaint",
     errorKey: "inpaint.error",
+    settingsKey: (s) => s.default_outpaint_engine,
     onEngineDefaults,
   });
 
   const sourcePrompt = source?.kind === "gallery" ? sourceMeta?.prompt?.trim() || null : null;
 
-  const onUpload = (file: File | undefined) => {
-    if (!file) return;
-    readFileAsDataUrl(file).then((dataUrl) => setSource({ kind: "upload", dataUrl }));
-  };
-
   const handleRun = () => {
     if (!source || !maskData) return;
     setError(null);
     inpaint.start({
-      image_id: source.kind === "gallery" ? source.imageId : null,
-      image_data: source.kind === "upload" ? source.dataUrl : null,
+      ...toImageRequest(source),
       mask_data: maskData,
       engine: selectedEngine?.slug ?? null,
       prompt,
@@ -175,261 +160,209 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
   const displayError = error ?? jobError ?? (enginesError ? t("inpaint.engineLoadError") : null);
 
   return (
-    <Box>
-      <SectionHeading level={2} sx={{ mb: 2 }}>
-        {t("inpaint.title")}
-      </SectionHeading>
+    <JobPanelShell
+      title={t("inpaint.title")}
+      error={displayError}
+      running={running}
+      runIcon={<BrushIcon />}
+      runLabel={t("inpaint.run")}
+      runningLabel={t("inpaint.running")}
+      onRun={handleRun}
+      runDisabled={!source || !maskData || running || needDownload}
+      onClear={handleClear}
+      clearLabel={t("inpaint.clear")}
+      clearDisabled={running || (!source && !prompt && !resultId)}
+      result={<InpaintResult />}
+      after={
+        <GalleryPicker
+          open={src.pickerOpen}
+          reloadToken={reloadToken}
+          onClose={src.closePicker}
+          onPick={src.onPick}
+        />
+      }
+    >
+      <SourcePicker {...src.sourcePickerProps} />
 
-      {displayError && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {displayError}
-        </Alert>
+      {/* Inpaint model */}
+      {(enginesLoading || inpaintEngines.length > 0) && (
+        <EnginePicker
+          engine={selectedEngine}
+          engines={inpaintEngines}
+          loading={enginesLoading}
+          downloadPercent={downloadPercent}
+          onSelect={setEngine}
+          onDownload={() => selectedEngine && startEngineDownload(selectedEngine)}
+          showHeading={false}
+          label={t("inpaint.model")}
+          notInstalledLabel={t("inpaint.notInstalled")}
+          helperText={t("inpaint.modelHelp")}
+          showDetails={false}
+          needsModelText={
+            selectedEngine
+              ? t("inpaint.needsModel", { size: selectedEngine.approx_size_gb })
+              : undefined
+          }
+          downloadLabel={t("inpaint.download")}
+          downloadingLabel={t("inpaint.downloading")}
+          downloadButtonSize="small"
+          loadingMinHeight={80}
+          fullWidth={false}
+          fieldSize="small"
+          fieldSx={{ minWidth: { xs: "100%", sm: 260 } }}
+        />
       )}
 
-      <Box
-        sx={{
-          display: "grid",
-          gap: 3,
-          gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
-          alignItems: "start",
-        }}
-      >
-        <Stack spacing={3} sx={formCardSx}>
-          <fieldset disabled={running} style={formLockStyle(running)}>
-            <Stack spacing={3}>
-              <SourcePicker
-                preview={sourcePreview}
-                dims={sourceDims}
-                meta={source?.kind === "gallery" ? sourceMeta : null}
-                onPickFromGallery={() => setPickerOpen(true)}
-                onUpload={onUpload}
-                onUploadDims={setUploadDims}
-              />
-
-              {/* Inpaint model */}
-              {(enginesLoading || inpaintEngines.length > 0) && (
-                <EnginePicker
-                  engine={selectedEngine}
-                  engines={inpaintEngines}
-                  loading={enginesLoading}
-                  downloadPercent={downloadPercent}
-                  onSelect={setEngine}
-                  onDownload={() => selectedEngine && startEngineDownload(selectedEngine)}
-                  showHeading={false}
-                  label={t("inpaint.model")}
-                  notInstalledLabel={t("inpaint.notInstalled")}
-                  helperText={t("inpaint.modelHelp")}
-                  showDetails={false}
-                  needsModelText={
-                    selectedEngine
-                      ? t("inpaint.needsModel", { size: selectedEngine.approx_size_gb })
-                      : undefined
-                  }
-                  downloadLabel={t("inpaint.download")}
-                  downloadingLabel={t("inpaint.downloading")}
-                  downloadButtonSize="small"
-                  loadingMinHeight={80}
-                  fullWidth={false}
-                  fieldSize="small"
-                  fieldSx={{ minWidth: { xs: "100%", sm: 260 } }}
-                />
-              )}
-
-              {/* Mask editor + brush */}
-              <Box>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-                  <SectionHeading level={3} variant="subtitle2">
-                    {t("inpaint.mask.title")}
-                  </SectionHeading>
-                  <InfoTip text={t("inpaint.mask.help")} />
-                </Box>
-                <InpaintCanvas
-                  preview={sourcePreview}
-                  brushSize={brushSize}
-                  brushSoftness={brushSoftness}
-                  maskSoftness={maskFeather / 100}
-                  seamSoftness={seamFeather / 100}
-                  seedSoftness={seedBlur / 100}
-                  disabled={running}
-                  value={maskData}
-                  onChange={setMaskData}
-                />
-                <Box sx={{ mt: 2 }}>
-                  <BrushControls
-                    size={brushSize}
-                    softness={brushSoftness}
-                    onSize={setBrushSize}
-                    onSoftness={setBrushSoftness}
-                  />
-                </Box>
-              </Box>
-
-              {/* Feather tuning — mask gradient / composite seam / seed blur. */}
-              <Box>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-                  <SectionHeading level={3} variant="subtitle2">
-                    {t("inpaint.tuning.title")}
-                  </SectionHeading>
-                  <InfoTip text={t("inpaint.tuning.help")} />
-                </Box>
-                {/* One-tap presets that set the three sliders for common jobs. */}
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  display="block"
-                  sx={{ mb: 0.5 }}
-                >
-                  {t("inpaint.tuning.presets")}
-                </Typography>
-                <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: "wrap", gap: 1 }}>
-                  {TUNING_PRESETS.map((p) => (
-                    <Tooltip key={p.key} title={t(`inpaint.tuning.preset.${p.key}Help`)}>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        onClick={() => {
-                          setMaskFeather(p.mask);
-                          setSeamFeather(p.seam);
-                          setSeedBlur(p.seed);
-                          setMaskExpand(p.expand);
-                        }}
-                      >
-                        {t(`inpaint.tuning.preset.${p.key}`)}
-                      </Button>
-                    </Tooltip>
-                  ))}
-                </Stack>
-                <Stack spacing={1.5}>
-                  <LabeledSlider
-                    label={t("inpaint.tuning.maskExpand")}
-                    info={t("inpaint.tuning.maskExpandHelp")}
-                    value={maskExpand}
-                    min={0}
-                    max={100}
-                    onChange={setMaskExpand}
-                  />
-                  <LabeledSlider
-                    label={t("inpaint.tuning.maskFeather")}
-                    info={t("inpaint.tuning.maskFeatherHelp")}
-                    value={maskFeather}
-                    min={0}
-                    max={100}
-                    onChange={setMaskFeather}
-                  />
-                  <LabeledSlider
-                    label={t("inpaint.tuning.seamFeather")}
-                    info={t("inpaint.tuning.seamFeatherHelp")}
-                    value={seamFeather}
-                    min={0}
-                    max={100}
-                    onChange={setSeamFeather}
-                  />
-                  <LabeledSlider
-                    label={t("inpaint.tuning.seedBlur")}
-                    info={t("inpaint.tuning.seedBlurHelp")}
-                    value={seedBlur}
-                    min={0}
-                    max={100}
-                    onChange={setSeedBlur}
-                  />
-                </Stack>
-              </Box>
-
-              {/* Prompt + negative */}
-              <Box>
-                <SnippetPromptField
-                  kind="outpaint"
-                  snippets={snippets.filter((s) => s.kind === "outpaint")}
-                  value={prompt}
-                  onChange={setPrompt}
-                  onAppend={(text) => setPrompt(prompt ? `${prompt}, ${text}` : text)}
-                  onSnippetsChanged={reloadSnippets}
-                  label={t("inpaint.promptLabel")}
-                  helperText={t("inpaint.promptHelp")}
-                />
-                {sourcePrompt ? (
-                  <Button
-                    size="small"
-                    startIcon={<AutoFixHighIcon />}
-                    onClick={() => setPrompt(sourcePrompt)}
-                    sx={{ mt: 1 }}
-                  >
-                    {t("inpaint.autofill")}
-                  </Button>
-                ) : null}
-                <Box sx={{ mt: 2 }}>
-                  <SnippetPromptField
-                    kind="outpaint_negative"
-                    snippets={snippets.filter((s) => s.kind === "outpaint_negative")}
-                    value={negative}
-                    onChange={setNegative}
-                    onAppend={(text) => setNegative(negative ? `${negative}, ${text}` : text)}
-                    onSnippetsChanged={reloadSnippets}
-                    label={t("inpaint.negativeLabel")}
-                    helperText={t("inpaint.negativeHelp")}
-                  />
-                </Box>
-              </Box>
-
-              {/* Generation parameters */}
-              <GenerationParams
-                keyPrefix="inpaint.params"
-                steps={steps}
-                onSteps={setSteps}
-                guidance={guidance}
-                onGuidance={setGuidance}
-                batch={batch}
-                onBatch={setBatch}
-                seed={seed}
-                onSeed={setSeed}
-                sampler={
-                  fluxEngine ? undefined : { list: samplers, value: sampler, onChange: setSampler }
-                }
-                refine={{
-                  checked: refine,
-                  onChange: setRefine,
-                  steps: refineSteps,
-                  onSteps: setRefineSteps,
-                }}
-              />
-            </Stack>
-          </fieldset>
-
-          <Stack direction="row" spacing={1} sx={stickyActionBarSx}>
-            <Button
-              variant="contained"
-              size="large"
-              startIcon={<BrushIcon />}
-              onClick={handleRun}
-              disabled={!source || !maskData || running || needDownload}
-              sx={{ flexGrow: 1 }}
-            >
-              {running ? t("inpaint.running") : t("inpaint.run")}
-            </Button>
-            <Button
-              variant="outlined"
-              size="large"
-              startIcon={<ClearIcon />}
-              onClick={handleClear}
-              disabled={running || (!source && !prompt && !resultId)}
-            >
-              {t("inpaint.clear")}
-            </Button>
-          </Stack>
-        </Stack>
-
-        <InpaintResult />
+      {/* Mask editor + brush */}
+      <Box>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
+          <SectionHeading level={3} variant="subtitle2">
+            {t("inpaint.mask.title")}
+          </SectionHeading>
+          <InfoTip text={t("inpaint.mask.help")} />
+        </Box>
+        <InpaintCanvas
+          preview={sourcePreview}
+          brushSize={brushSize}
+          brushSoftness={brushSoftness}
+          maskSoftness={maskFeather / 100}
+          seamSoftness={seamFeather / 100}
+          seedSoftness={seedBlur / 100}
+          disabled={running}
+          value={maskData}
+          onChange={setMaskData}
+        />
+        <Box sx={{ mt: 2 }}>
+          <BrushControls
+            size={brushSize}
+            softness={brushSoftness}
+            onSize={setBrushSize}
+            onSoftness={setBrushSoftness}
+          />
+        </Box>
       </Box>
 
-      <GalleryPicker
-        open={pickerOpen}
-        reloadToken={reloadToken}
-        onClose={() => setPickerOpen(false)}
-        onPick={(img) => {
-          setSource({ kind: "gallery", imageId: img.id, preview: api.imageFileUrl(img.id) });
-          setPickerOpen(false);
+      {/* Feather tuning — mask gradient / composite seam / seed blur. */}
+      <Box>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
+          <SectionHeading level={3} variant="subtitle2">
+            {t("inpaint.tuning.title")}
+          </SectionHeading>
+          <InfoTip text={t("inpaint.tuning.help")} />
+        </Box>
+        {/* One-tap presets that set the three sliders for common jobs. */}
+        <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
+          {t("inpaint.tuning.presets")}
+        </Typography>
+        <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: "wrap", gap: 1 }}>
+          {TUNING_PRESETS.map((p) => (
+            <Tooltip key={p.key} title={t(`inpaint.tuning.preset.${p.key}Help`)}>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => {
+                  setMaskFeather(p.mask);
+                  setSeamFeather(p.seam);
+                  setSeedBlur(p.seed);
+                  setMaskExpand(p.expand);
+                }}
+              >
+                {t(`inpaint.tuning.preset.${p.key}`)}
+              </Button>
+            </Tooltip>
+          ))}
+        </Stack>
+        <Stack spacing={1.5}>
+          <LabeledSlider
+            label={t("inpaint.tuning.maskExpand")}
+            info={t("inpaint.tuning.maskExpandHelp")}
+            value={maskExpand}
+            min={0}
+            max={100}
+            onChange={setMaskExpand}
+          />
+          <LabeledSlider
+            label={t("inpaint.tuning.maskFeather")}
+            info={t("inpaint.tuning.maskFeatherHelp")}
+            value={maskFeather}
+            min={0}
+            max={100}
+            onChange={setMaskFeather}
+          />
+          <LabeledSlider
+            label={t("inpaint.tuning.seamFeather")}
+            info={t("inpaint.tuning.seamFeatherHelp")}
+            value={seamFeather}
+            min={0}
+            max={100}
+            onChange={setSeamFeather}
+          />
+          <LabeledSlider
+            label={t("inpaint.tuning.seedBlur")}
+            info={t("inpaint.tuning.seedBlurHelp")}
+            value={seedBlur}
+            min={0}
+            max={100}
+            onChange={setSeedBlur}
+          />
+        </Stack>
+      </Box>
+
+      {/* Prompt + negative */}
+      <Box>
+        <SnippetPromptField
+          kind="outpaint"
+          snippets={snippets.filter((s) => s.kind === "outpaint")}
+          value={prompt}
+          onChange={setPrompt}
+          onAppend={(text) => setPrompt(prompt ? `${prompt}, ${text}` : text)}
+          onSnippetsChanged={reloadSnippets}
+          label={t("inpaint.promptLabel")}
+          helperText={t("inpaint.promptHelp")}
+        />
+        {sourcePrompt ? (
+          <Button
+            size="small"
+            startIcon={<AutoFixHighIcon />}
+            onClick={() => setPrompt(sourcePrompt)}
+            sx={{ mt: 1 }}
+          >
+            {t("inpaint.autofill")}
+          </Button>
+        ) : null}
+        <Box sx={{ mt: 2 }}>
+          <SnippetPromptField
+            kind="outpaint_negative"
+            snippets={snippets.filter((s) => s.kind === "outpaint_negative")}
+            value={negative}
+            onChange={setNegative}
+            onAppend={(text) => setNegative(negative ? `${negative}, ${text}` : text)}
+            onSnippetsChanged={reloadSnippets}
+            label={t("inpaint.negativeLabel")}
+            helperText={t("inpaint.negativeHelp")}
+          />
+        </Box>
+      </Box>
+
+      {/* Generation parameters */}
+      <GenerationParams
+        keyPrefix="inpaint.params"
+        steps={steps}
+        onSteps={setSteps}
+        guidance={guidance}
+        onGuidance={setGuidance}
+        batch={batch}
+        onBatch={setBatch}
+        seed={seed}
+        onSeed={setSeed}
+        sampler={fluxEngine ? undefined : { list: samplers, value: sampler, onChange: setSampler }}
+        refine={{
+          checked: refine,
+          onChange: setRefine,
+          steps: refineSteps,
+          onSteps: setRefineSteps,
         }}
       />
-    </Box>
+    </JobPanelShell>
   );
 };

@@ -1,36 +1,25 @@
 "use client";
 
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
-import ClearIcon from "@mui/icons-material/Clear";
-import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
-import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
-import Typography from "@mui/material/Typography";
-import { useCallback, useEffect, useState } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { InfoTip } from "@/components/molecules/InfoTip";
 import { LabeledSlider } from "@/components/molecules/LabeledSlider";
 import { EnginePicker } from "@/components/organisms/EnginePicker";
 import { GalleryPicker } from "@/components/organisms/GalleryPicker";
+import { JobPanelShell } from "@/components/organisms/JobPanelShell";
 import { SnippetPromptField } from "@/components/organisms/SnippetPromptField";
 import { SourcePicker } from "@/components/organisms/SourcePicker";
 import { UpscaleResult } from "@/components/organisms/UpscaleResult";
 import { useTranslations } from "@/i18n";
-import { api } from "@/lib/api";
-import { formLockStyle } from "@/lib/formLock";
-import { formCardSx } from "@/lib/formCard";
-import { readFileAsDataUrl } from "@/lib/readFile";
-import { stickyActionBarSx } from "@/lib/stickyActionBar";
-import { useEngineCatalog } from "@/lib/useEngineCatalog";
-import { useImageSource } from "@/lib/useImageSource";
+import { useEngineSelection } from "@/lib/useEngineSelection";
+import { toImageRequest, useSourcePanel } from "@/lib/useImageSource";
+import { useSnippets } from "@/lib/useSnippets";
 import { useUpscale } from "@/providers/UpscaleProvider";
-import { trackUpscalerDownload, useDownloads } from "@/providers/DownloadProvider";
-import type { PromptSnippet, UpscalerEngine } from "@/types";
 
 interface UpscalePanelProps {
   reloadToken: number;
@@ -61,110 +50,46 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
     setFidelity,
   } = upscale;
 
-  const downloads = useDownloads();
+  const { snippets, reloadSnippets } = useSnippets();
+  const src = useSourcePanel(source, setSource, initialImageId);
+
+  // Only the actual upscaler kinds are selectable here: inpaint engines belong to the
+  // Reframe/Inpaint pages and edit engines to Post Processing (the upscale service
+  // rejects them at run time).
   const {
-    engines,
-    loading: enginesLoading,
-    error: enginesError,
-    reload: reloadEngines,
-  } = useEngineCatalog();
-  const [snippets, setSnippets] = useState<PromptSnippet[]>([]);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // Preferred default upscaler from Settings (applied only when downloaded).
-  const [defaultUpscaler, setDefaultUpscaler] = useState<string | null>(null);
-  const [settingsLoaded, setSettingsLoaded] = useState(false);
+    engines: selectableEngines,
+    selectedEngine,
+    enginesLoading,
+    enginesError,
+    downloadPercent,
+    startEngineDownload,
+    error,
+    setError,
+  } = useEngineSelection({
+    engine: engineSlug,
+    setEngine: setEngineSlug,
+    filter: (e) => ["realesrgan", "sd_x4", "face_restore"].includes(e.kind),
+    route: "/upscale",
+    errorKey: "upscale.error",
+    settingsKey: (s) => s.default_upscaler,
+    fallbackToFirst: false,
+  });
 
-  const { sourceMeta, setUploadDims, sourcePreview, sourceDims } = useImageSource(
-    source,
-    setSource,
-    initialImageId,
-  );
-
-  const reloadSnippets = useCallback(() => {
-    api
-      .getPromptSnippets()
-      .then((all) => setSnippets(all.filter((s) => s.kind === "upscale")))
-      .catch(() => setSnippets([]));
-  }, []);
-
-  useEffect(() => {
-    reloadSnippets();
-  }, [reloadSnippets]);
-
-  // Load the preferred default upscaler from Settings (best-effort).
-  useEffect(() => {
-    api
-      .getSettings()
-      .then((s) => setDefaultUpscaler(s.default_upscaler))
-      .catch(() => setDefaultUpscaler(null))
-      .finally(() => setSettingsLoaded(true));
-  }, []);
-
-  // Default the engine once loaded: the Settings default when downloaded, else the
-  // first downloaded selectable engine (else the first selectable so the dropdown
-  // isn't empty and its download prompt shows). Waits for Settings so it wins.
-  useEffect(() => {
-    if (engineSlug !== "" || !settingsLoaded) return;
-    const selectable = engines.filter((e) => e.kind !== "inpaint");
-    if (selectable.length === 0) return;
-    const downloaded = selectable.filter((e) => e.downloaded);
-    const target =
-      downloaded.find((e) => e.slug === defaultUpscaler) ?? downloaded[0] ?? selectable[0];
-    setEngineSlug(target.slug);
-  }, [engines, engineSlug, defaultUpscaler, settingsLoaded, setEngineSlug]);
-
-  // Inpaint engines aren't selectable upscalers — they populate the outpaint-model
-  // dropdown, which now lives on the Reframe page — so they're filtered out here.
-  const selectableEngines = engines.filter((e) => e.kind !== "inpaint");
-  const selectedEngine = selectableEngines.find((e) => e.slug === engineSlug) ?? null;
   // CodeFormer face restoration has its own control (fidelity) and no tiling/prompt.
   const isFaceRestore = selectedEngine?.kind === "face_restore";
-  // Engine downloads share the app-level tracker (survive navigation + feed the
-  // off-route bubble). Read this engine's progress for the inline bar.
-  const engineDl = selectedEngine ? downloads.progress[selectedEngine.slug] : undefined;
-  const downloadPercent = engineDl && engineDl.status === "downloading" ? engineDl.percent : null;
-
-  const startEngineDownload = async (eng: UpscalerEngine) => {
-    setError(null);
-    try {
-      await trackUpscalerDownload(downloads.track, eng, "/upscale");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const handleDownload = () => {
-    if (selectedEngine) startEngineDownload(selectedEngine);
-  };
-
-  // Refresh the engine list once this engine's download finishes (so `downloaded`
-  // flips), and surface a download error.
-  useEffect(() => {
-    if (engineDl?.status === "done") reloadEngines();
-    if (engineDl?.status === "error") setError(engineDl.error ?? t("upscale.error"));
-  }, [engineDl?.status, engineDl?.error, reloadEngines, t]);
-
-  const onUpload = (file: File | undefined) => {
-    if (!file) return;
-    readFileAsDataUrl(file).then((dataUrl) => setSource({ kind: "upload", dataUrl }));
-  };
 
   const handleRun = () => {
     if (!selectedEngine || !source) return;
     setError(null);
     upscale.start({
       engine: selectedEngine.slug,
-      image_id: source.kind === "gallery" ? source.imageId : null,
-      image_data: source.kind === "upload" ? source.dataUrl : null,
+      ...toImageRequest(source),
       prompt,
       tile,
       sd_x4_steps: selectedEngine.kind === "sd_x4" ? sdX4Steps : null,
       fidelity: isFaceRestore ? fidelity : null,
     });
   };
-
-  const displayError = error ?? jobError ?? (enginesError ? t("upscale.engineLoadError") : null);
 
   const handleClear = () => {
     setSource(null);
@@ -173,154 +98,109 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
     upscale.reset();
   };
 
-  return (
-    <Box>
-      <SectionHeading level={2} sx={{ mb: 2 }}>
-        {t("upscale.title")}
-      </SectionHeading>
+  const displayError = error ?? jobError ?? (enginesError ? t("upscale.engineLoadError") : null);
 
-      {displayError && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {displayError}
-        </Alert>
+  return (
+    <JobPanelShell
+      title={t("upscale.title")}
+      error={displayError}
+      running={running}
+      runIcon={<AutoAwesomeIcon />}
+      runLabel={t("upscale.run")}
+      runningLabel={t("upscale.running")}
+      onRun={handleRun}
+      runDisabled={!selectedEngine || !selectedEngine.downloaded || !source || running}
+      onClear={handleClear}
+      clearLabel={t("upscale.clear")}
+      clearDisabled={running || (!source && !prompt && !resultId)}
+      result={<UpscaleResult />}
+      after={
+        <GalleryPicker
+          open={src.pickerOpen}
+          reloadToken={reloadToken}
+          onClose={src.closePicker}
+          onPick={src.onPick}
+        />
+      }
+    >
+      <EnginePicker
+        engine={selectedEngine}
+        engines={selectableEngines}
+        loading={enginesLoading}
+        downloadPercent={downloadPercent}
+        onSelect={setEngineSlug}
+        onDownload={() => selectedEngine && startEngineDownload(selectedEngine)}
+      />
+
+      <SourcePicker {...src.sourcePickerProps} />
+
+      {/* Upscaler prompt — guides the diffusion upscaler (SD x4) toward detail. */}
+      {selectedEngine?.prompt_capable && (
+        <SnippetPromptField
+          kind="upscale"
+          snippets={snippets.filter((s) => s.kind === "upscale")}
+          value={prompt}
+          onChange={setPrompt}
+          onAppend={(text) => setPrompt(prompt ? `${prompt}, ${text}` : text)}
+          onSnippetsChanged={reloadSnippets}
+          label={t("upscale.prompt.label")}
+          helperText={t("upscale.prompt.help")}
+        />
       )}
 
-      <Box
-        sx={{
-          display: "grid",
-          gap: 3,
-          gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
-          alignItems: "start",
-        }}
-      >
-        <Stack spacing={3} sx={formCardSx}>
-          {/* Lock the controls while a job runs (see formLockStyle). */}
-          <fieldset disabled={running} style={formLockStyle(running)}>
-            <Stack spacing={3}>
-              <EnginePicker
-                engine={selectedEngine}
-                engines={selectableEngines}
-                loading={enginesLoading}
-                downloadPercent={downloadPercent}
-                onSelect={setEngineSlug}
-                onDownload={handleDownload}
-              />
+      {/* SD x4 step count — per-run override of the global default. */}
+      {selectedEngine?.kind === "sd_x4" && (
+        <Box>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
+            <SectionHeading level={3} variant="subtitle2">
+              {t("upscale.steps.label")}
+            </SectionHeading>
+            <InfoTip text={t("upscale.steps.help")} />
+          </Box>
+          <TextField
+            type="number"
+            size="small"
+            value={sdX4Steps}
+            onChange={(e) => setSdX4Steps(Number(e.target.value))}
+            inputProps={{ min: 1, max: 150, step: 1 }}
+            sx={{ maxWidth: 140 }}
+          />
+        </Box>
+      )}
 
-              <SourcePicker
-                preview={sourcePreview}
-                dims={sourceDims}
-                meta={source?.kind === "gallery" ? sourceMeta : null}
-                onPickFromGallery={() => setPickerOpen(true)}
-                onUpload={onUpload}
-                onUploadDims={setUploadDims}
-              />
+      {/* Fidelity — CodeFormer identity↔smoothness weight (face restoration). */}
+      {isFaceRestore && (
+        <LabeledSlider
+          label={t("upscale.fidelity.label")}
+          value={fidelity}
+          min={0}
+          max={1}
+          step={0.05}
+          info={t("upscale.fidelity.help")}
+          onChange={setFidelity}
+        />
+      )}
 
-              {/* Upscaler prompt — guides the diffusion upscaler (SD x4) toward detail. */}
-              {selectedEngine?.prompt_capable && (
-                <SnippetPromptField
-                  kind="upscale"
-                  snippets={snippets}
-                  value={prompt}
-                  onChange={setPrompt}
-                  onAppend={(text) => setPrompt(prompt ? `${prompt}, ${text}` : text)}
-                  onSnippetsChanged={reloadSnippets}
-                  label={t("upscale.prompt.label")}
-                  helperText={t("upscale.prompt.help")}
-                />
-              )}
-
-              {/* SD x4 step count — per-run override of the global default. */}
-              {selectedEngine?.kind === "sd_x4" && (
-                <Box>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-                    <SectionHeading level={3} variant="subtitle2">
-                      {t("upscale.steps.label")}
-                    </SectionHeading>
-                    <InfoTip text={t("upscale.steps.help")} />
-                  </Box>
-                  <TextField
-                    type="number"
-                    size="small"
-                    value={sdX4Steps}
-                    onChange={(e) => setSdX4Steps(Number(e.target.value))}
-                    inputProps={{ min: 1, max: 150, step: 1 }}
-                    sx={{ maxWidth: 140 }}
-                  />
-                </Box>
-              )}
-
-              {/* Fidelity — CodeFormer identity↔smoothness weight (face restoration). */}
-              {isFaceRestore && (
-                <LabeledSlider
-                  label={t("upscale.fidelity.label")}
-                  value={fidelity}
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  info={t("upscale.fidelity.help")}
-                  onChange={setFidelity}
-                />
-              )}
-
-              {/* Tiling option — not applicable to face restoration (no tiling). */}
-              {!isFaceRestore && (
-                <Box>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
-                    <SectionHeading level={3} variant="subtitle2">
-                      {t("upscale.tiling.label")}
-                    </SectionHeading>
-                    <InfoTip text={t("upscale.tiling.help")} />
-                  </Box>
-                  <ToggleButtonGroup
-                    size="small"
-                    exclusive
-                    value={tile ? "auto" : "off"}
-                    onChange={(_, v) => v !== null && setTile(v === "auto")}
-                  >
-                    <ToggleButton value="auto">{t("upscale.tiling.auto")}</ToggleButton>
-                    <ToggleButton value="off">{t("upscale.tiling.off")}</ToggleButton>
-                  </ToggleButtonGroup>
-                </Box>
-              )}
-            </Stack>
-          </fieldset>
-
-          <Stack direction="row" spacing={1} sx={stickyActionBarSx}>
-            <Button
-              variant="contained"
-              size="large"
-              startIcon={<AutoAwesomeIcon />}
-              onClick={handleRun}
-              disabled={!selectedEngine || !selectedEngine.downloaded || !source || running}
-              sx={{ flexGrow: 1 }}
-            >
-              {running ? t("upscale.running") : t("upscale.run")}
-            </Button>
-            <Button
-              variant="outlined"
-              size="large"
-              startIcon={<ClearIcon />}
-              onClick={handleClear}
-              disabled={running || (!source && !prompt && !resultId)}
-            >
-              {t("upscale.clear")}
-            </Button>
-          </Stack>
-        </Stack>
-
-        {/* Result */}
-        <UpscaleResult />
-      </Box>
-
-      <GalleryPicker
-        open={pickerOpen}
-        reloadToken={reloadToken}
-        onClose={() => setPickerOpen(false)}
-        onPick={(img) => {
-          setSource({ kind: "gallery", imageId: img.id, preview: api.imageFileUrl(img.id) });
-          setPickerOpen(false);
-        }}
-      />
-    </Box>
+      {/* Tiling option — not applicable to face restoration (no tiling). */}
+      {!isFaceRestore && (
+        <Box>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 1 }}>
+            <SectionHeading level={3} variant="subtitle2">
+              {t("upscale.tiling.label")}
+            </SectionHeading>
+            <InfoTip text={t("upscale.tiling.help")} />
+          </Box>
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={tile ? "auto" : "off"}
+            onChange={(_, v) => v !== null && setTile(v === "auto")}
+          >
+            <ToggleButton value="auto">{t("upscale.tiling.auto")}</ToggleButton>
+            <ToggleButton value="off">{t("upscale.tiling.off")}</ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+      )}
+    </JobPanelShell>
   );
 };

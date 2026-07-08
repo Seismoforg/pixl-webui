@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { Sampler } from "@/types";
 
-export const useSamplers = (onDefault: (id: string) => void): Sampler[] => {
+export const useSamplers = (onDefault?: (id: string) => void): Sampler[] => {
   const [samplers, setSamplers] = useState<Sampler[]>([]);
   const cb = useRef(onDefault);
   cb.current = onDefault;
@@ -18,7 +18,7 @@ export const useSamplers = (onDefault: (id: string) => void): Sampler[] => {
       .getSamplers()
       .then((list) => {
         setSamplers(list.samplers);
-        cb.current(list.default);
+        cb.current?.(list.default);
       })
       .catch(() => setSamplers([]));
   }, []);

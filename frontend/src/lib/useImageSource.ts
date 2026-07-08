@@ -1,9 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
+import { readFileAsDataUrl } from "@/lib/readFile";
 import type { GalleryImage, UpscaleSource } from "@/types";
+
+/** The request's source-image pair from the chosen source (gallery id XOR data URL). */
+export const toImageRequest = (source: UpscaleSource) => ({
+  image_id: source.kind === "gallery" ? source.imageId : null,
+  image_data: source.kind === "upload" ? source.dataUrl : null,
+});
 
 interface UseImageSourceResult {
   /** Gallery metadata for the current source (full-res size + seed/prompt/model), null for uploads. */
@@ -71,4 +78,56 @@ export const useImageSource = (
       : uploadDims;
 
   return { sourceMeta, setUploadDims, sourcePreview, sourceDims };
+};
+
+/**
+ * The full source-image panel bundle for the 4 image-source panels: useImageSource
+ * plus the gallery-picker open state, the upload handler and the pick handler that
+ * every panel previously wired identically. `sourcePickerProps` spreads straight
+ * into `<SourcePicker>`; the panel renders `<GalleryPicker open={pickerOpen}
+ * reloadToken={…} onClose={closePicker} onPick={onPick} />`.
+ */
+export const useSourcePanel = (
+  source: UpscaleSource | null,
+  setSource: (v: UpscaleSource | null) => void,
+  initialImageId?: string | null,
+) => {
+  const imageSource = useImageSource(source, setSource, initialImageId);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const onUpload = useCallback(
+    (file: File | undefined) => {
+      if (!file) return;
+      readFileAsDataUrl(file).then((dataUrl) => setSource({ kind: "upload", dataUrl }));
+    },
+    [setSource],
+  );
+
+  const onPick = useCallback(
+    (img: GalleryImage) => {
+      setSource({ kind: "gallery", imageId: img.id, preview: api.imageFileUrl(img.id) });
+      setPickerOpen(false);
+    },
+    [setSource],
+  );
+
+  const closePicker = useCallback(() => setPickerOpen(false), []);
+  const openPicker = useCallback(() => setPickerOpen(true), []);
+
+  return {
+    ...imageSource,
+    pickerOpen,
+    openPicker,
+    closePicker,
+    onUpload,
+    onPick,
+    sourcePickerProps: {
+      preview: imageSource.sourcePreview,
+      dims: imageSource.sourceDims,
+      meta: source?.kind === "gallery" ? imageSource.sourceMeta : null,
+      onPickFromGallery: openPicker,
+      onUpload,
+      onUploadDims: imageSource.setUploadDims,
+    },
+  };
 };

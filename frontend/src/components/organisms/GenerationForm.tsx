@@ -6,7 +6,6 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Divider from "@mui/material/Divider";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import MenuItem from "@mui/material/MenuItem";
-import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
@@ -16,12 +15,14 @@ import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { FieldWithInfo } from "@/components/molecules/FieldWithInfo";
 import { InfoTip } from "@/components/molecules/InfoTip";
 import { LabeledSlider } from "@/components/molecules/LabeledSlider";
+import { ModelSelect } from "@/components/molecules/ModelSelect";
 import { LoraPicker } from "@/components/organisms/LoraPicker";
 import { PromptSnippets } from "@/components/organisms/PromptSnippets";
 import { ReferenceImage } from "@/components/organisms/ReferenceImage";
 import { useGeneration } from "@/providers/GenerationProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import { formCardSx } from "@/lib/formCard";
 import { formLockStyle } from "@/lib/formLock";
 import { stickyActionBarSx } from "@/lib/stickyActionBar";
 import { supportsSamplerChoice, supportsStyleTransfer } from "@/lib/modelFamily";
@@ -88,7 +89,9 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
   };
 
   return (
-    <Paper variant="outlined" sx={{ p: 2.5 }}>
+    // The shared form-card background (was an identical inline <Paper>): all form
+    // pages read the same.
+    <Box sx={formCardSx}>
       <Stack spacing={3} component="form" onSubmit={handleSubmit}>
         {/* Lock every control while a job runs so params can't change mid-run.
             fieldset[disabled] blocks native inputs + keyboard; pointer-events
@@ -97,19 +100,13 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
           <Stack spacing={3}>
             <FormSection title={t("generate.sections.model")}>
               <FieldWithInfo info={t("generate.info.model")}>
-                <TextField
-                  select
-                  label={t("generate.model")}
+                <ModelSelect
+                  models={downloaded}
                   value={gen.slug}
-                  onChange={(e) => gen.changeModel(e.target.value)}
+                  onChange={gen.changeModel}
+                  label={t("generate.model")}
                   sx={{ flexGrow: 1 }}
-                >
-                  {downloaded.map((m) => (
-                    <MenuItem key={m.slug} value={m.slug}>
-                      {m.name}
-                    </MenuItem>
-                  ))}
-                </TextField>
+                />
               </FieldWithInfo>
             </FormSection>
 
@@ -303,6 +300,6 @@ export const GenerationForm = ({ downloaded }: GenerationFormProps) => {
           </Button>
         </Box>
       </Stack>
-    </Paper>
+    </Box>
   );
 };

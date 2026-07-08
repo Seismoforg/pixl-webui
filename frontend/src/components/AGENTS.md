@@ -42,6 +42,7 @@ Atomic-design React component library for the Pixl WebUI frontend: presentationa
   + caller-supplied badges slot + on-disk install action [Download / Downloaded+Delete]
   + catalog actions [Edit / Remove-from-catalog] + progress bar). Presentational; used
   by CatalogEditor's rich display path
+- ModelSelect — downloaded-model dropdown (generate + compare forms)
 - GalleryCard — gallery image card (inline regenerate/upscale/delete + detail dialog);
   selection checkbox overlay (`selected`/`onToggleSelect`) for multi-select bulk delete
 - InfoTip — info tooltip
@@ -95,6 +96,11 @@ Atomic-design React component library for the Pixl WebUI frontend: presentationa
   `CatalogEntryRow`s (badges + install/disk-delete via DownloadProvider) grouped by
   family/kind; omit it → plain text-list fallback. LoRA editor adds a `kind` type
   select + badge
+- JobPanelShell — the shared page shell of the 5 job panels (compare/upscale/
+  reframe/inpaint/edit): heading + error alert + two-column grid with the form card
+  (run-locked fieldset + sticky Run/Clear bar; `beforeActions` slot, `gate` replaces
+  the grid for compare's model gates, `after` hosts modals). Panels contribute only
+  their fields, result column and handlers
 - EnginePicker — shared engine picker (upscale/outpaint/inpaint/edit); defaults
   reproduce the Upscale look, compact callers override label/helperText/showDetails
 - BatchImageResult — shared sticky batch-image result panel (icon/keyPrefix/running/
