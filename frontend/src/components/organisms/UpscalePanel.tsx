@@ -22,6 +22,7 @@ import { UpscaleResult } from "@/components/organisms/UpscaleResult";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { formLockStyle } from "@/lib/formLock";
+import { readFileAsDataUrl } from "@/lib/readFile";
 import { useEngineCatalog } from "@/lib/useEngineCatalog";
 import { useImageSource } from "@/lib/useImageSource";
 import { useUpscale } from "@/providers/UpscaleProvider";
@@ -139,9 +140,7 @@ export const UpscalePanel = ({ reloadToken, initialImageId }: UpscalePanelProps)
 
   const onUpload = (file: File | undefined) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setSource({ kind: "upload", dataUrl: reader.result as string });
-    reader.readAsDataURL(file);
+    readFileAsDataUrl(file).then((dataUrl) => setSource({ kind: "upload", dataUrl }));
   };
 
   const handleRun = () => {

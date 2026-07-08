@@ -93,6 +93,7 @@ downloads and runs text-to-image generation with HuggingFace `diffusers`.
                           GGUF-quantized FLUX / SD 3.x entries
 - app/models_catalog.json — bundled default generation-model catalog
 - app/engines_catalog.json — bundled default upscale/outpaint engine catalog
+- app/loras_catalog.json  — bundled default LoRA-adapter catalog (HF + Civitai entries)
 - app/samplers.py       — sampler (diffusers scheduler) registry + apply_sampler
 - app/messages.py       — centralised English user-facing strings (i18n-ready)
 - app/live.py           — in-process pub/sub hub: producer threads publish(key) to
@@ -206,4 +207,5 @@ load/blend); torch (CUDA/ROCm/CPU) installed by the root installer.
 # Related Modules
 - Parent: ../  (project root)
 - Peer: ../frontend (consumes this API)
+- Child: ./app/routers (HTTP controllers)
 - Child: ./app/services (business logic)

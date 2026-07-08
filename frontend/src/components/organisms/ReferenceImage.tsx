@@ -20,6 +20,7 @@ import { GalleryPicker } from "@/components/organisms/GalleryPicker";
 import { useGeneration } from "@/providers/GenerationProvider";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
+import { readFileAsDataUrl } from "@/lib/readFile";
 import type { GalleryImage } from "@/types";
 
 interface ReferenceImageProps {
@@ -48,12 +49,10 @@ export const ReferenceImage = ({ styleSupported }: ReferenceImageProps) => {
 
   const onFile = (file: File | undefined) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      gen.setReferenceImage(reader.result as string);
+    readFileAsDataUrl(file).then((dataUrl) => {
+      gen.setReferenceImage(dataUrl);
       gen.setReferenceMeta(null);
-    };
-    reader.readAsDataURL(file);
+    });
   };
 
   // Use a gallery image as the reference: fetch its file and store it as a data URL
@@ -62,12 +61,9 @@ export const ReferenceImage = ({ styleSupported }: ReferenceImageProps) => {
     setPickerOpen(false);
     const res = await fetch(api.imageFileUrl(img.id));
     const blob = await res.blob();
-    const reader = new FileReader();
-    reader.onload = () => {
-      gen.setReferenceImage(reader.result as string);
-      gen.setReferenceMeta(img);
-    };
-    reader.readAsDataURL(blob);
+    const dataUrl = await readFileAsDataUrl(blob);
+    gen.setReferenceImage(dataUrl);
+    gen.setReferenceMeta(img);
   };
 
   const onRemove = () => {

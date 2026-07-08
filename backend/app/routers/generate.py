@@ -17,13 +17,9 @@ from pydantic import BaseModel, Field
 from .. import live, messages, samplers
 from ..catalog import get_model
 from ..services import downloader, gallery, job_guard, jobs, loras as loras_svc, pipeline
+from ..services.jobs import LoraRef, PhaseTimings
 
 router = APIRouter(prefix="/api", tags=["generate"])
-
-
-class LoraRef(BaseModel):
-    slug: str
-    weight: float = Field(default=1.0, ge=0.0, le=2.0)
 
 
 class GenerateRequest(BaseModel):
@@ -54,15 +50,6 @@ class GenerateStarted(BaseModel):
 class SamplerList(BaseModel):
     samplers: list[samplers.Sampler]
     default: str
-
-
-class PhaseTimings(BaseModel):
-    """Per-image wall-clock breakdown (seconds): how long each phase took."""
-
-    load: float  # model load + prompt encoding (until the first denoising step)
-    generate: float  # the denoising steps
-    decode: float  # VAE decode of the latents into the final image ("finalizing")
-    total: float  # load + generate + decode
 
 
 class GenerationProgress(BaseModel):
@@ -286,12 +273,18 @@ def start_generation(req: GenerateRequest) -> GenerateStarted:
         if not downloader.is_downloaded(ref.slug):
             raise HTTPException(400, messages.LORA_NOT_DOWNLOADED.format(slug=ref.slug))
 
+    # An img2img reference run denoises only int(steps * strength) steps (diffusers
+    # get_timesteps), so track that as the total — else progress caps below 100% and
+    # the "finalizing" phase never fires. Style (IP-Adapter) + no-reference run full steps.
+    is_img2img = init_image is not None and req.reference_mode == "img2img"
+    total_steps = max(1, int(req.steps * req.strength)) if is_img2img else req.steps
+
     with _store.lock:
         seed = req.seed if req.seed is not None else random.randint(0, jobs.SEED_MAX)
         job = _Job(
             _store.new_id(),
             seed=seed,
-            total_steps=req.steps,
+            total_steps=total_steps,
             prompt=req.prompt,
             batch_size=req.batch,
         )

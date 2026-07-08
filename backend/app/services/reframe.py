@@ -8,8 +8,8 @@ Given an image and a target ratio, produce the reframed image using a strategy:
 * ``edge``   — extend the border pixels (reflect/replicate) to fill the remainder.
 
 For ``outpaint`` the geometry is exposed separately: :func:`extend_size` (canvas
-that contains the image and hits the target ratio, extending ONE axis) and
-:func:`outpaint_regions` / :func:`build_mask` used by the outpaint service.
+that contains the image and hits the target ratio, extending ONE axis) plus
+:func:`build_mask` / :func:`feathered_keep_mask` used by the outpaint service.
 """
 from __future__ import annotations
 

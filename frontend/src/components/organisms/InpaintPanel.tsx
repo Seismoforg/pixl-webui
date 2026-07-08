@@ -9,7 +9,7 @@ import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { BrushControls } from "@/components/molecules/BrushControls";
@@ -25,11 +25,12 @@ import { SourcePicker } from "@/components/organisms/SourcePicker";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { formLockStyle } from "@/lib/formLock";
-import { useEngineCatalog } from "@/lib/useEngineCatalog";
+import { readFileAsDataUrl } from "@/lib/readFile";
 import { useImageSource } from "@/lib/useImageSource";
+import { useInpaintEngineSelection } from "@/lib/useInpaintEngineSelection";
+import { useSnippets } from "@/lib/useSnippets";
 import { useInpaint } from "@/providers/InpaintProvider";
-import { trackUpscalerDownload, useDownloads } from "@/providers/DownloadProvider";
-import type { PromptSnippet, UpscalerEngine } from "@/types";
+import type { UpscalerEngine } from "@/types";
 
 interface InpaintPanelProps {
   reloadToken: number;
@@ -90,18 +91,8 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
     setBatch,
   } = inpaint;
 
-  const downloads = useDownloads();
-  const {
-    engines,
-    loading: enginesLoading,
-    error: enginesError,
-    reload: reloadEngines,
-  } = useEngineCatalog();
-  const [snippets, setSnippets] = useState<PromptSnippet[]>([]);
+  const { snippets, reloadSnippets } = useSnippets();
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [defaultEngine, setDefaultEngine] = useState<string | null>(null);
-  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   const { sourceMeta, setUploadDims, sourcePreview, sourceDims } = useImageSource(
     source,
@@ -109,80 +100,41 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
     initialImageId,
   );
 
-  const reloadSnippets = useCallback(() => {
-    api
-      .getPromptSnippets()
-      .then(setSnippets)
-      .catch(() => setSnippets([]));
-  }, []);
-
-  useEffect(() => {
-    reloadSnippets();
-  }, [reloadSnippets]);
-
-  // Memoized so the selected engine + the defaults effect are stable across re-renders.
-  const inpaintEngines = useMemo(() => engines.filter((e) => e.kind === "inpaint"), [engines]);
-  const selectedEngine = useMemo(
-    () => inpaintEngines.find((e) => e.slug === engine) ?? inpaintEngines[0] ?? null,
-    [inpaintEngines, engine],
-  );
-  // Flow-matching engines (FLUX Fill GGUF/NF4, Z-Image, SD 3.x) keep their native
-  // scheduler (no sampler) and their own tuned defaults.
-  const fluxEngine =
-    !!selectedEngine &&
-    (selectedEngine.is_gguf || /flux|z-image|stable-diffusion-3/i.test(selectedEngine.repo_id));
-
-  // Preferred default inpaint engine from Settings (reuses the outpaint default).
-  useEffect(() => {
-    api
-      .getSettings()
-      .then((s) => setDefaultEngine(s.default_outpaint_engine))
-      .catch(() => setDefaultEngine(null))
-      .finally(() => setSettingsLoaded(true));
-  }, []);
-
-  useEffect(() => {
-    if (engine !== "" || !settingsLoaded || inpaintEngines.length === 0) return;
-    const downloaded = inpaintEngines.filter((e) => e.downloaded);
-    const target =
-      downloaded.find((e) => e.slug === defaultEngine) ?? downloaded[0] ?? inpaintEngines[0];
-    setEngine(target.slug);
-  }, [inpaintEngines, engine, defaultEngine, settingsLoaded, setEngine]);
-
   // Apply the selected engine's tuned defaults (steps / guidance) when it changes —
   // otherwise the form keeps generic values for every engine (Z-Image wants 9 steps /
   // guidance 0, FLUX Fill 28 / 30, SD 30 / 7.5).
-  useEffect(() => {
-    if (!selectedEngine) return;
-    setSteps(selectedEngine.defaults.steps);
-    setGuidance(selectedEngine.defaults.guidance_scale);
-  }, [selectedEngine, setSteps, setGuidance]);
+  const onEngineDefaults = useCallback(
+    (eng: UpscalerEngine) => {
+      setSteps(eng.defaults.steps);
+      setGuidance(eng.defaults.guidance_scale);
+    },
+    [setSteps, setGuidance],
+  );
+
+  const {
+    inpaintEngines,
+    selectedEngine,
+    flowMatch: fluxEngine,
+    enginesLoading,
+    enginesError,
+    needDownload,
+    downloadPercent,
+    startEngineDownload,
+    error,
+    setError,
+  } = useInpaintEngineSelection({
+    engine,
+    setEngine,
+    route: "/inpaint",
+    errorKey: "inpaint.error",
+    onEngineDefaults,
+  });
 
   const sourcePrompt = source?.kind === "gallery" ? sourceMeta?.prompt?.trim() || null : null;
-  const engineDl = selectedEngine ? downloads.progress[selectedEngine.slug] : undefined;
-  const needDownload = !!selectedEngine && !selectedEngine.downloaded;
-
-  const startEngineDownload = async (eng: UpscalerEngine) => {
-    setError(null);
-    try {
-      await trackUpscalerDownload(downloads.track, eng, "/inpaint");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  // Refresh the engine list once this engine's download finishes (so `downloaded`
-  // flips), and surface a download error.
-  useEffect(() => {
-    if (engineDl?.status === "done") reloadEngines();
-    if (engineDl?.status === "error") setError(engineDl.error ?? t("inpaint.error"));
-  }, [engineDl?.status, engineDl?.error, reloadEngines, t]);
 
   const onUpload = (file: File | undefined) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setSource({ kind: "upload", dataUrl: reader.result as string });
-    reader.readAsDataURL(file);
+    readFileAsDataUrl(file).then((dataUrl) => setSource({ kind: "upload", dataUrl }));
   };
 
   const handleRun = () => {
@@ -219,7 +171,6 @@ export const InpaintPanel = ({ reloadToken, initialImageId }: InpaintPanelProps)
   };
 
   const displayError = error ?? jobError ?? (enginesError ? t("inpaint.engineLoadError") : null);
-  const downloadPercent = engineDl && engineDl.status === "downloading" ? engineDl.percent : null;
 
   return (
     <Box>

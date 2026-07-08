@@ -16,11 +16,12 @@ requires-python = ">=3.10,<3.14"
 dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
-    "diffusers>=0.35",  # GGUF FLUX needs >=0.31; FluxKontextPipeline (edit) needs >=0.35
-    "transformers>=4.40",
+    "diffusers>=0.39",  # GGUF FLUX needs >=0.31; FluxKontext (edit) >=0.35; FLUX.2 Flux2KleinPipeline + PipelineQuantizationConfig need >=0.39
+    "transformers>=4.51",  # FLUX.2 klein loads an 8B Qwen3 text encoder (Qwen3 support landed in 4.51)
     "accelerate>=0.29",
     "safetensors>=0.4",
     "huggingface_hub>=0.23",
+    "requests>=2.31",  # Civitai download path (downloader.start_civitai_download)
     "pillow>=10.0",
     "pydantic>=2.6",
     "psutil>=5.9",

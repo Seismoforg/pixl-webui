@@ -21,6 +21,7 @@ Diffusion family) models on Windows, with a Next.js frontend and a Python
 - docs/              — ADRs and technical debt
 - models/            — project-local model downloads (git-ignored)
 - data/              — local settings incl. HF token (git-ignored)
+- outputs/           — generated images + metadata sidecars, served as the gallery (git-ignored)
 
 # Key Components
 - install.ps1 — the only supported way to set up the Python environment

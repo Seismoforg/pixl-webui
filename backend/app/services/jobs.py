@@ -16,13 +16,21 @@ import threading
 import time
 from typing import Callable, Generic, Protocol, TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .. import live, messages
 from . import gallery
 
 # Seed cap for random seeds + batch seed-wrapping (32-bit), shared by the job routers.
 SEED_MAX = 2**32 - 1
+
+
+class LoraRef(BaseModel):
+    """One LoRA adapter to blend into a run (family-matched + downloaded). Shared by the
+    generate + edit request schemas."""
+
+    slug: str
+    weight: float = Field(default=1.0, ge=0.0, le=2.0)
 
 
 class PhaseTimings(BaseModel):

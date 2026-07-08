@@ -23,14 +23,9 @@ from ..services import (
     upscalers,
 )
 from ..services.upscalers import UpscalerInfo
-from ..services.jobs import BatchProgress
+from ..services.jobs import BatchProgress, LoraRef
 
 router = APIRouter(prefix="/api/edit", tags=["edit"])
-
-
-class LoraRef(BaseModel):
-    slug: str
-    weight: float = Field(default=1.0, ge=0.0, le=2.0)
 
 
 class EditRequest(BaseModel):

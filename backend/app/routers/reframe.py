@@ -21,6 +21,7 @@ from ..services import (
     job_guard,
     jobs,
     outpaint as outpaint_svc,
+    quantize,
     reframe as reframe_svc,
     upscalers,
 )
@@ -131,7 +132,11 @@ def _run_outpaint(job, req, image, ratio, engine, on_progress, pub_key) -> None:
     composited back pixel-exact and saved. The inpaint pipe is loaded once (cached
     across the batch) and freed afterwards. No upscaler runs."""
     base_seed = req.outpaint_seed if req.outpaint_seed is not None else random.randint(0, jobs.SEED_MAX)
-    sampler = req.outpaint_sampler or samplers.DEFAULT_SAMPLER
+    # Flow-matching engines (FLUX Fill, Z-Image) keep their native scheduler — the
+    # service skips apply_sampler — so record NATIVE, not the requested id, to match
+    # what actually ran (mirrors generate's effective_sampler; see samplers.apply_sampler).
+    flow_matching = quantize.engine_family(engine) is not None
+    sampler = samplers.NATIVE if flow_matching else (req.outpaint_sampler or samplers.DEFAULT_SAMPLER)
     with _store.lock:
         job.batch_size = req.outpaint_batch
     try:

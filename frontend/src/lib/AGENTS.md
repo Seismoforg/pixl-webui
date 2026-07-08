@@ -36,6 +36,15 @@ Backend-communication infrastructure and small pure helpers shared across the UI
 - useEngineCatalog.ts / useImageSource.ts — shared panel hooks: engine-catalog fetch
               (`{engines, loading, error, reload}`, error distinct from empty) and the
               deep-link source preselect + gallery-metadata fetch (used by the 4 panels)
+- useInpaintEngineSelection.ts — inpaint-kind engine selection + download lifecycle
+              shared by the reframe (outpaint) + inpaint panels: filter to inpaint
+              engines, resolve the selected one, load+pick the Settings default, apply
+              the engine's tuned defaults (panel-specific via `onEngineDefaults`), track
+              its download; returns `{inpaintEngines, selectedEngine, flowMatch, ...,
+              error, setError}`
+- useSnippets.ts — load the prompt-snippet list + `reloadSnippets` (reframe/inpaint)
+- readFile.ts — `readFileAsDataUrl(file)`: File/Blob → base64 data URL (every upload
+              handler + the reference-image picker)
 - useImageRouteParams.ts — parses the `?image=` deep-link + gallery reload token from
               the shared route glue (upscale/reframe/inpaint/edit pages; call inside Suspense)
 - inpaint.ts— inpaint feather math (reuses maskFeatherPx/seamFeatherPx + seedBlurPx)

@@ -10,7 +10,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { SectionHeading } from "@/components/atoms/SectionHeading";
 import { InfoTip } from "@/components/molecules/InfoTip";
@@ -24,11 +24,12 @@ import { SourcePicker } from "@/components/organisms/SourcePicker";
 import { useTranslations } from "@/i18n";
 import { api } from "@/lib/api";
 import { formLockStyle } from "@/lib/formLock";
-import { useEngineCatalog } from "@/lib/useEngineCatalog";
+import { readFileAsDataUrl } from "@/lib/readFile";
 import { useImageSource } from "@/lib/useImageSource";
+import { useInpaintEngineSelection } from "@/lib/useInpaintEngineSelection";
+import { useSnippets } from "@/lib/useSnippets";
 import { useReframe } from "@/providers/ReframeProvider";
-import { trackUpscalerDownload, useDownloads } from "@/providers/DownloadProvider";
-import type { PromptSnippet, ReframeStrategy, UpscalerEngine } from "@/types";
+import type { ReframeStrategy, UpscalerEngine } from "@/types";
 
 interface ReframePanelProps {
   reloadToken: number;
@@ -93,19 +94,8 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
     setOutpaintBatch,
   } = reframe;
 
-  const downloads = useDownloads();
-  const {
-    engines,
-    loading: enginesLoading,
-    error: enginesError,
-    reload: reloadEngines,
-  } = useEngineCatalog();
-  const [snippets, setSnippets] = useState<PromptSnippet[]>([]);
+  const { snippets, reloadSnippets } = useSnippets();
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // Preferred default outpaint engine from Settings (applied only when downloaded).
-  const [defaultOutpaint, setDefaultOutpaint] = useState<string | null>(null);
-  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   const { sourceMeta, setUploadDims, sourcePreview, sourceDims } = useImageSource(
     source,
@@ -113,61 +103,36 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
     initialImageId,
   );
 
-  const reloadSnippets = useCallback(() => {
-    api
-      .getPromptSnippets()
-      .then(setSnippets)
-      .catch(() => setSnippets([]));
-  }, []);
-
-  useEffect(() => {
-    reloadSnippets();
-  }, [reloadSnippets]);
-
-  // Only inpaint engines are selectable outpaint models. Memoized so the selected
-  // engine + the defaults effect are stable across unrelated re-renders.
-  const inpaintEngines = useMemo(() => engines.filter((e) => e.kind === "inpaint"), [engines]);
-  // The chosen outpaint model (falls back to the first available inpaint engine).
-  const selectedEngine = useMemo(
-    () => inpaintEngines.find((e) => e.slug === outpaintEngine) ?? inpaintEngines[0] ?? null,
-    [inpaintEngines, outpaintEngine],
-  );
-  // Flow-matching engines (FLUX Fill GGUF/NF4, Z-Image, SD 3.x) keep their native
-  // scheduler (no sampler) and their own tuned defaults — SD-tuned source params don't
-  // transfer to them.
-  const flowMatchOutpaint =
-    !!selectedEngine &&
-    (selectedEngine.is_gguf || /flux|z-image|stable-diffusion-3/i.test(selectedEngine.repo_id));
-
   // Apply the selected outpaint engine's tuned defaults (steps / guidance / refine
   // steps) when the engine changes — otherwise the form keeps generic values for every
   // engine (Z-Image wants 9 steps / guidance 0, FLUX Fill 28 / 30, SD 30 / 7.5).
-  useEffect(() => {
-    if (!selectedEngine) return;
-    setOutpaintSteps(selectedEngine.defaults.steps);
-    setOutpaintRefineSteps(selectedEngine.defaults.refine_steps);
-    setOutpaintGuidance(selectedEngine.defaults.guidance_scale);
-  }, [selectedEngine, setOutpaintSteps, setOutpaintRefineSteps, setOutpaintGuidance]);
+  const onEngineDefaults = useCallback(
+    (eng: UpscalerEngine) => {
+      setOutpaintSteps(eng.defaults.steps);
+      setOutpaintRefineSteps(eng.defaults.refine_steps);
+      setOutpaintGuidance(eng.defaults.guidance_scale);
+    },
+    [setOutpaintSteps, setOutpaintRefineSteps, setOutpaintGuidance],
+  );
 
-  // Load the preferred default outpaint engine from Settings (best-effort).
-  useEffect(() => {
-    api
-      .getSettings()
-      .then((s) => setDefaultOutpaint(s.default_outpaint_engine))
-      .catch(() => setDefaultOutpaint(null))
-      .finally(() => setSettingsLoaded(true));
-  }, []);
-
-  // Default the outpaint model once loaded: the Settings default when downloaded,
-  // else the first downloaded inpaint engine (else the first so its download prompt
-  // shows). Waits for Settings so the default wins.
-  useEffect(() => {
-    if (outpaintEngine !== "" || !settingsLoaded || inpaintEngines.length === 0) return;
-    const downloaded = inpaintEngines.filter((e) => e.downloaded);
-    const target =
-      downloaded.find((e) => e.slug === defaultOutpaint) ?? downloaded[0] ?? inpaintEngines[0];
-    setOutpaintEngine(target.slug);
-  }, [inpaintEngines, outpaintEngine, defaultOutpaint, settingsLoaded, setOutpaintEngine]);
+  const {
+    inpaintEngines,
+    selectedEngine,
+    flowMatch: flowMatchOutpaint,
+    enginesLoading,
+    enginesError,
+    needDownload,
+    downloadPercent: inpaintDownloadPercent,
+    startEngineDownload,
+    error,
+    setError,
+  } = useInpaintEngineSelection({
+    engine: outpaintEngine,
+    setEngine: setOutpaintEngine,
+    route: "/reframe",
+    errorKey: "reframe.error",
+    onEngineDefaults,
+  });
 
   // Auto-fill the outpaint generation params from a gallery source's original
   // metadata (like the prompt auto-fill), so extending an image reuses how it was
@@ -194,30 +159,12 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
   // Auto-fill source: a gallery image carries its original generation prompt in
   // metadata (uploads carry none).
   const sourcePrompt = source?.kind === "gallery" ? sourceMeta?.prompt?.trim() || null : null;
-  const inpaintDl = selectedEngine ? downloads.progress[selectedEngine.slug] : undefined;
-  const needInpaintDownload = outpaint && !!selectedEngine && !selectedEngine.downloaded;
-
-  const startEngineDownload = async (eng: UpscalerEngine) => {
-    setError(null);
-    try {
-      await trackUpscalerDownload(downloads.track, eng, "/reframe");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  // Refresh the engine list once an inpaint download finishes (so `downloaded`
-  // flips), and surface a download error.
-  useEffect(() => {
-    if (inpaintDl?.status === "done") reloadEngines();
-    if (inpaintDl?.status === "error") setError(inpaintDl.error ?? t("reframe.error"));
-  }, [inpaintDl?.status, inpaintDl?.error, reloadEngines, t]);
+  // The engine download is only required when actually outpainting.
+  const needInpaintDownload = outpaint && needDownload;
 
   const onUpload = (file: File | undefined) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setSource({ kind: "upload", dataUrl: reader.result as string });
-    reader.readAsDataURL(file);
+    readFileAsDataUrl(file).then((dataUrl) => setSource({ kind: "upload", dataUrl }));
   };
 
   const isCustom = targetRatio === "custom";
@@ -265,8 +212,6 @@ export const ReframePanel = ({ reloadToken, initialImageId }: ReframePanelProps)
   };
 
   const displayError = error ?? jobError ?? (enginesError ? t("reframe.engineLoadError") : null);
-  const inpaintDownloadPercent =
-    inpaintDl && inpaintDl.status === "downloading" ? inpaintDl.percent : null;
 
   return (
     <Box>

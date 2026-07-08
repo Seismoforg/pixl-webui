@@ -136,10 +136,6 @@ def effective_level(slug: str, min_vram_gb: float, family: str, is_gguf: bool = 
 
 # --- Model-catalog wrappers over the primitives. ---
 
-def est_vram_gb(model: ModelInfo, level: str = "fp16") -> float:
-    return est_vram_for(model.min_vram_gb, model.family, level)
-
-
 def assess(model: ModelInfo, level: str = "fp16") -> FitInfo:
     """Classify how ``model`` fits the current inference device at load ``level``.
 

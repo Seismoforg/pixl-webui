@@ -10,7 +10,7 @@ A styling approach and component library had to be chosen.
 # Decision
 Use MUI (Material UI) with Emotion `sx` styling on the Next.js App Router.
 All design values come from a central `theme`; global tweaks go through
-`theme.components`. Static UI text lives in locale files (`src/locales/en.json`)
+`theme.components`. Static UI text lives in locale files (`src/i18n/locales/en.json`)
 behind a small i18n layer, with English (`en`) as the default language.
 
 # Rationale

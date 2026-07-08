@@ -23,6 +23,7 @@ from ..services import (
     inpaint_engine,
     job_guard,
     jobs,
+    quantize,
     upscalers,
 )
 from ..services.upscalers import UpscalerInfo
@@ -72,7 +73,11 @@ def _run(job: jobs.JobState, req: InpaintRequest, image, mask, engine: UpscalerI
     on_progress = jobs.make_on_progress(job, _store.lock, pub_key)
 
     base_seed = req.seed if req.seed is not None else random.randint(0, jobs.SEED_MAX)
-    sampler = req.sampler or samplers.DEFAULT_SAMPLER
+    # Flow-matching engines (FLUX Fill, Z-Image) keep their native scheduler — the
+    # service skips apply_sampler — so record NATIVE, not the requested id, to match
+    # what actually ran (mirrors generate's effective_sampler; see samplers.apply_sampler).
+    flow_matching = quantize.engine_family(engine) is not None
+    sampler = samplers.NATIVE if flow_matching else (req.sampler or samplers.DEFAULT_SAMPLER)
     with _store.lock:
         job.batch_size = req.batch
     try:

@@ -205,7 +205,7 @@
     "family": "FLUX.2",
     "civitai_version_id": 2846977,
     "kind": "realism",
-    "description": "Photoreal detailing for FLUX.2 klein 9B. 9B ONLY — won't apply to the 4B model. Civitai source: set a Civitai API key in Settings Add the trigger to the prompt.",
+    "description": "Photoreal detailing for FLUX.2 klein 9B. 9B ONLY — won't apply to the 4B model. Civitai source: set a Civitai API key in Settings. Add the trigger to the prompt.",
     "trigger": "This is a high-quality photograph of a",
     "approx_size_gb": 0.16
   }

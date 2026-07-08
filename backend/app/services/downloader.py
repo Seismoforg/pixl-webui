@@ -30,7 +30,10 @@ _TRANSIENT_MARKERS = (
 
 
 def _is_transient(exc: BaseException) -> bool:
-    if isinstance(exc, (ConnectionError, TimeoutError, OSError)):
+    # Only network errors are transient. NOT a blanket OSError catch: disk-full
+    # (ENOSPC) / permission (EACCES) are OSErrors too but non-recoverable — retrying
+    # them just wastes ~30s of backoff. Socket OSErrors are caught via the markers below.
+    if isinstance(exc, (ConnectionError, TimeoutError)):
         return True
     text = str(exc).lower()
     return any(m in text for m in _TRANSIENT_MARKERS)

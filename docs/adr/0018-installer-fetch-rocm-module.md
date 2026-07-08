@@ -3,6 +3,14 @@ status: accepted
 date: 2026-07-07
 ---
 
+# Amendment (2026-07-08)
+ADR 0019 made bitsandbytes NF4 the DEFAULT 16 GB path, so the AMD install now INSTALLS
+bnb, reversing the `-SkipBitsAndBytes` decision below. `install.ps1:320` calls
+`Initialize-RocmVenv` WITHOUT `-SkipBitsAndBytes` (the module pin carries the bnb step);
+`-SkipBitsAndBytes` is now only the fallback if that install fails (`install.ps1:333`).
+The Consequences "To later enable NF4/LoRA via bitsandbytes" bullet is DONE. Read the
+Decision/Rationale bnb notes below as historical.
+
 # Context
 `install.ps1` hand-rolled the AMD/ROCm PyTorch setup: a `Get-GfxArch` GPU->gfx
 regex map and a manual `pip install rocm[...] torch[...] torchvision[...]` against

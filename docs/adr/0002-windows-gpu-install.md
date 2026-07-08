@@ -21,7 +21,8 @@ NVIDIA → CUDA wheels; AMD → ROCm via `rocm-torch-windows`; otherwise CPU.
 # Consequences
 - Linux/macOS are out of scope for now (would need a different ROCm path).
 - ROCm wheels are AMD nightlies and can occasionally break; `-Force` rebuilds.
-- The AMD gfx-architecture mapping must track the rocm-torch-windows support list.
+- The AMD gfx-architecture mapping must track the rocm-torch-windows support list
+  (superseded by ADR 0018: gfx detection is now delegated to the fetched module).
 
 # Related
-- ADR 0001 (diffusers engine)
+- ADR 0001 (diffusers engine), ADR 0018 (installer fetches the rocm module)
